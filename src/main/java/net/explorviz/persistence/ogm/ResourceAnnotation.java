@@ -25,9 +25,19 @@ public class ResourceAnnotation {
   @Relationship(type = "USED", direction = Relationship.Direction.OUTGOING)
   private ResourceVersion usedResource;
 
-  // Association with contributor from PROV model was dropped for easier queries
   @Relationship(type = "WAS_ASSOCIATED_WITH", direction = Relationship.Direction.OUTGOING)
   private Contributor associatedContributor;
+
+  public ResourceAnnotation() {
+    // empty Constructor required by Neo4j OGM
+  }
+
+  public ResourceAnnotation(
+      final Instant timestamp, final String externalId, final AnnotationType annotationType) {
+    this.timestamp = timestamp;
+    this.externalId = externalId;
+    this.annotationType = annotationType;
+  }
 
   public Long getId() {
     return id;

@@ -382,4 +382,95 @@ class TrackableResourceRepositoryTest {
     assertNotNull(latestVersion.getDerivedFrom());
     assertEquals(ResourceState.OPEN, latestVersion.getDerivedFrom().getState());
   }
+
+  @Test
+  void testAddAnnotationEvent() {
+    final Session session = sessionFactory.openSession();
+    final String tokenId = "token-1";
+    final String repoName = "repo-1";
+    Landscape landscape = new Landscape(tokenId);
+    Repository repository = new Repository(repoName);
+    landscape.addRepository(repository);
+
+    Issue issue = new Issue();
+    issue.setNumber(300);
+    issue.setTitle("Test Event Issue");
+    repository.addIssue(issue);
+    session.save(landscape);
+    session.save(repository);
+    session.save(issue);
+
+    // Create new Issue Version on creation
+    Contributor creator = new Contributor("annotator-event");
+
+    ResourceVersion creationVersion = new ResourceVersion();
+    creationVersion.setCreationDate(Instant.now());
+    creationVersion.setTitle("Test event issue");
+    creationVersion.setState(ResourceState.OPEN);
+    creationVersion.setExternalId("external-event-1");
+
+    ResourceAnnotation creationAnnotation = new ResourceAnnotation();
+    creationAnnotation.setAnnotationType(AnnotationType.CREATE);
+    creationAnnotation.setTimestamp(Instant.now());
+    creationAnnotation.setAssociatedContributor(creator);
+    creationAnnotation.setExternalId("external-event-annotation-1");
+
+    ResourceAnnotation savedAnnotation =
+        trackableResourceRepository.addAnnotationEvent(
+            session, issue, creationAnnotation, creationVersion);
+
+    assertNotNull(savedAnnotation);
+
+    // find issue and test that versions are present
+    Optional<Issue> foundIssue =
+        trackableResourceRepository.findByNumber(session, Issue.class, 300, repoName, tokenId);
+    assertTrue(foundIssue.isPresent());
+
+    Issue updatedIssue = foundIssue.get();
+    assertNotNull(updatedIssue.getVersions());
+    assertEquals(1, updatedIssue.getVersions().size());
+
+    // test getCurrentVersion
+    ResourceVersion currentVersion = updatedIssue.getCurrentVersion();
+    assertNotNull(currentVersion);
+    assertEquals(creationVersion.getExternalId(), currentVersion.getExternalId());
+    assertEquals(creator, currentVersion.getCreatedBy());
+
+    // Add another annotation to close it and test derivedFrom
+    Contributor closer = new Contributor("closer-event");
+
+    ResourceVersion closedVersion = new ResourceVersion();
+    closedVersion.setTitle(currentVersion.getTitle());
+    closedVersion.setState(ResourceState.CLOSED);
+    closedVersion.setExternalId("external-event-2");
+    closedVersion.setCreationDate(Instant.now());
+
+    ResourceAnnotation closedAnnotation = new ResourceAnnotation();
+    closedAnnotation.setAnnotationType(AnnotationType.CLOSE);
+    closedAnnotation.setTimestamp(Instant.now());
+    closedAnnotation.setAssociatedContributor(closer);
+    closedAnnotation.setExternalId("external-event-annotation-2");
+
+    ResourceAnnotation savedClosedAnnotation =
+        trackableResourceRepository.addAnnotationEvent(
+            session, updatedIssue, closedAnnotation, closedVersion);
+
+    assertNotNull(savedClosedAnnotation);
+    assertNotNull(savedClosedAnnotation.getUsedResource());
+    assertEquals(ResourceState.OPEN, savedClosedAnnotation.getUsedResource().getState());
+
+    // get updated issue
+    Optional<Issue> foundIssueAfterClose =
+        trackableResourceRepository.findByNumber(session, Issue.class, 300, repoName, tokenId);
+    assertTrue(foundIssueAfterClose.isPresent());
+    Issue closedIssueAfterClose = foundIssueAfterClose.get();
+    assertEquals(2, closedIssueAfterClose.getVersions().size());
+
+    // test latest version and derivation
+    ResourceVersion latestVersion = closedIssueAfterClose.getCurrentVersion();
+    assertNotNull(latestVersion);
+    assertEquals(ResourceState.CLOSED, latestVersion.getState());
+    assertNotNull(latestVersion.getDerivedFrom());
+    assertEquals(ResourceState.OPEN, latestVersion.getDerivedFrom().getState());
+  }
 }

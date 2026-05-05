@@ -70,6 +70,7 @@ public class TrackableResourceRepository {
     return resultSet;
   }
 
+  @Deprecated // TODO: remove safely
   public <T extends TrackableResource> ResourceAnnotation addAnnotationAndVersion(
       final Session session,
       final Class<T> resourceType,
@@ -119,6 +120,33 @@ public class TrackableResourceRepository {
     // Save all entities in transaction
     session.save(annotation, 2); // depth 2 to cascade to resourceVersions and contributor
     session.save(resource, 1); // depth 1 sufficient since annotation is already saved
+
+    return annotation;
+  }
+
+  public <T extends TrackableResource> ResourceAnnotation addAnnotationEvent(
+      final Session session,
+      final TrackableResource trackableResource,
+      final ResourceAnnotation annotation,
+      final ResourceVersion resourceVersion) {
+
+    final ResourceVersion previousVersion = trackableResource.getCurrentVersion();
+    annotation.setUsedResource(previousVersion);
+    annotation.setGeneratedResourceVersion(resourceVersion);
+    resourceVersion.setGeneratedBy(annotation);
+
+    if (annotation.getAssociatedContributor() != null) {
+      resourceVersion.setCreatedBy(annotation.getAssociatedContributor());
+    }
+
+    resourceVersion.setResource(trackableResource);
+    if (previousVersion != null) {
+      resourceVersion.setDerivedFrom(previousVersion);
+    }
+    trackableResource.addVersion(resourceVersion);
+
+    session.save(annotation, 2);
+    session.save(trackableResource, 1);
 
     return annotation;
   }

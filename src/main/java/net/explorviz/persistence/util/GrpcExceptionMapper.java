@@ -6,6 +6,7 @@ import net.explorviz.persistence.proto.CommitData;
 import net.explorviz.persistence.proto.ContributorData;
 import net.explorviz.persistence.proto.FileData;
 import net.explorviz.persistence.proto.StateDataRequest;
+import net.explorviz.persistence.proto.TrackableResourceEvent;
 
 /** Utility class to map Java exceptions to gRPC exceptions. */
 public final class GrpcExceptionMapper {
@@ -76,6 +77,15 @@ public final class GrpcExceptionMapper {
     final String contextInfo =
         "Regarding the call to persistContributor for the contributor with name '"
             + contributorData.getName()
+            + "'.";
+    return mapToGrpcException(e, contextInfo);
+  }
+
+  public static StatusRuntimeException mapToGrpcException(
+      final Exception e, final TrackableResourceEvent trackableResourceEvent) {
+    final String contextInfo =
+        "Regarding the call to persistTrackableResourceEvent for the event with title '"
+            + trackableResourceEvent.getTitle()
             + "'.";
     return mapToGrpcException(e, contextInfo);
   }
