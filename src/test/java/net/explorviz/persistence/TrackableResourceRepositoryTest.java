@@ -9,6 +9,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import net.explorviz.persistence.ogm.AnnotationType;
 import net.explorviz.persistence.ogm.Contributor;
 import net.explorviz.persistence.ogm.Issue;
@@ -170,12 +171,117 @@ class TrackableResourceRepositoryTest {
   //  }
 
   @Test
+  void testFindByContributor() {
+    final Session session = sessionFactory.openSession();
+    final String tokenId = "token-1";
+    final String repoName = "repo-1";
+    Landscape landscape = new Landscape(tokenId);
+    Repository repository = new Repository("repo-1");
+    landscape.addRepository(repository);
+
+    Contributor c1 = new Contributor("c1");
+    Contributor c2 = new Contributor("c2");
+
+    Issue i1 = new Issue();
+    i1.setNumber(1);
+    i1.setTitle("Test Issue 1");
+    session.save(i1);
+
+    Issue i2 = new Issue();
+    i2.setNumber(2);
+    i2.setTitle("Test Issue 2");
+    session.save(i2);
+
+    Issue i3 = new Issue();
+    i3.setNumber(3);
+    i3.setTitle("Test Issue 3");
+    session.save(i3);
+
+    repository.addIssue(i1);
+    repository.addIssue(i2);
+    repository.addIssue(i3);
+    session.save(landscape);
+    session.save(repository);
+
+    ResourceVersion ir1 = new ResourceVersion();
+    ResourceAnnotation ia1 =
+        trackableResourceRepository.addAnnotationAndVersion(
+            session,
+            Issue.class,
+            1,
+            repoName,
+            tokenId,
+            "external-1",
+            Instant.now(),
+            AnnotationType.CREATE,
+            c1,
+            ir1);
+
+    ResourceVersion ir2 = new ResourceVersion();
+    ResourceAnnotation ia2 =
+        trackableResourceRepository.addAnnotationAndVersion(
+            session,
+            Issue.class,
+            2,
+            repoName,
+            tokenId,
+            "external-2",
+            Instant.now(),
+            AnnotationType.CREATE,
+            c1,
+            ir2);
+
+    ResourceVersion ir3 = new ResourceVersion();
+    ResourceAnnotation ia3 =
+        trackableResourceRepository.addAnnotationAndVersion(
+            session,
+            Issue.class,
+            3,
+            repoName,
+            tokenId,
+            "external-3",
+            Instant.now(),
+            AnnotationType.CREATE,
+            c2,
+            ir3);
+
+    // issue number 3 gets edited again by contributor 2
+    ResourceVersion ir4 = new ResourceVersion();
+    ResourceAnnotation ia4 =
+        trackableResourceRepository.addAnnotationAndVersion(
+            session,
+            Issue.class,
+            3,
+            repoName,
+            tokenId,
+            "external-4",
+            Instant.now(),
+            AnnotationType.LABEL,
+            c2,
+            ir4);
+    ia4.setLabel("bug");
+
+    Set<Issue> c1Issues =
+        trackableResourceRepository.findAllByContributor(
+            session, Issue.class, repoName, tokenId, c1);
+    assertNotNull(c1Issues);
+    assertEquals(2, c1Issues.size());
+
+    Set<Issue> c2Issues =
+        trackableResourceRepository.findAllByContributor(
+            session, Issue.class, repoName, tokenId, c2);
+    assertNotNull(c2Issues);
+    assertEquals(1, c2Issues.size());
+  }
+
+  @Test
   void testAddAnnotationAndVersion() {
     final Session session = sessionFactory.openSession();
     final String tokenId = "token-1";
     final String repoName = "repo-1";
     Landscape landscape = new Landscape(tokenId);
     Repository repository = new Repository(repoName);
+    landscape.addRepository(repository);
 
     Contributor contributor = new Contributor("IssueCreator");
     Issue issue = new Issue();
@@ -255,9 +361,9 @@ class TrackableResourceRepositoryTest {
     assertNotNull(closedAnnotation);
     assertNotNull(closedAnnotation.getUsedResource());
     assertEquals(ResourceState.OPEN, closedAnnotation.getUsedResource().getState());
-    assertNotNull(closedAnnotation.getGeneratedResource());
-    assertEquals(ResourceState.CLOSED, closedAnnotation.getGeneratedResource().getState());
-    assertEquals(closer, closedAnnotation.getContributor());
+    assertNotNull(closedAnnotation.getGeneratedResourceVersion());
+    assertEquals(ResourceState.CLOSED, closedAnnotation.getGeneratedResourceVersion().getState());
+    assertEquals(closer, closedAnnotation.getGeneratedResourceVersion().getCreatedBy());
 
     // get updated issue
     Optional<Issue> foundIssueAfterClose =

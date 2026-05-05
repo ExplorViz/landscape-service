@@ -20,13 +20,14 @@ public class ResourceAnnotation {
   private String stateChange;
 
   @Relationship(type = "GENERATED_BY", direction = Relationship.Direction.OUTGOING)
-  private ResourceVersion generatedResource;
+  private ResourceVersion generatedResourceVersion;
 
   @Relationship(type = "USED", direction = Relationship.Direction.OUTGOING)
   private ResourceVersion usedResource;
 
-  @Relationship(type = "CREATED_BY", direction = Relationship.Direction.INCOMING)
-  private Contributor contributor;
+  // Association with contributor from PROV model was dropped for easier queries
+  @Relationship(type = "WAS_ASSOCIATED_WITH", direction = Relationship.Direction.OUTGOING)
+  private Contributor associatedContributor;
 
   public Long getId() {
     return id;
@@ -84,12 +85,12 @@ public class ResourceAnnotation {
     this.stateChange = stateChange;
   }
 
-  public ResourceVersion getGeneratedResource() {
-    return generatedResource;
+  public ResourceVersion getGeneratedResourceVersion() {
+    return generatedResourceVersion;
   }
 
-  public void setGeneratedResource(final ResourceVersion generatedResource) {
-    this.generatedResource = generatedResource;
+  public void setGeneratedResourceVersion(final ResourceVersion generatedResourceVersion) {
+    this.generatedResourceVersion = generatedResourceVersion;
   }
 
   public ResourceVersion getUsedResource() {
@@ -100,11 +101,11 @@ public class ResourceAnnotation {
     this.usedResource = resource;
   }
 
-  public Contributor getContributor() {
-    return contributor;
+  public Contributor getAssociatedContributor() {
+    return associatedContributor;
   }
 
-  public void setContributor(final Contributor contributor) {
-    this.contributor = contributor;
+  public void setAssociatedContributor(final Contributor associatedContributor) {
+    this.associatedContributor = associatedContributor;
   }
 }

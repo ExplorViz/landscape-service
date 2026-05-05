@@ -3,8 +3,10 @@ package net.explorviz.persistence.repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.explorviz.persistence.ogm.AnnotationType;
 import net.explorviz.persistence.ogm.Contributor;
 import net.explorviz.persistence.ogm.ResourceAnnotation;
@@ -19,10 +21,6 @@ public class TrackableResourceRepository {
 
   @Inject SessionFactory sessionFactory;
 
-  /**
-   * Finds a TrackableResource (Issue or PullRequest) by its number. Assuming it belongs to a
-   * specific Repository and Landscape.
-   */
   public <T extends TrackableResource> Optional<T> findByNumber(
       final Session session,
       final Class<T> type,
@@ -42,19 +40,36 @@ public class TrackableResourceRepository {
             Map.of("tokenId", tokenId, "repoName", repoName, "number", number)));
   }
 
-  /**
-   * * Adds an annotation to a resource, creating both a ResourceAnnotation activity and a new *
-   * ResourceVersion. According to PROV semantics: - The annotation USED the previous *
-   * ResourceVersion (if it exists) - The annotation GENERATED a new ResourceVersion - The new *
-   * version is linked to the resource via HAS_VERSION * * @param session The Neo4j OGM session
-   * * @param resourceType The type of resource (Issue or PullRequest) * @param number The resource
-   * number * @param repoName The repository name * @param tokenId The landscape token ID * @param
-   * externalId The external ID of the event (e.g., GitHub event ID) * @param timestamp The time of
-   * the annotation * @param annotationType The type of annotation (e.g., "created", "closed",
-   * "labeled") * @param contributor The user who performed the annotation * @param newVersion The
-   * new version of the resource (snapshot after annotation) * @return The ResourceAnnotation that
-   * was created
-   */
+  public <T extends TrackableResource> Set<T> findAllByContributor(
+      final Session session,
+      final Class<T> type,
+      final String repoName,
+      final String tokenId,
+      final Contributor contributor) {
+
+    final String cypher =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(t:%s)-[:HAS_VERSION]->(:ResourceVersion)-[:CREATED_BY]->(c:Contributor {name: $contributorName})
+        RETURN DISTINCT t;
+        """
+            .formatted(type.getSimpleName());
+
+    final Map<String, Object> params =
+        Map.of(
+            "tokenId", tokenId,
+            "repoName", repoName,
+            "contributorName", contributor.getName());
+
+    final Iterable<T> results = session.query(type, cypher, params);
+
+    final Set<T> resultSet = new HashSet<>();
+    results.forEach(resultSet::add);
+
+    return resultSet;
+  }
+
   public <T extends TrackableResource> ResourceAnnotation addAnnotationAndVersion(
       final Session session,
       final Class<T> resourceType,
@@ -81,12 +96,13 @@ public class TrackableResourceRepository {
     annotation.setExternalId(externalId);
     annotation.setTimestamp(timestamp);
     annotation.setAnnotationType(annotationType);
-    annotation.setContributor(contributor);
+    newVersion.setCreatedBy(contributor);
+    annotation.setAssociatedContributor(contributor);
 
     // Link the annotation to the versions
     annotation.setUsedResource(
         previousVersion); // Used the previous version (can be null for "created"))
-    annotation.setGeneratedResource(newVersion); // Generated the new version
+    annotation.setGeneratedResourceVersion(newVersion); // Generated the new version
 
     // Link the new version back to the annotation and resource
     newVersion.setGeneratedBy(annotation);
