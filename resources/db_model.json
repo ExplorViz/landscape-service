@@ -54,10 +54,10 @@
   },
   "nodes": [
     {
-      "id": "n0",
+      "id": "n17",
       "position": {
-        "x": 13.173487036928119,
-        "y": 400.44465733842054
+        "x": 1671.5190164695775,
+        "y": 396.44465733842054
       },
       "caption": "",
       "labels": [
@@ -71,10 +71,10 @@
       }
     },
     {
-      "id": "n1",
+      "id": "n18",
       "position": {
-        "x": 629.3079860612381,
-        "y": 400.44465733842054
+        "x": 2287.6535154938874,
+        "y": 396.44465733842054
       },
       "caption": "",
       "labels": [
@@ -88,10 +88,10 @@
       }
     },
     {
-      "id": "n2",
+      "id": "n19",
       "position": {
-        "x": 257.2317501806954,
-        "y": 50
+        "x": 1915.577279613345,
+        "y": 46
       },
       "caption": "",
       "labels": [
@@ -110,10 +110,10 @@
       }
     },
     {
-      "id": "n3",
+      "id": "n20",
       "position": {
-        "x": 518.0883031445456,
-        "y": 52.52644594356928
+        "x": 2176.433832577195,
+        "y": 48.52644594356928
       },
       "caption": "",
       "labels": [
@@ -129,10 +129,10 @@
       }
     },
     {
-      "id": "n4",
+      "id": "n21",
       "position": {
-        "x": 945.0958793349347,
-        "y": 707.6130269924248
+        "x": 2603.441408767584,
+        "y": 703.6130269924248
       },
       "caption": "",
       "labels": [
@@ -147,10 +147,10 @@
       }
     },
     {
-      "id": "n5",
+      "id": "n22",
       "position": {
-        "x": 945.0958793349347,
-        "y": 400.44465733842054
+        "x": 2603.441408767584,
+        "y": 396.44465733842054
       },
       "caption": "",
       "labels": [
@@ -165,10 +165,10 @@
       }
     },
     {
-      "id": "n6",
+      "id": "n23",
       "position": {
-        "x": 824.5460629289855,
-        "y": 50
+        "x": 2482.891592361635,
+        "y": 46
       },
       "caption": "",
       "labels": [
@@ -182,10 +182,10 @@
       }
     },
     {
-      "id": "n7",
+      "id": "n24",
       "position": {
-        "x": 1260.8837726086313,
-        "y": 405.44808529279226
+        "x": 2919.229302041281,
+        "y": 401.44808529279226
       },
       "caption": "",
       "labels": [
@@ -199,10 +199,10 @@
       }
     },
     {
-      "id": "n8",
+      "id": "n25",
       "position": {
-        "x": 629.3079860612381,
-        "y": 552.3858181938074
+        "x": 2287.6535154938874,
+        "y": 548.3858181938074
       },
       "caption": "",
       "labels": [
@@ -216,10 +216,10 @@
       }
     },
     {
-      "id": "n9",
+      "id": "n26",
       "position": {
-        "x": 238.69436582782396,
-        "y": 625.9655361293164
+        "x": 1897.0398952604733,
+        "y": 621.9655361293164
       },
       "caption": "",
       "labels": [
@@ -233,10 +233,10 @@
       }
     },
     {
-      "id": "n10",
+      "id": "n27",
       "position": {
-        "x": 313.52009278754156,
-        "y": 400.44465733842054
+        "x": 1971.865622220191,
+        "y": 396.44465733842054
       },
       "caption": "",
       "labels": [
@@ -250,10 +250,10 @@
       }
     },
     {
-      "id": "n11",
+      "id": "n28",
       "position": {
-        "x": 1260.8837726086313,
-        "y": 132.83098498606014
+        "x": 2919.229302041281,
+        "y": 128.83098498606014
       },
       "caption": "",
       "labels": [
@@ -267,10 +267,10 @@
       }
     },
     {
-      "id": "n12",
+      "id": "n29",
       "position": {
-        "x": 1131.0038227134255,
-        "y": 51.57157143447914
+        "x": 2789.349352146075,
+        "y": 47.57157143447914
       },
       "caption": "",
       "labels": [
@@ -284,10 +284,10 @@
       }
     },
     {
-      "id": "n13",
+      "id": "n30",
       "position": {
-        "x": 518.0883031445456,
-        "y": 833.9020995514278
+        "x": 2176.433832577195,
+        "y": 829.9020995514278
       },
       "caption": "",
       "labels": [
@@ -299,13 +299,63 @@
         "node-color": "#68bc00",
         "label-color": "#ffffff"
       }
+    },
+    {
+      "id": "n31",
+      "position": {
+        "x": 2176.433832577195,
+        "y": 1010.7813966464291
+      },
+      "caption": "",
+      "labels": [
+        "DebugRun"
+      ],
+      "properties": {},
+      "style": {
+        "label-display": "bare",
+        "node-color": "#fe9200",
+        "label-color": "#ffffff",
+        "label-font-size": 40
+      }
+    },
+    {
+      "id": "n32",
+      "position": {
+        "x": 3158.908391424594,
+        "y": 1010.7813966464291
+      },
+      "caption": "DebugSnapshot",
+      "labels": [],
+      "properties": {},
+      "style": {
+        "node-color": "#fe9200",
+        "caption-color": "#ffffff",
+        "caption-font-size": 24
+      }
+    },
+    {
+      "id": "n33",
+      "position": {
+        "x": 3158.908391424594,
+        "y": 703.6130269924248
+      },
+      "caption": "",
+      "labels": [
+        "Variable"
+      ],
+      "properties": {},
+      "style": {
+        "node-color": "#fe9200",
+        "label-display": "bare",
+        "label-color": "#ffffff"
+      }
     }
   ],
   "relationships": [
     {
-      "id": "n0",
-      "fromId": "n0",
-      "toId": "n2",
+      "id": "n29",
+      "fromId": "n17",
+      "toId": "n19",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -315,9 +365,9 @@
       }
     },
     {
-      "id": "n1",
-      "fromId": "n2",
-      "toId": "n3",
+      "id": "n30",
+      "fromId": "n19",
+      "toId": "n20",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -329,9 +379,9 @@
       }
     },
     {
-      "id": "n2",
-      "fromId": "n5",
-      "toId": "n6",
+      "id": "n31",
+      "fromId": "n22",
+      "toId": "n23",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -341,9 +391,9 @@
       }
     },
     {
-      "id": "n3",
-      "fromId": "n4",
-      "toId": "n4",
+      "id": "n32",
+      "fromId": "n21",
+      "toId": "n21",
       "type": "HAS_PARENT",
       "properties": {},
       "style": {
@@ -356,9 +406,9 @@
       }
     },
     {
-      "id": "n4",
-      "fromId": "n3",
-      "toId": "n6",
+      "id": "n33",
+      "fromId": "n20",
+      "toId": "n23",
       "type": "REPRESENTS",
       "properties": {},
       "style": {
@@ -367,9 +417,9 @@
       }
     },
     {
-      "id": "n5",
-      "fromId": "n7",
-      "toId": "n6",
+      "id": "n34",
+      "fromId": "n24",
+      "toId": "n23",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -379,9 +429,9 @@
       }
     },
     {
-      "id": "n6",
-      "fromId": "n7",
-      "toId": "n7",
+      "id": "n35",
+      "fromId": "n24",
+      "toId": "n24",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -392,9 +442,9 @@
       }
     },
     {
-      "id": "n7",
-      "fromId": "n7",
-      "toId": "n7",
+      "id": "n36",
+      "fromId": "n24",
+      "toId": "n24",
       "type": "INHERITS",
       "properties": {},
       "style": {
@@ -404,9 +454,9 @@
       }
     },
     {
-      "id": "n8",
-      "fromId": "n5",
-      "toId": "n7",
+      "id": "n37",
+      "fromId": "n22",
+      "toId": "n24",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -415,9 +465,9 @@
       }
     },
     {
-      "id": "n9",
-      "fromId": "n4",
-      "toId": "n8",
+      "id": "n38",
+      "fromId": "n21",
+      "toId": "n25",
       "type": "BELONGS_TO",
       "properties": {},
       "style": {
@@ -427,9 +477,9 @@
       }
     },
     {
-      "id": "n10",
-      "fromId": "n9",
-      "toId": "n8",
+      "id": "n39",
+      "fromId": "n26",
+      "toId": "n25",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -439,9 +489,9 @@
       }
     },
     {
-      "id": "n11",
-      "fromId": "n0",
-      "toId": "n9",
+      "id": "n40",
+      "fromId": "n17",
+      "toId": "n26",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -452,9 +502,9 @@
       }
     },
     {
-      "id": "n12",
-      "fromId": "n3",
-      "toId": "n3",
+      "id": "n41",
+      "fromId": "n20",
+      "toId": "n20",
       "type": "HAS_PARENT",
       "properties": {},
       "style": {
@@ -464,9 +514,9 @@
       }
     },
     {
-      "id": "n13",
-      "fromId": "n9",
-      "toId": "n4",
+      "id": "n42",
+      "fromId": "n26",
+      "toId": "n21",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -476,9 +526,9 @@
       }
     },
     {
-      "id": "n14",
-      "fromId": "n1",
-      "toId": "n5",
+      "id": "n43",
+      "fromId": "n18",
+      "toId": "n22",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -487,9 +537,9 @@
       }
     },
     {
-      "id": "n15",
-      "fromId": "n1",
-      "toId": "n1",
+      "id": "n44",
+      "fromId": "n18",
+      "toId": "n18",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -500,9 +550,9 @@
       }
     },
     {
-      "id": "n16",
-      "fromId": "n4",
-      "toId": "n5",
+      "id": "n45",
+      "fromId": "n21",
+      "toId": "n22",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -512,9 +562,9 @@
       }
     },
     {
-      "id": "n17",
-      "fromId": "n10",
-      "toId": "n1",
+      "id": "n46",
+      "fromId": "n27",
+      "toId": "n18",
       "type": "HAS_ROOT",
       "properties": {},
       "style": {
@@ -523,9 +573,9 @@
       }
     },
     {
-      "id": "n18",
-      "fromId": "n9",
-      "toId": "n1",
+      "id": "n47",
+      "fromId": "n26",
+      "toId": "n18",
       "type": "HAS_ROOT",
       "properties": {},
       "style": {
@@ -536,9 +586,9 @@
       }
     },
     {
-      "id": "n19",
-      "fromId": "n7",
-      "toId": "n11",
+      "id": "n48",
+      "fromId": "n24",
+      "toId": "n28",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -548,9 +598,9 @@
       }
     },
     {
-      "id": "n20",
-      "fromId": "n6",
-      "toId": "n12",
+      "id": "n49",
+      "fromId": "n23",
+      "toId": "n29",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -563,9 +613,9 @@
       }
     },
     {
-      "id": "n21",
-      "fromId": "n4",
-      "toId": "n13",
+      "id": "n50",
+      "fromId": "n21",
+      "toId": "n30",
       "type": "IS_TAGGED_WITH",
       "properties": {},
       "style": {
@@ -575,9 +625,9 @@
       }
     },
     {
-      "id": "n22",
-      "fromId": "n9",
-      "toId": "n13",
+      "id": "n51",
+      "fromId": "n26",
+      "toId": "n30",
       "type": "CONTAINS",
       "properties": {},
       "style": {
@@ -587,15 +637,76 @@
       }
     },
     {
-      "id": "n23",
+      "id": "n52",
+      "fromId": "n17",
+      "toId": "n27",
       "type": "CONTAINS",
+      "properties": {},
       "style": {
+        "type-background-color": "#cccccc",
+        "type-border-width": 2
+      }
+    },
+    {
+      "id": "n53",
+      "fromId": "n31",
+      "toId": "n32",
+      "type": "CONTAINS",
+      "properties": {},
+      "style": {
+        "detail-orientation": "parallel",
+        "type-background-color": "#cccccc",
+        "type-border-width": 2
+      }
+    },
+    {
+      "id": "n54",
+      "fromId": "n31",
+      "toId": "n21",
+      "type": "RUNS_ON",
+      "properties": {},
+      "style": {
+        "detail-position": "inline",
+        "detail-orientation": "perpendicular",
+        "type-background-color": "#cccccc",
+        "type-border-width": 2
+      }
+    },
+    {
+      "id": "n55",
+      "type": "HAS_BREAKPOINT_IN",
+      "style": {
+        "detail-orientation": "perpendicular",
+        "type-color": "#000000",
         "type-background-color": "#cccccc",
         "type-border-width": 2
       },
       "properties": {},
-      "fromId": "n0",
-      "toId": "n10"
+      "fromId": "n32",
+      "toId": "n22"
+    },
+    {
+      "id": "n56",
+      "fromId": "n32",
+      "toId": "n33",
+      "type": "CAPTURES",
+      "properties": {},
+      "style": {
+        "type-background-color": "#cccccc",
+        "type-border-width": 2,
+        "detail-orientation": "horizontal"
+      }
+    },
+    {
+      "id": "n57",
+      "fromId": "n26",
+      "toId": "n31",
+      "type": "HAS_DEBUG_RUN",
+      "properties": {},
+      "style": {
+        "type-background-color": "#cccccc",
+        "type-border-width": 2
+      }
     }
   ]
 }

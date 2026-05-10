@@ -27,6 +27,9 @@ public class Repository {
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final Set<Tag> tags = new HashSet<>();
 
+  @Relationship(type = "HAS_DEBUG_RUN", direction = Relationship.Direction.OUTGOING)
+  private final Set<DebugRun> debugRuns = new HashSet<>();
+
   public Repository() {
     // Empty constructor required by Neo4j OGM
   }
@@ -73,5 +76,13 @@ public class Repository {
 
   public void addTag(final Tag tag) {
     tags.add(tag);
+  }
+
+  public Set<DebugRun> getDebugRuns() {
+    return Set.copyOf(debugRuns);
+  }
+
+  public void addDebugRun(final DebugRun debugRun) {
+    debugRuns.add(debugRun);
   }
 }

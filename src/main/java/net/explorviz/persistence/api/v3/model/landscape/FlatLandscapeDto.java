@@ -16,18 +16,20 @@ import java.util.Objects;
  * @param cities All city model objects in the landscape, indexed by their ID
  * @param districts All district model objects in the landscape, indexed by their ID
  * @param buildings All building model objects in the landscape, indexed by their ID
- * @param buildings All building model objects in the landscape, indexed by their ID
+ * @param chimneys All chimney model objects in the landscape, indexed by their ID
  */
 public record FlatLandscapeDto(
     String landscapeToken,
     Map<String, CityDto> cities,
     Map<String, DistrictDto> districts,
-    Map<String, BuildingDto> buildings) {
+    Map<String, BuildingDto> buildings,
+    Map<String, ChimneyDto> chimneys) {
 
   public FlatLandscapeDto {
     Objects.requireNonNull(landscapeToken);
     Objects.requireNonNull(cities);
     Objects.requireNonNull(districts);
     Objects.requireNonNull(buildings);
+    Objects.requireNonNull(chimneys);
   }
 }

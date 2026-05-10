@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
 
@@ -29,15 +30,19 @@ public record CityDto(
     @JsonUnwrapped FlatBaseModel flatBaseModel,
     List<String> districtIds,
     List<String> buildingIds,
+    List<String> chimneyIds,
     List<String> allContainedDistrictIds,
-    List<String> allContainedBuildingIds) {
+    List<String> allContainedBuildingIds,
+    List<String> allContainedChimneyIds) {
 
   public CityDto {
     Objects.requireNonNull(flatBaseModel);
     Objects.requireNonNull(districtIds);
     Objects.requireNonNull(buildingIds);
+    Objects.requireNonNull(chimneyIds);
     Objects.requireNonNull(allContainedDistrictIds);
     Objects.requireNonNull(allContainedBuildingIds);
+    Objects.requireNonNull(allContainedChimneyIds);
   }
 
   /** Must be implemented by any object which can be represented as a city during flattening. */
@@ -45,5 +50,7 @@ public record CityDto(
     Collection<? extends DistrictConvertible> getDistricts();
 
     Collection<? extends BuildingConvertible> getBuildings();
+
+    Collection<? extends ChimneyConvertible> getChimneys();
   }
 }

@@ -12,6 +12,7 @@ import java.util.Set;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel;
@@ -40,7 +41,7 @@ public class StructureMapper {
         });
 
     final TraversalContext context =
-        new TraversalContext(nodesById, new HashMap<>(), new HashMap<>(), new HashMap<>(), origin);
+        new TraversalContext(nodesById, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), origin);
 
     for (final Long appId : applicationIds) {
       final NodeData appNode = nodesById.get(appId);
@@ -48,7 +49,7 @@ public class StructureMapper {
     }
 
     return new FlatLandscapeDto(
-        landscapeToken, context.cities(), context.districts(), context.buildings());
+        landscapeToken, context.cities(), context.districts(), context.buildings(), context.chimneys());
   }
 
   private record TraversalContext(
@@ -56,6 +57,7 @@ public class StructureMapper {
       Map<String, CityDto> cities,
       Map<String, DistrictDto> districts,
       Map<String, BuildingDto> buildings,
+      Map<String, ChimneyDto> chimneys,
       TypeOfAnalysis origin) {}
 
   private TraversalResult traverse(

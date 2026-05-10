@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum TypeOfAnalysis {
   RUNTIME("runtime"),
-  STATIC("static");
+  STATIC("static"),
+  DEBUG("debug");
+
 
   private final String name;
 

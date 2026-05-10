@@ -186,6 +186,26 @@ The tests are also run as part of the git pre-commit hook.
 | authorDate | Instant  |
 | commitDate | Instant  |
 
+### DebugRun
+
+| Field          | Type     |
+|----------------|----------|
+| **id**         | **Long** |
+| status         | String   |
+| numOfSnapshots | int      |
+| startTime      | long     |
+| endTime        | long     |
+
+### DebugSnapshot
+
+| Field            | Type     |
+|------------------|----------|
+| **id**           | **Long** |
+| lineOfBreakpoint | int      |
+| numOfVariables   | int      |
+| timestamp        | long     |
+
+
 ### Directory
 
 | Field  |   Type   |
@@ -280,6 +300,16 @@ The tests are also run as part of the git pre-commit hook.
 | traceId   | String   |
 | startTime | Long     |
 | endTime   | Long     |
+
+### Variable
+
+| Field   | Type                      |
+|---------|---------------------------|
+| **id**  | **Long**                  |
+| name    | String                    |
+| type    | String                    |
+| value   | String                    |
+| metrics | Map&lt;String, Double&gt; |
 
 ## Updating the Database Model
 

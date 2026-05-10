@@ -8,6 +8,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
@@ -35,7 +37,8 @@ public final class LandscapeFlattener {
       String parentDistrictId,
       String parentFqn,
       Set<DistrictDto> districts,
-      Set<BuildingDto> buildings) {
+      Set<BuildingDto> buildings,
+      Set<ChimneyDto> chimneys) {
 
     private Context withParent(final DistrictDto district) {
       districts.add(district);
@@ -45,7 +48,8 @@ public final class LandscapeFlattener {
           district.flatBaseModel().id(),
           district.flatBaseModel().fqn(),
           districts,
-          buildings);
+          buildings,
+          chimneys);
     }
 
     private Context withParent(final BuildingDto building) {
@@ -56,13 +60,17 @@ public final class LandscapeFlattener {
           parentDistrictId,
           building.flatBaseModel().fqn(),
           districts,
-          buildings);
+          buildings,
+          chimneys);
     }
   }
 
   /** Aggregates all landscape models across multiple cities to produce the final result lists. */
   private record FlatteningResult(
-      Set<CityDto> cities, Set<DistrictDto> districts, Set<BuildingDto> buildings) {}
+      Set<CityDto> cities,
+      Set<DistrictDto> districts,
+      Set<BuildingDto> buildings,
+      Set<ChimneyDto> chimneys) {}
 
   /**
    * Produces a flat landscape with the given landscape token ID from a collection of
@@ -77,7 +85,12 @@ public final class LandscapeFlattener {
       final String landscapeToken, final Collection<CityConvertible> cityConvertibles) {
 
     final FlatteningResult resultContainer =
-        new FlatteningResult(new HashSet<>(), new HashSet<>(), new HashSet<>());
+        new FlatteningResult(
+            new HashSet<>(),
+            new HashSet<>(),
+            new HashSet<>(),
+            new HashSet<>()
+        );
 
     cityConvertibles.forEach(c -> flattenCity(c, resultContainer));
 
@@ -96,7 +109,12 @@ public final class LandscapeFlattener {
             .collect(
                 Collectors.toMap(b -> b.flatBaseModel().id(), Function.identity(), (b1, b2) -> b1));
 
-    return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
+    final Map<String, ChimneyDto> chimneys =
+        resultContainer.chimneys.stream()
+            .collect(
+                Collectors.toMap(c -> c.flatBaseModel().id(), Function.identity(), (c1, c2) -> c1));
+
+    return new FlatLandscapeDto(landscapeToken, cities, districts, buildings, chimneys);
   }
 
   private static void flattenCity(
@@ -104,6 +122,7 @@ public final class LandscapeFlattener {
 
     final Collection<? extends DistrictConvertible> districts = cityConvertible.getDistricts();
     final Collection<? extends BuildingConvertible> buildings = cityConvertible.getBuildings();
+    final Collection<? extends ChimneyConvertible> chimneys = cityConvertible.getChimneys();
 
     final Context context =
         new Context(

@@ -1,11 +1,14 @@
 package net.explorviz.persistence.api.v3.model.conversion;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
 import net.explorviz.persistence.ogm.Application;
@@ -28,6 +31,7 @@ public final class DefaultApplicationToCityConverter {
    *   <li>OGM Application -> City
    *   <li>OGM Directory -> District
    *   <li>OGM FileRevision -> Building
+   *   <li>OGM Variable -> Chimney
    * </ul>
    *
    * <p>The supplied originOfData is set for each converted model object.
@@ -93,6 +97,17 @@ public final class DefaultApplicationToCityConverter {
       return ogmApp.getRootDirectory().getFileRevisions().stream()
           .map(f -> new FileRevisionWrapper(f, originOfData, commitComparison))
           .toList();
+    }
+
+    @Override
+    public Collection<? extends ChimneyConvertible> getChimneys() {
+
+      if (!originOfData.toString().equals("DEBUG")) {
+        return List.of();
+      } else {
+        // TODO: return List of chimneys
+        return List.of();
+      }
     }
   }
 
@@ -167,6 +182,41 @@ public final class DefaultApplicationToCityConverter {
     @Override
     public Map<String, MetricValue> getMetrics() {
       return MetricValue.fromMap(ogmFile.getMetrics());
+    }
+  }
+
+  record VariableWrapper(
+      Variable ogmVar, TypeOfAnalysis originOfData, CommitComparison commitComparison)
+      implements ChimneyConvertible {
+
+    @Override
+    public String getId() {
+      return ogmVar.getId().toString();
+    }
+
+    @Override
+    public String getName() {
+      return ogmVar.getName();
+    }
+
+    @Override
+    public TypeOfAnalysis getOriginOfData() {
+      return originOfData;
+    }
+
+    @Override
+    public CommitComparison getCommitComparison() {
+      return commitComparison;
+    }
+
+    @Override
+    public String getValue() {
+      return ogmVar.getValue();
+    }
+
+    @Override
+    public Map<String, MetricValue> getMetrics() {
+      return MetricValue.fromMap(ogmVar.getMetrics());
     }
   }
 }
