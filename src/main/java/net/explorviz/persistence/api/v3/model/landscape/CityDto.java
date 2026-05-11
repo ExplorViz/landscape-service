@@ -32,7 +32,6 @@ public record CityDto(
     @JsonUnwrapped FlatBaseModel flatBaseModel,
     List<String> districtIds,
     List<String> buildingIds,
-    List<String> chimneyIds,
     List<String> allContainedDistrictIds,
     List<String> allContainedBuildingIds,
     List<String> allContainedChimneyIds) {
@@ -41,7 +40,6 @@ public record CityDto(
     Objects.requireNonNull(flatBaseModel);
     Objects.requireNonNull(districtIds);
     Objects.requireNonNull(buildingIds);
-    Objects.requireNonNull(chimneyIds);
     Objects.requireNonNull(allContainedDistrictIds);
     Objects.requireNonNull(allContainedBuildingIds);
     Objects.requireNonNull(allContainedChimneyIds);

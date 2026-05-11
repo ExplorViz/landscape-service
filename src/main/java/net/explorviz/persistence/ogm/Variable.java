@@ -32,6 +32,9 @@ public class Variable implements Comparable<Variable> {
 
   @Properties private final Map<String, Double> metrics = new HashMap<>();
 
+  @Relationship(type = "MARKED_IN", direction = Relationship.Direction.OUTGOING)
+  private final SortedSet<FileRevision> fileRevisions = new TreeSet<>();
+
   public Variable() {
     // Empty constructor required by Neo4j OGM
   }
@@ -63,6 +66,14 @@ public class Variable implements Comparable<Variable> {
 
   public void setValue(final String value) {
     this.value = value;
+  }
+
+  public String getType() {
+    return type;
+  }
+
+  public void setType(final String type) {
+    this.type = type;
   }
 
   public Map<String, Double> getMetrics() {

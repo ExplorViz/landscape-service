@@ -1,0 +1,28 @@
+package net.explorviz.persistence.repository;
+
+import com.google.common.collect.Lists;
+import jakarta.enterprise.context.ApplicationScoped;
+import java.util.List;
+import java.util.Map;
+import net.explorviz.persistence.ogm.DebugRun;
+import org.neo4j.ogm.session.Session;
+
+@ApplicationScoped
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
+public class DebugRunRepository {
+
+  public List<DebugRun> findDebugRunsForRepositoryAndLandscapeToken(
+      final Session session, final String repositoryName, final String landscapeToken) {
+    return Lists.newArrayList(
+        session.query(
+            DebugRun.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})
+                  -[:CONTAINS]->(:Repository {name: $repoName)
+                  -[:HAS_DEBUG_RUN]->(d:DebugRun)
+            RETURN d;
+            """,
+            Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
+  }
+
+}

@@ -72,19 +72,20 @@ public class StructureMapper {
 
     final Set<String> containedDistrictIds = new HashSet<>();
     final Set<String> containedBuildingIds = new HashSet<>();
+    final Set<String> containedChimneyIds = new HashSet<>();
 
     final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null);
 
     if (node.labels.contains("Application")) {
-      handleApplication(node, id, name, context, containedDistrictIds, containedBuildingIds);
+      handleApplication(node, id, name, context, containedDistrictIds, containedBuildingIds, containedChimneyIds);
     } else if (node.labels.contains("Directory")) {
       handleDirectory(
           node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
     } else if (node.labels.contains("FileRevision")) {
-      handleFileRevision(node, id, parentCityId, base, context, containedBuildingIds);
+      handleFileRevision(node, id, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
     }
 
-    return new TraversalResult(containedDistrictIds, containedBuildingIds);
+    return new TraversalResult(containedDistrictIds, containedBuildingIds, containedChimneyIds);
   }
 
   private void handleApplication(
@@ -93,7 +94,8 @@ public class StructureMapper {
       final String name,
       final TraversalContext context,
       final Set<String> containedDistrictIds,
-      final Set<String> containedBuildingIds) {
+      final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyIds) {
     final List<String> directDistrictIds = new ArrayList<>();
     final List<String> directBuildingIds = new ArrayList<>();
 
@@ -108,6 +110,7 @@ public class StructureMapper {
         final TraversalResult res = traverse(child, "", id, context);
         containedDistrictIds.addAll(res.districtIds);
         containedBuildingIds.addAll(res.buildingIds);
+        containedChimneyIds.addAll(res.chimneyIds);
       }
     }
 
@@ -117,7 +120,8 @@ public class StructureMapper {
             directDistrictIds,
             directBuildingIds,
             new ArrayList<>(containedDistrictIds),
-            new ArrayList<>(containedBuildingIds));
+            new ArrayList<>(containedBuildingIds),
+            new ArrayList<>(containedChimneyIds));
     context.cities().put(id, city);
   }
 
@@ -161,7 +165,8 @@ public class StructureMapper {
       final String parentCityId,
       final FlatBaseModel base,
       final TraversalContext context,
-      final Set<String> containedBuildingIds) {
+      final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyIds) {
     containedBuildingIds.add(id);
 
     final BuildingDto building =
@@ -170,7 +175,8 @@ public class StructureMapper {
             parentCityId,
             String.valueOf(node.parentId),
             (String) node.properties.get("language"),
-            extractMetrics(node.properties));
+            extractMetrics(node.properties),
+            containedChimneyIds);
     context.buildings().put(id, building);
   }
 
@@ -241,5 +247,5 @@ public class StructureMapper {
     }
   }
 
-  private record TraversalResult(Set<String> districtIds, Set<String> buildingIds) {}
+  private record TraversalResult(Set<String> districtIds, Set<String> buildingIds, Set<String> chimneyIds) {}
 }

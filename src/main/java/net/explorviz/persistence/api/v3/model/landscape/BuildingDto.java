@@ -7,6 +7,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
 import net.explorviz.persistence.proto.Language;
@@ -34,7 +35,7 @@ public record BuildingDto(
     @JsonInclude(Include.NON_NULL) String parentDistrictId,
     @JsonInclude(Include.NON_NULL) String language,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics,
-    List<String> chimneyIds) {
+    Set<String> chimneyIds) {
 
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);
