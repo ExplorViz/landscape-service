@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import io.quarkus.runtime.annotations.RegisterForReflection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import net.explorviz.persistence.api.v3.model.MetricValue;
@@ -24,6 +25,7 @@ import net.explorviz.persistence.proto.Language;
  *     determined
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered through analysis, such
  *     as cyclomatic complexity or lines of code
+ * @param chimneyIds
  */
 @RegisterForReflection
 public record BuildingDto(
@@ -31,7 +33,8 @@ public record BuildingDto(
     String parentCityId,
     @JsonInclude(Include.NON_NULL) String parentDistrictId,
     @JsonInclude(Include.NON_NULL) String language,
-    @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
+    @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics,
+    List<String> chimneyIds) {
 
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);

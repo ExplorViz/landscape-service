@@ -41,6 +41,20 @@ public class RepositoryRepository {
             Map.of("tokenId", landscapeToken)));
   }
 
+  public List<String> fetchAllRepositoryNamesWithDebugRunsInLandscape(
+      final Session session, final String landscapeToken) {
+    return Lists.newArrayList(
+        session.query(
+            String.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository)
+            WHERE (r)-[:HAS_DEBUG_RUN]->(:DebugRun)
+            RETURN DISTINCT r.name
+            ORDER BY r.name ASC;
+            """,
+            Map.of("tokenId", landscapeToken)));
+  }
+
   public Repository getOrCreateRepository(
       final Session session, final String repoName, final String tokenId) {
     return findRepositoryByNameAndLandscapeToken(session, repoName, tokenId)
