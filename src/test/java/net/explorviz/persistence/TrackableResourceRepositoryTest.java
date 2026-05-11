@@ -121,55 +121,6 @@ class TrackableResourceRepositoryTest {
     assertFalse(notFoundIssue.isPresent());
   }
 
-  //  @Test
-  //  void testAddEventToResource() {
-  //
-  //    final Session session = sessionFactory.openSession();
-  //    final String tokenId = "token-1";
-  //    final String repoName = "repo-1";
-  //
-  //    // Setup graph
-  //    Landscape landscape = new Landscape(tokenId);
-  //    Repository repository = new Repository(repoName);
-  //
-  //    Issue issue = new Issue();
-  //    issue.setNumber(200);
-  //    issue.setTitle("Test Issue");
-  //
-  //    // We do a raw cypher save to link them since Repository doesn't have an addIssue method in
-  // our
-  //    // model context,
-  //    // or we can save them and manually attach relationships using cypher for testing the MATCH
-  //    // query.
-  //    session.save(landscape);
-  //    session.save(repository);
-  //    session.save(issue);
-  //
-  //    // TODO: Maybe the relationships should be created in the repository class already
-  //    session.query(
-  //        """
-  //        MATCH (l:Landscape {tokenId: $tokenId}), (r:Repository {name: $repoName}), (i:Issue
-  // {number: $number})
-  //        CREATE (l)-[:CONTAINS]->(r)-[:CONTAINS]->(i)
-  //        """,
-  //        java.util.Map.of("tokenId", tokenId, "repoName", repoName, "number", 200));
-  //
-  //    CreatedEvent event =
-  //        new CreatedEvent(Instant.now(), new Contributor("test"), "external-1", issue);
-  //    trackableResourceRepository.addEventToResource(
-  //        session, Issue.class, 200, "repo-1", "token-1", event);
-  //
-  //    session.save(event);
-  //
-  //    Optional<Issue> foundIssue =
-  //        trackableResourceRepository.findByNumber(session, Issue.class, 200, repoName, tokenId);
-  //    assertTrue(foundIssue.isPresent());
-  //    Issue updatedIssue = foundIssue.get();
-  //    System.out.println("Events: " + updatedIssue.getEvents());
-  //    assertNotNull(updatedIssue.getEvents());
-  //    assertTrue(updatedIssue.getEvents().stream().anyMatch(e -> e instanceof CreatedEvent));
-  //  }
-
   @Test
   void testFindByContributor() {
     final Session session = sessionFactory.openSession();
@@ -203,63 +154,43 @@ class TrackableResourceRepositoryTest {
     session.save(landscape);
     session.save(repository);
 
-    ResourceVersion ir1 = new ResourceVersion();
-    ResourceAnnotation ia1 =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            1,
-            repoName,
-            tokenId,
-            "external-1",
-            Instant.now(),
-            AnnotationType.CREATE,
-            c1,
-            ir1);
+    ResourceAnnotation ra1 = new ResourceAnnotation();
+    ra1.setAnnotationType(AnnotationType.CREATE);
+    ra1.setAssociatedContributor(c1);
+    ra1.setExternalId("external-1");
+    ra1.setTimestamp(Instant.now());
+    ResourceVersion rv1 = new ResourceVersion();
+    rv1.setExternalId("v-ext-1");
+    trackableResourceRepository.addAnnotationEvent(session, i1, ra1, rv1);
 
-    ResourceVersion ir2 = new ResourceVersion();
-    ResourceAnnotation ia2 =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            2,
-            repoName,
-            tokenId,
-            "external-2",
-            Instant.now(),
-            AnnotationType.CREATE,
-            c1,
-            ir2);
+    ResourceAnnotation ra2 = new ResourceAnnotation();
+    ra2.setAnnotationType(AnnotationType.CREATE);
+    ra2.setAssociatedContributor(c1);
+    ra2.setExternalId("external-2");
+    ra2.setTimestamp(Instant.now());
+    ResourceVersion rv2 = new ResourceVersion();
+    rv2.setExternalId("v-ext-2");
+    trackableResourceRepository.addAnnotationEvent(session, i2, ra2, rv2);
 
-    ResourceVersion ir3 = new ResourceVersion();
-    ResourceAnnotation ia3 =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            3,
-            repoName,
-            tokenId,
-            "external-3",
-            Instant.now(),
-            AnnotationType.CREATE,
-            c2,
-            ir3);
+    ResourceAnnotation ra3 = new ResourceAnnotation();
+    ra3.setAnnotationType(AnnotationType.CREATE);
+    ra3.setAssociatedContributor(c2);
+    ra3.setExternalId("external-3");
+    ra3.setTimestamp(Instant.now());
+    ResourceVersion rv3 = new ResourceVersion();
+    rv3.setExternalId("v-ext-3");
+    trackableResourceRepository.addAnnotationEvent(session, i3, ra3, rv3);
 
     // issue number 3 gets edited again by contributor 2
-    ResourceVersion ir4 = new ResourceVersion();
-    ResourceAnnotation ia4 =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            3,
-            repoName,
-            tokenId,
-            "external-4",
-            Instant.now(),
-            AnnotationType.LABEL,
-            c2,
-            ir4);
-    ia4.setLabel("bug");
+    ResourceAnnotation ra4 = new ResourceAnnotation();
+    ra4.setAnnotationType(AnnotationType.LABEL);
+    ra4.setAssociatedContributor(c2);
+    ra4.setExternalId("external-4");
+    ra4.setTimestamp(Instant.now());
+    ra4.setLabel("bug");
+    ResourceVersion rv4 = new ResourceVersion();
+    rv4.setExternalId("v-ext-4");
+    trackableResourceRepository.addAnnotationEvent(session, i3, ra4, rv4);
 
     Set<Issue> c1Issues =
         trackableResourceRepository.findAllByContributor(
@@ -272,115 +203,6 @@ class TrackableResourceRepositoryTest {
             session, Issue.class, repoName, tokenId, c2);
     assertNotNull(c2Issues);
     assertEquals(1, c2Issues.size());
-  }
-
-  @Test
-  void testAddAnnotationAndVersion() {
-    final Session session = sessionFactory.openSession();
-    final String tokenId = "token-1";
-    final String repoName = "repo-1";
-    Landscape landscape = new Landscape(tokenId);
-    Repository repository = new Repository(repoName);
-    landscape.addRepository(repository);
-
-    Contributor contributor = new Contributor("IssueCreator");
-    Issue issue = new Issue();
-    issue.setNumber(200);
-    issue.setTitle("Test Issue");
-    session.save(landscape);
-    session.save(repository);
-    session.save(issue);
-
-    session.query(
-        """
-        MATCH (l:Landscape {tokenId: $tokenId}), (r:Repository {name: $repoName}), (i:Issue {number: $number})
-        CREATE (l)-[:CONTAINS]->(r)-[:CONTAINS]->(i)
-        """,
-        java.util.Map.of("tokenId", tokenId, "repoName", repoName, "number", 200));
-
-    // Create new Issue Version on creation with creation annotation
-    Contributor creator = new Contributor("annotator");
-    ResourceVersion creationVersion = new ResourceVersion();
-    creationVersion.setCreationDate(Instant.now());
-    creationVersion.setCreatedBy(creator);
-    creationVersion.setTitle("Test issue");
-    creationVersion.setState(ResourceState.OPEN);
-    creationVersion.setExternalId("external-1");
-
-    ResourceAnnotation creationAnnotation =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            200,
-            repoName,
-            tokenId,
-            "external-1",
-            Instant.now(),
-            AnnotationType.CREATE,
-            creator,
-            creationVersion);
-    assertNotNull(creationAnnotation);
-
-    // find issue and test that versions are present
-    Optional<Issue> foundIssue =
-        trackableResourceRepository.findByNumber(session, Issue.class, 200, repoName, tokenId);
-    assertTrue(foundIssue.isPresent());
-    Issue updatedIssue = foundIssue.get();
-    assertNotNull(updatedIssue.getVersions());
-    assertEquals(1, updatedIssue.getVersions().size());
-
-    // test getCurrentVersion
-    ResourceVersion currentVersion = updatedIssue.getCurrentVersion();
-    assertNotNull(currentVersion);
-    assertEquals(creationVersion.getCreationDate(), currentVersion.getCreationDate());
-    assertEquals(creationVersion.getCreatedBy(), creator);
-
-    // Create another annotation
-    Contributor closer = new Contributor("closer");
-    ResourceVersion closedVersion = new ResourceVersion();
-
-    closedVersion.setTitle(currentVersion.getTitle());
-    closedVersion.setState(ResourceState.CLOSED);
-    closedVersion.setExternalId(currentVersion.getExternalId());
-    closedVersion.setCreationDate(Instant.now());
-    closedVersion.setCreatedBy(closer);
-
-    ResourceAnnotation closedAnnotation =
-        trackableResourceRepository.addAnnotationAndVersion(
-            session,
-            Issue.class,
-            200,
-            repoName,
-            tokenId,
-            "external-1",
-            Instant.now(),
-            AnnotationType.CLOSE,
-            closer,
-            closedVersion);
-
-    assertNotNull(closedAnnotation);
-    assertNotNull(closedAnnotation.getUsedResource());
-    assertEquals(ResourceState.OPEN, closedAnnotation.getUsedResource().getState());
-    assertNotNull(closedAnnotation.getGeneratedResourceVersion());
-    assertEquals(ResourceState.CLOSED, closedAnnotation.getGeneratedResourceVersion().getState());
-    assertEquals(closer, closedAnnotation.getGeneratedResourceVersion().getCreatedBy());
-
-    // get updated issue
-    Optional<Issue> foundIssueAfterClose =
-        trackableResourceRepository.findByNumber(session, Issue.class, 200, repoName, tokenId);
-    assertTrue(foundIssueAfterClose.isPresent());
-    Issue closedIssueAfterClose = foundIssueAfterClose.get();
-    assertEquals(2, closedIssueAfterClose.getVersions().size());
-
-    // test latest version again and walk chain to last
-    ResourceVersion latestVersion = closedIssueAfterClose.getCurrentVersion();
-    assertNotNull(latestVersion);
-    assertEquals(ResourceState.CLOSED, latestVersion.getState());
-    assertEquals(ResourceState.OPEN, latestVersion.getGeneratedBy().getUsedResource().getState());
-
-    // test derivation
-    assertNotNull(latestVersion.getDerivedFrom());
-    assertEquals(ResourceState.OPEN, latestVersion.getDerivedFrom().getState());
   }
 
   @Test

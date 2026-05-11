@@ -2,12 +2,10 @@ package net.explorviz.persistence.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import net.explorviz.persistence.ogm.AnnotationType;
 import net.explorviz.persistence.ogm.Contributor;
 import net.explorviz.persistence.ogm.ResourceAnnotation;
 import net.explorviz.persistence.ogm.ResourceVersion;
@@ -15,7 +13,6 @@ import net.explorviz.persistence.ogm.TrackableResource;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
-@SuppressWarnings("PMD.ExcessiveParameterList")
 @ApplicationScoped
 public class TrackableResourceRepository {
 
@@ -70,82 +67,95 @@ public class TrackableResourceRepository {
     return resultSet;
   }
 
-  @Deprecated // TODO: remove safely
-  public <T extends TrackableResource> ResourceAnnotation addAnnotationAndVersion(
-      final Session session,
-      final Class<T> resourceType,
-      final Integer number,
-      final String repoName,
-      final String tokenId,
-      final String externalId,
-      final Instant timestamp,
-      final AnnotationType annotationType,
-      final Contributor contributor,
-      final ResourceVersion newVersion) {
-    final Optional<T> resourceOpt = findByNumber(session, resourceType, number, repoName, tokenId);
-    if (resourceOpt.isEmpty()) {
-      throw new IllegalArgumentException("Resource not found for number: " + number);
-    }
-
-    final T resource = resourceOpt.get();
-
-    // Get the current (previous) version if it exists
-    final ResourceVersion previousVersion = resource.getCurrentVersion();
-
-    // Create the annotation activity
-    final ResourceAnnotation annotation = new ResourceAnnotation();
-    annotation.setExternalId(externalId);
-    annotation.setTimestamp(timestamp);
-    annotation.setAnnotationType(annotationType);
-    newVersion.setCreatedBy(contributor);
-    annotation.setAssociatedContributor(contributor);
-
-    // Link the annotation to the versions
-    annotation.setUsedResource(
-        previousVersion); // Used the previous version (can be null for "created"))
-    annotation.setGeneratedResourceVersion(newVersion); // Generated the new version
-
-    // Link the new version back to the annotation and resource
-    newVersion.setGeneratedBy(annotation);
-    newVersion.setResource(resource);
-    newVersion.setCreatedBy(contributor);
-    newVersion.setCreationDate(timestamp);
-    if (previousVersion != null) {
-      newVersion.setDerivedFrom(previousVersion);
-    }
-
-    // Add the version to the resource
-    resource.addVersion(newVersion);
-
-    // Save all entities in transaction
-    session.save(annotation, 2); // depth 2 to cascade to resourceVersions and contributor
-    session.save(resource, 1); // depth 1 sufficient since annotation is already saved
-
-    return annotation;
-  }
-
   public <T extends TrackableResource> ResourceAnnotation addAnnotationEvent(
       final Session session,
-      final TrackableResource trackableResource,
+      final T trackableResource,
       final ResourceAnnotation annotation,
       final ResourceVersion resourceVersion) {
 
-    final ResourceVersion previousVersion = trackableResource.getCurrentVersion();
+    // reassure trackableResource is saved
+    if (trackableResource.getId() == null) {
+      session.save(trackableResource, 0);
+    }
+
+    // Ensure creationDate is set on the version (fallback to annotation timestamp)
+    if (resourceVersion.getCreationDate() == null) {
+      resourceVersion.setCreationDate(annotation.getTimestamp());
+    }
+
+    final long timestamp = resourceVersion.getCreationDate().toEpochMilli();
+
+    // find predecessor by date
+    final ResourceVersion previousVersion =
+        session.queryForObject(
+            ResourceVersion.class,
+            """
+            MATCH (t)-[:HAS_VERSION]->(v:ResourceVersion)
+            WHERE id(t) = $resourceId AND v.creationDate < $newDate
+            RETURN v ORDER BY v.creationDate DESC LIMIT 1
+            """,
+            Map.of("resourceId", trackableResource.getId(), "newDate", timestamp));
+
+    // Find successor by date
+    final ResourceVersion successorVersion =
+        session.queryForObject(
+            ResourceVersion.class,
+            """
+            MATCH (t)-[:HAS_VERSION]->(v:ResourceVersion)
+            WHERE id(t) = $resourceId AND v.creationDate > $newDate
+            RETURN v ORDER BY v.creationDate ASC LIMIT 1
+            """,
+            Map.of("resourceId", trackableResource.getId(), "newDate", timestamp));
+
+    // set relationships
     annotation.setUsedResource(previousVersion);
     annotation.setGeneratedResourceVersion(resourceVersion);
     resourceVersion.setGeneratedBy(annotation);
+    resourceVersion.setResource(trackableResource);
 
+    // set creator
     if (annotation.getAssociatedContributor() != null) {
       resourceVersion.setCreatedBy(annotation.getAssociatedContributor());
     }
 
-    resourceVersion.setResource(trackableResource);
+    // set derivedFrom relation
     if (previousVersion != null) {
       resourceVersion.setDerivedFrom(previousVersion);
     }
-    trackableResource.addVersion(resourceVersion);
 
+    // add update successor relation in case of out of order arrival
+    if (successorVersion != null) {
+      successorVersion.setDerivedFrom(resourceVersion);
+      // Update the successor's annotation to use the new version
+      final ResourceAnnotation successorAnnotation =
+          session.queryForObject(
+              ResourceAnnotation.class,
+              "MATCH (a:ResourceAnnotation)-[:GENERATES]->(v:ResourceVersion) WHERE id(v) = $succId"
+                  + " RETURN a",
+              Map.of("succId", successorVersion.getId()));
+
+      if (successorAnnotation != null) {
+        successorAnnotation.setUsedResource(resourceVersion);
+        session.save(successorAnnotation, 1);
+      }
+      session.save(successorVersion, 1);
+    } else {
+
+      // if no successor, update trackableResource with new data
+      if (resourceVersion.getState() != null) {
+        trackableResource.setState(resourceVersion.getState().name());
+      }
+      trackableResource.setTitle(resourceVersion.getTitle());
+      if (resourceVersion.getLabels() != null) {
+        trackableResource.setLabels(new HashSet<>(resourceVersion.getLabels()));
+      }
+      session.save(trackableResource, 0);
+    }
+
+    // save and update relationships
     session.save(annotation, 2);
+    trackableResource.addVersion(resourceVersion);
+    resourceVersion.setResource(trackableResource);
     session.save(trackableResource, 1);
 
     return annotation;

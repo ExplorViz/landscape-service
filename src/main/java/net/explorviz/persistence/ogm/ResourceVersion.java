@@ -21,7 +21,7 @@ public class ResourceVersion {
   // TODO: Clean up if not needed
   private String title;
   private String description;
-  private Set<String> labels;
+  private Set<String> labels = new HashSet<>();
   private String webUrl;
   private ResourceState state;
 
@@ -31,7 +31,7 @@ public class ResourceVersion {
   @Relationship(type = "DERIVED_FROM", direction = Relationship.Direction.OUTGOING)
   private ResourceVersion derivedFrom;
 
-  @Relationship(type = "GENERATED_BY", direction = Relationship.Direction.INCOMING)
+  @Relationship(type = "GENERATES", direction = Relationship.Direction.INCOMING)
   private ResourceAnnotation generatedBy;
 
   @Relationship(type = "HAS_VERSION", direction = Relationship.Direction.INCOMING)
@@ -58,7 +58,6 @@ public class ResourceVersion {
     this.derivedFrom = derivedFrom;
     this.generatedBy = generatedBy;
     this.resource = resource;
-    this.labels = new HashSet<>();
   }
 
   public Long getId() {

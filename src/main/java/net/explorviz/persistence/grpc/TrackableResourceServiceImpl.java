@@ -7,6 +7,10 @@ import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import net.explorviz.persistence.ogm.AnnotationType;
 import net.explorviz.persistence.ogm.Issue;
 import net.explorviz.persistence.ogm.PullRequest;
@@ -85,11 +89,18 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     newResourceVersion.setDescription(event.getDescription());
     newResourceVersion.setState(ResourceState.valueOf(event.getNewState().name()));
     newResourceVersion.setWebUrl(event.getWebUrl());
+    newResourceVersion.setTitle(event.getTitle());
+    newResourceVersion.setCreationDate(eventTime);
+    final String[] labels = event.getLabels().split(",");
+    final Set<String> labelSet = new HashSet<>(Arrays.asList(labels));
+    newResourceVersion.setLabels(labelSet);
+
     final ResourceAnnotation newAnnotation =
         new ResourceAnnotation(
             eventTime,
             event.getAnnotationId(),
             AnnotationType.valueOf(event.getAnnotationType().name()));
+
     newAnnotation.setAssociatedContributor(
         contributorRepository.getOrCreateContributor(session, event.getActor()));
 
@@ -98,45 +109,39 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
         resource =
             trackableResourceRepository.getOrCreate(
                 session, Issue.class, number, repo.getName(), event.getLandscapeToken());
-        //        addAnnotationAndVersion(session, resource, event);
-        resource.setState(event.getNewState().name());
+
         trackableResourceRepository.addAnnotationEvent(
             session, resource, newAnnotation, newResourceVersion);
-        repo.addIssue((Issue) resource);
-        session.save(repo);
+        linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
       }
       case PULL_REQUEST -> {
         resource =
             trackableResourceRepository.getOrCreate(
                 session, PullRequest.class, number, repo.getName(), event.getLandscapeToken());
-        //        addAnnotationAndVersion(session, resource, event);
+
         trackableResourceRepository.addAnnotationEvent(
             session, resource, newAnnotation, newResourceVersion);
-        repo.addPullRequest((PullRequest) resource);
-        session.save(repo);
+        linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
       }
       default -> throw new IllegalStateException("Unexpected value: " + event.getResourceType());
     }
   }
 
-  @Deprecated
-  public void addAnnotationAndVersion(
-      final Session session, final TrackableResource resource, final TrackableResourceEvent event) {
-    trackableResourceRepository.addAnnotationAndVersion(
-        session,
-        resource.getClass(),
-        resource.getNumber(),
-        event.getRepositoryName(),
-        event.getLandscapeToken(),
-        event.getAnnotationId(),
-        // TODO: TEST THIS!
-        Instant.parse(
-            event.getEventTimestamp().getSeconds()
-                + "."
-                + event.getEventTimestamp().getNanos()
-                + "Z"),
-        AnnotationType.valueOf(event.getAnnotationType().name()),
-        contributorRepository.getOrCreateContributor(session, event.getActor()),
-        new ResourceVersion());
+  private void linkResourceToRepository(
+      final Session session,
+      final String repoName,
+      final String tokenId,
+      final TrackableResource resource) {
+    session.query(
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: $repoName})
+        MATCH (t:%s) WHERE id(t) = $resourceId
+        MERGE (r)-[:CONTAINS]->(t)
+        """
+            .formatted(resource.getClass().getSimpleName()),
+        Map.of(
+            "tokenId", tokenId,
+            "repoName", repoName,
+            "resourceId", resource.getId()));
   }
 }

@@ -19,7 +19,7 @@ public class ResourceAnnotation {
   private String mergeCommitHash;
   private String stateChange;
 
-  @Relationship(type = "GENERATED_BY", direction = Relationship.Direction.OUTGOING)
+  @Relationship(type = "GENERATES", direction = Relationship.Direction.OUTGOING)
   private ResourceVersion generatedResourceVersion;
 
   @Relationship(type = "USED", direction = Relationship.Direction.OUTGOING)
