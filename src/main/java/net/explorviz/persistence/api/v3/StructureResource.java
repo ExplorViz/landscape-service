@@ -1,13 +1,18 @@
 package net.explorviz.persistence.api.v3;
 
 import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.List;
 import java.util.Optional;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
+import net.explorviz.persistence.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.persistence.api.v3.model.FileDetailedDto;
+import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.persistence.ogm.FileRevision;
 import net.explorviz.persistence.repository.FileDetailedMapper;
@@ -84,6 +89,27 @@ public class StructureResource {
         session,
         new StructureRepository.CombinedStaticDataRequest(
             landscapeToken, repositoryName, firstCommitHash, secondCommitHash));
+  }
+
+  /**
+   * Retrieves static structure for multiple repositories in one request. Each list entry names a
+   * repository and supplies either one commit hash or two hashes (baseline then target, identical
+   * to {@link #getCombinedStaticStructureData}). Results are merged into a single flat landscape.
+   */
+  @POST
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/batch")
+  public FlatLandscapeDto postEvolutionStructureBatch(
+      @RestPath final String landscapeToken, final EvolutionStructureBatchRequest request) {
+
+    final List<RepositoryEvolutionSelectionDto> repositories =
+        EvolutionStructureBatchValidator.validatedSelections(request);
+
+    final Session session = sessionFactory.openSession();
+
+    return structureRepository.fetchFlatLandscapeForEvolutionBatch(
+        session, landscapeToken, repositories);
   }
 
   @GET
