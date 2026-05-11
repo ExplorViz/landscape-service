@@ -188,7 +188,7 @@ The tests are also run as part of the git pre-commit hook.
 
 ### DebugRun
 
-| Field          | Type     |
+|     Field      |   Type   |
 |----------------|----------|
 | **id**         | **Long** |
 | status         | String   |
@@ -198,13 +198,12 @@ The tests are also run as part of the git pre-commit hook.
 
 ### DebugSnapshot
 
-| Field            | Type     |
+|      Field       |   Type   |
 |------------------|----------|
 | **id**           | **Long** |
 | lineOfBreakpoint | int      |
 | numOfVariables   | int      |
 | timestamp        | long     |
-
 
 ### Directory
 
@@ -303,7 +302,7 @@ The tests are also run as part of the git pre-commit hook.
 
 ### Variable
 
-| Field   | Type                      |
+|  Field  |           Type            |
 |---------|---------------------------|
 | **id**  | **Long**                  |
 | name    | String                    |

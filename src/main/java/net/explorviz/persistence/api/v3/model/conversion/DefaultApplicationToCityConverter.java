@@ -3,17 +3,18 @@ package net.explorviz.persistence.api.v3.model.conversion;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
 import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
 import net.explorviz.persistence.ogm.Application;
 import net.explorviz.persistence.ogm.Directory;
 import net.explorviz.persistence.ogm.FileRevision;
+import net.explorviz.persistence.ogm.Variable;
 
 /**
  * Provides wrapper classes for turning single OGM Application objects into FlatLandscape city
@@ -102,10 +103,13 @@ public final class DefaultApplicationToCityConverter {
     @Override
     public Collection<? extends ChimneyConvertible> getChimneys() {
 
-      if (!originOfData.toString().equals("DEBUG")) {
-        return List.of();
+      if (originOfData == TypeOfAnalysis.DEBUG) {
+        return ogmApp.getRootDirectory().getFileRevisions().stream()
+            .map(FileRevision::getVariables)
+            .flatMap(Set::stream)
+            .map(v -> new VariableWrapper(v, originOfData, commitComparison))
+            .toList();
       } else {
-        // TODO: return List of chimneys
         return List.of();
       }
     }

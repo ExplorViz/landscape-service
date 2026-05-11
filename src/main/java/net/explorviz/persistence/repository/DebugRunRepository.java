@@ -8,7 +8,6 @@ import net.explorviz.persistence.ogm.DebugRun;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class DebugRunRepository {
 
   public List<DebugRun> findDebugRunsForRepositoryAndLandscapeToken(
@@ -24,5 +23,4 @@ public class DebugRunRepository {
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
   }
-
 }

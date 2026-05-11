@@ -24,8 +24,8 @@ import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConver
  *     <strong>even transitively</strong> (i.e. nested objects). This is required for faster lookups
  * @param allContainedBuildingIds ID values for all buildings which appear inside this City,
  *     <strong>even transitively</strong> (i.e. nested objects). This is required for faster lookups
- * @param allContainedChimneyIds ID values for all chimneys which appear inside this City.
- *     This is required for faster lookups
+ * @param allContainedChimneyIds ID values for all chimneys which appear inside this City. This is
+ *     required for faster lookups
  */
 @RegisterForReflection
 public record CityDto(

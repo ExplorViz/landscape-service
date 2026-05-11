@@ -10,8 +10,4 @@ package net.explorviz.persistence.api.v3.model;
  * @param endTime End time of the debug run, if the run has finished
  */
 public record DebugRunDto(
-    String id,
-    String status,
-    Integer numOfSnapshots,
-    Long startTime,
-    Long endTime) {}
+    String id, String status, Integer numOfSnapshots, Long startTime, Long endTime) {}

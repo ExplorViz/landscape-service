@@ -43,6 +43,9 @@ public class FileRevision implements Comparable<FileRevision> {
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final SortedSet<Function> functions = new TreeSet<>();
 
+  @Relationship(type = "MARKED_IN", direction = Relationship.Direction.INCOMING)
+  private final SortedSet<Variable> variables = new TreeSet<>();
+
   /**
    * Whether we have seen a {@link net.explorviz.persistence.proto.FileData} message for this file.
    */
@@ -111,6 +114,14 @@ public class FileRevision implements Comparable<FileRevision> {
 
   public void addFunction(final Function function) {
     functions.add(function);
+  }
+
+  public SortedSet<Variable> getVariables() {
+    return new TreeSet<>(variables);
+  }
+
+  public void addVariable(final Variable variable) {
+    variables.add(variable);
   }
 
   public boolean isHasFileData() {

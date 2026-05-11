@@ -8,7 +8,6 @@ import net.explorviz.persistence.ogm.Variable;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class VariableRepository {
 
   public List<Variable> findVariablesForDebugSnapshot(

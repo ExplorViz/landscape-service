@@ -13,6 +13,7 @@ import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel;
@@ -28,6 +29,9 @@ public class StructureRepository {
 
   public record StaticDataRequest(
       String landscapeToken, String repositoryName, String commitHash) {}
+
+  public record DebugDataRequest(
+      String landscapeToken, String repositoryName, String commitHash, String debugSnapshotId) {}
 
   public record CombinedStaticDataRequest(
       String landscapeToken,
@@ -102,6 +106,60 @@ public class StructureRepository {
         request.landscapeToken(), result, TypeOfAnalysis.STATIC, request.repositoryName());
   }
 
+  public FlatLandscapeDto fetchFlatLandscapeForDebugData(
+      final Session session, final DebugDataRequest request) {
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(:Commit {hash: $commitHash})
+        MATCH (c:Commit {hash: $commitHash})<-[:RUNS_ON]-(dr:DebugRun)
+        MATCH (dr)
+          -[:CONTAINS]->(ds:DebugSnapShot {id: $snapshotId})
+          -[:CAPTURES]->(v:Variable)
+          -[:MARKED_IN]->(f:FileRevision)
+
+        MATCH p = (a:Application)-[:HAS_ROOT]->(root:Directory)-[:CONTAINS*0..]->(f)
+        WHERE (l)-[:CONTAINS]->(a)
+
+        WITH DISTINCT a, nodes(p) AS pathNodes, v
+
+        UNWIND [v,a] + pathNodes AS n
+        WITH DISTINCT n, a, v
+        RETURN
+          id(n) AS id,
+          labels(n) AS labels,
+          properties(n) AS properties,
+          id(a) AS cityId,
+          [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)]
+          +
+          CASE
+            WHEN n:FileRevision
+              THEN [(var:Variable)-[:MARKED_IN]->(n) | id(var)]
+              ELSE []
+          END AS childrenIds,
+          CASE
+              WHEN n:Variable
+                THEN [(n)-[:MARKED_IN]->(fileRev:FileRevision) | id(fileRev)][0]
+                ELSE [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0]
+          END AS parentId
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                "tokenId",
+                request.landscapeToken(),
+                "repoName",
+                request.repositoryName(),
+                "commitHash",
+                request.commitHash(),
+                "snapshotId",
+                request.debugSnapshotId()));
+    return mapper.buildFlatLandscape(request.landscapeToken(), result, TypeOfAnalysis.DEBUG, null);
+  }
+
   public FlatLandscapeDto fetchCombinedFlatLandscape(
       final Session session, final CombinedStaticDataRequest request) {
 
@@ -130,12 +188,13 @@ public class StructureRepository {
     final Map<String, CityDto> cities = new HashMap<>();
     final Map<String, DistrictDto> districts = new HashMap<>();
     final Map<String, BuildingDto> buildings = new HashMap<>();
+    final Map<String, ChimneyDto> chimneys = new HashMap<>();
 
     mergeNodes(first.cities(), second.cities(), cities, idMap);
     mergeNodes(first.districts(), second.districts(), districts, idMap);
     mergeNodes(first.buildings(), second.buildings(), buildings, idMap);
 
-    return new FlatLandscapeDto(token, cities, districts, buildings);
+    return new FlatLandscapeDto(token, cities, districts, buildings, chimneys);
   }
 
   private <T> void populateIdMap(
@@ -262,6 +321,7 @@ public class StructureRepository {
             safeGet(d, CityDto::allContainedBuildingIds),
             safeGet(other, CityDto::allContainedBuildingIds),
             idMap);
+    final List<String> allChimneys = List.of();
 
     final FlatBaseModel base = d != null ? d.flatBaseModel() : other.flatBaseModel();
     return new CityDto(
@@ -269,7 +329,8 @@ public class StructureRepository {
         districtIds,
         buildingIds,
         allDistricts,
-        allBuildings);
+        allBuildings,
+        allChimneys);
   }
 
   private DistrictDto withComparisonDistrict(
@@ -306,13 +367,15 @@ public class StructureRepository {
     final String parentDistrictId = d != null ? d.parentDistrictId() : other.parentDistrictId();
 
     final Map<String, MetricValue> metrics = mergeBuildingMetrics(d, other, comp);
-
+    final Set<String> chimneyIds =
+        Set.of(); // TODO: change that to support debug snapshot comparison
     return new BuildingDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),
         parentDistrictId != null ? idMap.get(parentDistrictId) : null,
         d != null ? d.language() : other.language(),
-        metrics);
+        metrics,
+        chimneyIds);
   }
 
   private Map<String, MetricValue> mergeBuildingMetrics(

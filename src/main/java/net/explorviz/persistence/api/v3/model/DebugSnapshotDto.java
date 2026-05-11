@@ -9,9 +9,5 @@ package net.explorviz.persistence.api.v3.model;
  * @param numOfVariables Number of variables captured in this snapshot
  * @param timestamp Timestamp indicating when the snapshot was captured
  */
-
 public record DebugSnapshotDto(
-    String id,
-    Integer lineOfBreakpoint,
-    Integer numOfVariables,
-    Long timestamp) {}
+    String id, Integer lineOfBreakpoint, Integer numOfVariables, Long timestamp) {}

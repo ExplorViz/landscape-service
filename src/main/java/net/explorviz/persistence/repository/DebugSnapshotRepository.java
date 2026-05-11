@@ -8,7 +8,6 @@ import net.explorviz.persistence.ogm.DebugSnapshot;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class DebugSnapshotRepository {
 
   public List<DebugSnapshot> findDebugSnapshotsForDebugRun(
@@ -23,5 +22,4 @@ public class DebugSnapshotRepository {
             """,
             Map.of("debugRunId", debugRunId)));
   }
-
 }

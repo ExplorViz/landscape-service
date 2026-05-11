@@ -1,16 +1,10 @@
 package net.explorviz.persistence.ogm;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
-import org.neo4j.ogm.annotation.Properties;
 import org.neo4j.ogm.annotation.Relationship;
 
 /**
@@ -33,7 +27,7 @@ public class DebugSnapshot implements Comparable<DebugSnapshot> {
   private final SortedSet<Variable> variables = new TreeSet<>();
 
   @Relationship(type = "HAS_BREAKPOINT_IN", direction = Relationship.Direction.OUTGOING)
-  private  FileRevision fileRevision;
+  private FileRevision fileRevision;
 
   public DebugSnapshot() {
     // Empty constructor required by Neo4j OGM

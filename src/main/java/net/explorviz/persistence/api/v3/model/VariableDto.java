@@ -13,10 +13,5 @@ import java.util.Map;
  * @param metrics Numerical metrics associated with the variable, such as the number of
  *     modifications observed during the debugging session
  */
-
 public record VariableDto(
-    String id,
-    String name,
-    String type,
-    String value,
-    Map<String, Double> metrics) {}
+    String id, String name, String type, String value, Map<String, Double> metrics) {}

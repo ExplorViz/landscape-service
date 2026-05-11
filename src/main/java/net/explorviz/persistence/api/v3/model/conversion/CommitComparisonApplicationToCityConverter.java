@@ -3,6 +3,7 @@ package net.explorviz.persistence.api.v3.model.conversion;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,6 +16,7 @@ import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.DirectoryWrapper;
 import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.FileRevisionWrapper;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
 import net.explorviz.persistence.ogm.Application;
@@ -98,6 +100,11 @@ public final class CommitComparisonApplicationToCityConverter {
           ComparisonFileRevisionWrapper::new,
           f1 -> new FileRevisionWrapper(f1, TypeOfAnalysis.STATIC, CommitComparison.REMOVED),
           f2 -> new FileRevisionWrapper(f2, TypeOfAnalysis.STATIC, CommitComparison.ADDED));
+    }
+
+    @Override
+    public Collection<ChimneyConvertible> getChimneys() {
+      return List.of();
     }
   }
 

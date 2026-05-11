@@ -16,7 +16,6 @@ import org.neo4j.ogm.annotation.Relationship;
 @NodeEntity
 public class DebugRun implements Comparable<DebugRun> {
 
-
   @Id @GeneratedValue private Long id;
 
   private String status;

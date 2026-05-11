@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -26,7 +25,7 @@ import net.explorviz.persistence.proto.Language;
  *     determined
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered through analysis, such
  *     as cyclomatic complexity or lines of code
- * @param chimneyIds
+ * @param chimneyIds The ID of the chimneys this building is a parent of
  */
 @RegisterForReflection
 public record BuildingDto(
@@ -51,6 +50,10 @@ public record BuildingDto(
 
     default Map<String, MetricValue> getMetrics() {
       return Map.of();
+    }
+
+    default Set<String> getChimneys() {
+      return Set.of();
     }
   }
 }

@@ -86,6 +86,31 @@ public class StructureResource {
             landscapeToken, repositoryName, firstCommitHash, secondCommitHash));
   }
 
+  /**
+   * Retrieve structure data gathered from static analysis for a particular application and commit.
+   *
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @param commitHash Identifier of the git commit for which to retrieve structure
+   * @return The flat landscape containing the applications of the repository at the given commit,
+   *     where each application represents a city
+   */
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/debug/{repositoryName}/{commitHash}/{debugSnapshotId}")
+  public FlatLandscapeDto getDebugStructureData(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestPath final String commitHash,
+      @RestPath final String debugSnapshotId) {
+    final Session session = sessionFactory.openSession();
+
+    return structureRepository.fetchFlatLandscapeForDebugData(
+        session,
+        new StructureRepository.DebugDataRequest(
+            landscapeToken, repositoryName, commitHash, debugSnapshotId));
+  }
+
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/file-revision/{id}")

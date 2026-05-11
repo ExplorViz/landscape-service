@@ -41,7 +41,8 @@ public class StructureMapper {
         });
 
     final TraversalContext context =
-        new TraversalContext(nodesById, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), origin);
+        new TraversalContext(
+            nodesById, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), origin);
 
     for (final Long appId : applicationIds) {
       final NodeData appNode = nodesById.get(appId);
@@ -49,7 +50,11 @@ public class StructureMapper {
     }
 
     return new FlatLandscapeDto(
-        landscapeToken, context.cities(), context.districts(), context.buildings(), context.chimneys());
+        landscapeToken,
+        context.cities(),
+        context.districts(),
+        context.buildings(),
+        context.chimneys());
   }
 
   private record TraversalContext(
@@ -77,12 +82,14 @@ public class StructureMapper {
     final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null);
 
     if (node.labels.contains("Application")) {
-      handleApplication(node, id, name, context, containedDistrictIds, containedBuildingIds, containedChimneyIds);
+      handleApplication(
+          node, id, name, context, containedDistrictIds, containedBuildingIds, containedChimneyIds);
     } else if (node.labels.contains("Directory")) {
       handleDirectory(
           node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
     } else if (node.labels.contains("FileRevision")) {
-      handleFileRevision(node, id, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
+      handleFileRevision(
+          node, id, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
     }
 
     return new TraversalResult(containedDistrictIds, containedBuildingIds, containedChimneyIds);
@@ -168,6 +175,8 @@ public class StructureMapper {
       final Set<String> containedBuildingIds,
       final Set<String> containedChimneyIds) {
     containedBuildingIds.add(id);
+    final List<Long> chimneyIds = node.childrenIds;
+    chimneyIds.stream().map(String::valueOf).forEach(containedChimneyIds::add);
 
     final BuildingDto building =
         new BuildingDto(
@@ -247,5 +256,6 @@ public class StructureMapper {
     }
   }
 
-  private record TraversalResult(Set<String> districtIds, Set<String> buildingIds, Set<String> chimneyIds) {}
+  private record TraversalResult(
+      Set<String> districtIds, Set<String> buildingIds, Set<String> chimneyIds) {}
 }

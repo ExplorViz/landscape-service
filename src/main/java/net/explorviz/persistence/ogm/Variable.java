@@ -1,10 +1,7 @@
 package net.explorviz.persistence.ogm;
 
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import org.neo4j.ogm.annotation.GeneratedValue;

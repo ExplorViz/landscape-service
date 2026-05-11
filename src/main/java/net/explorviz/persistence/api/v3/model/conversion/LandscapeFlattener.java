@@ -9,7 +9,6 @@ import java.util.stream.Collectors;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
-import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto.ChimneyConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
@@ -85,12 +84,7 @@ public final class LandscapeFlattener {
       final String landscapeToken, final Collection<CityConvertible> cityConvertibles) {
 
     final FlatteningResult resultContainer =
-        new FlatteningResult(
-            new HashSet<>(),
-            new HashSet<>(),
-            new HashSet<>(),
-            new HashSet<>()
-        );
+        new FlatteningResult(new HashSet<>(), new HashSet<>(), new HashSet<>(), new HashSet<>());
 
     cityConvertibles.forEach(c -> flattenCity(c, resultContainer));
 
@@ -122,7 +116,6 @@ public final class LandscapeFlattener {
 
     final Collection<? extends DistrictConvertible> districts = cityConvertible.getDistricts();
     final Collection<? extends BuildingConvertible> buildings = cityConvertible.getBuildings();
-    final Collection<? extends ChimneyConvertible> chimneys = cityConvertible.getChimneys();
 
     final Context context =
         new Context(
@@ -130,6 +123,7 @@ public final class LandscapeFlattener {
             cityConvertible.getId(),
             null,
             "",
+            new HashSet<>(),
             new HashSet<>(),
             new HashSet<>());
 
@@ -147,7 +141,8 @@ public final class LandscapeFlattener {
             districts.stream().map(DistrictConvertible::getId).toList(),
             buildings.stream().map(BuildingConvertible::getId).toList(),
             context.districts.stream().map(d -> d.flatBaseModel().id()).toList(),
-            context.buildings.stream().map(b -> b.flatBaseModel().id()).toList());
+            context.buildings.stream().map(b -> b.flatBaseModel().id()).toList(),
+            context.chimneys.stream().map(c -> c.flatBaseModel().id()).toList());
 
     resultContainer.cities.add(city);
     resultContainer.districts.addAll(context.districts);
@@ -192,7 +187,8 @@ public final class LandscapeFlattener {
             context.parentCityId,
             context.parentDistrictId,
             buildingConvertible.getLanguage(),
-            buildingConvertible.getMetrics());
+            buildingConvertible.getMetrics(),
+            buildingConvertible.getChimneys());
 
     context.withParent(building);
   }

@@ -14,10 +14,10 @@ import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConver
  * snapshots taken during a debugging session pause
  *
  * @param flatBaseModel Container for attributes shared by all flat data objects
- * @param parentCityId The ID of the city in which this chimney resides. Chimneys must always have
- *     a parent city, although it may be transitively via some buildings and districts
- * @param parentBuildingId The ID of the building of which this chimney is a direct child.
- *     Buildings that appear directly on a city do not have a parent district
+ * @param parentCityId The ID of the city in which this chimney resides. Chimneys must always have a
+ *     parent city, although it may be transitively via some buildings and districts
+ * @param parentBuildingId The ID of the building of which this chimney is a direct child. Buildings
+ *     that appear directly on a city do not have a parent district
  * @param value The current value of the variable represented by this chimney
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered during the debugging
  *     session, such as the number of modifications since the variable started being monitored

@@ -7,7 +7,6 @@ public enum TypeOfAnalysis {
   STATIC("static"),
   DEBUG("debug");
 
-
   private final String name;
 
   TypeOfAnalysis(final String name) {
