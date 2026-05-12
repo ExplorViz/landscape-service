@@ -4,5 +4,10 @@ public enum AnnotationType {
   CREATE,
   LABEL,
   MERGE,
-  CLOSE
+  CLOSE,
+  REOPEN,
+  COMMENT,
+  COMMIT,
+  REVIEW,
+  FORCE_PUSH
 }
