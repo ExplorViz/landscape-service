@@ -76,7 +76,7 @@ public final class GrpcExceptionMapper {
       final Exception e, final ContributorData contributorData) {
     final String contextInfo =
         "Regarding the call to persistContributor for the contributor with name '"
-            + contributorData.getName()
+            + contributorData.getGitUsername()
             + "'.";
     return mapToGrpcException(e, contextInfo);
   }

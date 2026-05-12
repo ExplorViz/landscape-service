@@ -35,9 +35,9 @@ public class ContributorServiceImpl implements ContributorService {
   public void saveContributorData(final Session session, final ContributorData contributorData) {
     final Contributor contributor =
         new Contributor(
-            contributorData.getName(),
+            contributorData.getGitUsername(),
             contributorData.getEmail(),
-            contributorData.getUsername(),
+            contributorData.getGithubLogin(),
             contributorData.getAvatarUrl());
     session.save(contributor);
   }

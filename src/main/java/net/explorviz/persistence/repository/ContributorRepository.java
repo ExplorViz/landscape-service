@@ -67,7 +67,10 @@ public class ContributorRepository {
         .orElseGet(
             () ->
                 new Contributor(
-                    data.getName(), data.getEmail(), data.getUsername(), data.getAvatarUrl()));
+                    data.getGitUsername(),
+                    data.getEmail(),
+                    data.getGithubLogin(),
+                    data.getAvatarUrl()));
   }
 
   public Optional<Contributor> findContributorByEmail(final Session session, final String email) {

@@ -70,11 +70,11 @@ public class TrackableResourceServiceTest {
     Timestamp protoTimestamp =
         Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
 
-    ContributorData c1 = ContributorData.newBuilder().setName("c1").setEmail("c1@").build();
+    ContributorData c1 = ContributorData.newBuilder().setGitUsername("c1").setEmail("c1@").build();
 
-    ContributorData c2 = ContributorData.newBuilder().setName("c2").setEmail("c2@").build();
+    ContributorData c2 = ContributorData.newBuilder().setGitUsername("c2").setEmail("c2@").build();
 
-    ContributorData c3 = ContributorData.newBuilder().setName("c3").setEmail("c3@").build();
+    ContributorData c3 = ContributorData.newBuilder().setGitUsername("c3").setEmail("c3@").build();
 
     TrackableResourceEvent event1 =
         TrackableResourceEvent.newBuilder()

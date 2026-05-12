@@ -83,8 +83,6 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
         Instant.ofEpochSecond(
             event.getEventTimestamp().getSeconds(), event.getEventTimestamp().getNanos());
 
-    final TrackableResource resource;
-
     final ResourceVersion newResourceVersion = new ResourceVersion();
     newResourceVersion.setDescription(event.getDescription());
     newResourceVersion.setState(ResourceState.valueOf(event.getNewState().name()));
@@ -104,27 +102,22 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     newAnnotation.setAssociatedContributor(
         contributorRepository.getOrCreateContributor(session, event.getActor()));
 
-    switch (event.getResourceType()) {
-      case ISSUE -> {
-        resource =
-            trackableResourceRepository.getOrCreate(
-                session, Issue.class, number, repo.getName(), event.getLandscapeToken());
+    final Class<? extends TrackableResource> type =
+        switch (event.getResourceType()) {
+          case ISSUE -> Issue.class;
+          case PULL_REQUEST -> PullRequest.class;
+          default ->
+              throw new IllegalStateException("Unexpected value: " + event.getResourceType());
+        };
 
-        trackableResourceRepository.addAnnotationEvent(
-            session, resource, newAnnotation, newResourceVersion);
-        linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
-      }
-      case PULL_REQUEST -> {
-        resource =
-            trackableResourceRepository.getOrCreate(
-                session, PullRequest.class, number, repo.getName(), event.getLandscapeToken());
+    final TrackableResource resource;
+    resource =
+        trackableResourceRepository.getOrCreate(
+            session, type, number, repo.getName(), event.getLandscapeToken());
 
-        trackableResourceRepository.addAnnotationEvent(
-            session, resource, newAnnotation, newResourceVersion);
-        linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
-      }
-      default -> throw new IllegalStateException("Unexpected value: " + event.getResourceType());
-    }
+    trackableResourceRepository.addAnnotationEvent(
+        session, resource, newAnnotation, newResourceVersion);
+    linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
   }
 
   private void linkResourceToRepository(
