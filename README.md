@@ -453,6 +453,27 @@ FlatLandscapeDto getCombinedStaticStructureData(String landscapeToken, String re
 Retrieve the union of landscape structure data for the two provided commits within the given landscape and repository.
 The value for the `commitComparison` attribute is set relative to the second commit, e.g. "DELETED" is written if some component is present in the first commit, but not the second.
 
+### POST /v3/landscapes/{landscapeToken}/structure/evolution/batch
+
+```Java
+FlatLandscapeDto postEvolutionStructureBatch(
+    String landscapeToken,
+    EvolutionStructureBatchRequest request);
+```
+
+Request JSON body:
+
+```json
+{
+  "repositories": [
+    { "repositoryName": "repo-a", "commitHashes": ["abc123"] },
+    { "repositoryName": "repo-b", "commitHashes": ["def456", "789ghi"] }
+  ]
+}
+```
+
+Each entry lists a repository name and either one commit hash or two hashes (baseline then target; comparison semantics match `GET .../evolution/{repositoryName}/{firstCommitHash}-{secondCommitHash}`). Repository names must be unique in the list. Returns one flat landscape containing the merged structure from all requested repositories.
+
 ### GET /v3/landscapes/{landscapeToken}/dynamic?from={}&to={}
 
 ```Java

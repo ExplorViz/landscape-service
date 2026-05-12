@@ -1,13 +1,18 @@
 package net.explorviz.persistence.api.v3;
 
 import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import java.util.List;
 import java.util.Optional;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
+import net.explorviz.persistence.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.persistence.api.v3.model.FileDetailedDto;
+import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.persistence.ogm.FileRevision;
 import net.explorviz.persistence.repository.FileDetailedMapper;
@@ -87,28 +92,24 @@ public class StructureResource {
   }
 
   /**
-   * Retrieve structure data gathered from static analysis for a particular application and commit.
-   *
-   * @param landscapeToken String identifier of the landscape
-   * @param repositoryName Name of the repository for which to retrieve structure data
-   * @param commitHash Identifier of the git commit for which to retrieve structure
-   * @return The flat landscape containing the applications of the repository at the given commit,
-   *     where each application represents a city
+   * Retrieves static structure for multiple repositories in one request. Each list entry names a
+   * repository and supplies either one commit hash or two hashes (baseline then target, identical
+   * to {@link #getCombinedStaticStructureData}). Results are merged into a single flat landscape.
    */
-  @GET
+  @POST
+  @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
-  @Path("/debug/{repositoryName}/{commitHash}/{debugSnapshotId}")
-  public FlatLandscapeDto getDebugStructureData(
-      @RestPath final String landscapeToken,
-      @RestPath final String repositoryName,
-      @RestPath final String commitHash,
-      @RestPath final String debugSnapshotId) {
+  @Path("/evolution/batch")
+  public FlatLandscapeDto postEvolutionStructureBatch(
+      @RestPath final String landscapeToken, final EvolutionStructureBatchRequest request) {
+
+    final List<RepositoryEvolutionSelectionDto> repositories =
+        EvolutionStructureBatchValidator.validatedSelections(request);
+
     final Session session = sessionFactory.openSession();
 
-    return structureRepository.fetchFlatLandscapeForDebugData(
-        session,
-        new StructureRepository.DebugDataRequest(
-            landscapeToken, repositoryName, commitHash, debugSnapshotId));
+    return structureRepository.fetchFlatLandscapeForEvolutionBatch(
+        session, landscapeToken, repositories);
   }
 
   @GET

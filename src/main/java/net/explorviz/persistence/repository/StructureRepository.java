@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
+import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
 import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
@@ -175,6 +176,53 @@ public class StructureRepository {
                 request.landscapeToken(), request.repositoryName(), request.secondCommitHash()));
 
     return merge(request.landscapeToken(), first, second);
+  }
+
+  /**
+   * Loads structure for several repositories (each with either one commit or a pair for comparison)
+   * and returns their union as one flat landscape. Intended for visualizing multiple repositories
+   * together.
+   */
+  public FlatLandscapeDto fetchFlatLandscapeForEvolutionBatch(
+      final Session session,
+      final String landscapeToken,
+      final List<RepositoryEvolutionSelectionDto> selections) {
+
+    final List<FlatLandscapeDto> parts = new ArrayList<>();
+    for (final RepositoryEvolutionSelectionDto sel : selections) {
+      final List<String> hashes = sel.commitHashes();
+      if (hashes.size() == 1) {
+        parts.add(
+            fetchFlatLandscapeForStaticData(
+                session,
+                new StaticDataRequest(landscapeToken, sel.repositoryName(), hashes.get(0))));
+      } else {
+        parts.add(
+            fetchCombinedFlatLandscape(
+                session,
+                new CombinedStaticDataRequest(
+                    landscapeToken, sel.repositoryName(), hashes.get(0), hashes.get(1))));
+      }
+    }
+    return unionFlatLandscapes(landscapeToken, parts);
+  }
+
+  private FlatLandscapeDto unionFlatLandscapes(
+      final String landscapeToken, final List<FlatLandscapeDto> parts) {
+
+    final Map<String, CityDto> cities = new HashMap<>();
+    final Map<String, DistrictDto> districts = new HashMap<>();
+    final Map<String, BuildingDto> buildings = new HashMap<>();
+    final Map<String, ChimneyDto> chimneys = new HashMap<>();
+
+    for (final FlatLandscapeDto part : parts) {
+      cities.putAll(part.cities());
+      districts.putAll(part.districts());
+      buildings.putAll(part.buildings());
+      chimneys.putAll(part.chimneys());
+    }
+
+    return new FlatLandscapeDto(landscapeToken, cities, districts, buildings, chimneys);
   }
 
   private FlatLandscapeDto merge(
