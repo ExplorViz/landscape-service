@@ -6,11 +6,6 @@ option java_outer_classname = "ContributorProto";
 
 import "google/protobuf/empty.proto";
 
-service ContributorService {
-  rpc PersistContributor (ContributorData) returns (google.protobuf.Empty) {}
-}
-
-// Todo: add commit data here directly
 message ContributorData {
   // Git data
   string landscape_token = 1;
@@ -22,11 +17,4 @@ message ContributorData {
   // GitHub-specific data
   string github_login = 6;
   string avatar_url = 7;
-}
-
-message CommitAuthorAssociation {
-  string landscape_token = 1;
-  string repository_name = 2;
-  string commit_id = 3;
-  string contributor_id = 4;
 }

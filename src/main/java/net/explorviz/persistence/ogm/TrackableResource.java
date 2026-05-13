@@ -7,6 +7,7 @@ import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
 
+/** Abstract class for similar data types of issues and pull requests. */
 @NodeEntity
 @SuppressWarnings("PMD.AbstractClassWithoutAbstractMethod")
 public abstract class TrackableResource {

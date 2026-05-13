@@ -21,14 +21,8 @@ import net.explorviz.persistence.ogm.ResourceVersion;
 import net.explorviz.persistence.ogm.TrackableResource;
 import net.explorviz.persistence.proto.TrackableResourceEvent;
 import net.explorviz.persistence.proto.TrackableResourceService;
-import net.explorviz.persistence.repository.ApplicationRepository;
-import net.explorviz.persistence.repository.BranchRepository;
-import net.explorviz.persistence.repository.CommitRepository;
 import net.explorviz.persistence.repository.ContributorRepository;
-import net.explorviz.persistence.repository.FileRevisionRepository;
-import net.explorviz.persistence.repository.LandscapeRepository;
 import net.explorviz.persistence.repository.RepositoryRepository;
-import net.explorviz.persistence.repository.TagRepository;
 import net.explorviz.persistence.repository.TrackableResourceRepository;
 import net.explorviz.persistence.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
@@ -36,22 +30,15 @@ import org.neo4j.ogm.session.SessionFactory;
 import org.neo4j.ogm.transaction.Transaction;
 
 @GrpcService
-@Blocking
 public class TrackableResourceServiceImpl implements TrackableResourceService {
 
-  private static final String NO_PARENT_ID = "NONE";
-  @Inject ApplicationRepository applicationRepository;
-  @Inject BranchRepository branchRepository;
-  @Inject CommitRepository commitRepository;
-  @Inject LandscapeRepository landscapeRepository;
   @Inject RepositoryRepository repositoryRepository;
-  @Inject FileRevisionRepository fileRevisionRepository;
-  @Inject TagRepository tagRepository;
   @Inject ContributorRepository contributorRepository;
   @Inject SessionFactory sessionFactory;
   @Inject TrackableResourceRepository trackableResourceRepository;
 
   @Override
+  @Blocking
   public Uni<Empty> persistTrackableResourceEvent(final TrackableResourceEvent request) {
     final Session session = sessionFactory.openSession();
 
@@ -66,42 +53,58 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
 
   public void saveTrackableResourceEvent(
       final Session session, final TrackableResourceEvent event) {
-    final Repository repo =
-        repositoryRepository
-            .findRepositoryByNameAndLandscapeToken(
-                session, event.getRepositoryName(), event.getLandscapeToken())
-            .orElseThrow(
-                () ->
-                    Status.FAILED_PRECONDITION
-                        .withDescription("No corresponding state data was sent before.")
-                        .asRuntimeException());
 
-    final Integer number = Integer.parseInt(event.getResourceId());
+    final Repository repo = getRepository(session, event);
+    final ResourceVersion resourceVersion = populateResourceVersion(event);
+    final ResourceAnnotation resourceAnnotation = populateResourceAnnotation(session, event);
+    final TrackableResource resource = getTrackableResource(session, event);
 
-    // cleanly convert ProtoBuf Timestamp to Instant
-    final Instant eventTime =
-        Instant.ofEpochSecond(
-            event.getEventTimestamp().getSeconds(), event.getEventTimestamp().getNanos());
+    trackableResourceRepository.addAnnotationEvent(
+        session, resource, resourceAnnotation, resourceVersion);
 
-    final ResourceVersion newResourceVersion = new ResourceVersion();
-    newResourceVersion.setDescription(event.getDescription());
-    newResourceVersion.setState(ResourceState.valueOf(event.getNewState().name()));
-    newResourceVersion.setWebUrl(event.getWebUrl());
-    newResourceVersion.setTitle(event.getTitle());
-    newResourceVersion.setCreationDate(eventTime);
+    linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
+  }
+
+  private Repository getRepository(final Session session, final TrackableResourceEvent event) {
+    return repositoryRepository
+        .findRepositoryByNameAndLandscapeToken(
+            session, event.getRepositoryName(), event.getLandscapeToken())
+        .orElseThrow(
+            () ->
+                Status.FAILED_PRECONDITION
+                    .withDescription("No corresponding state data was sent before.")
+                    .asRuntimeException());
+  }
+
+  private ResourceVersion populateResourceVersion(final TrackableResourceEvent event) {
+    final ResourceVersion resourceVersion = new ResourceVersion();
+    resourceVersion.setDescription(event.getDescription());
+    resourceVersion.setState(ResourceState.valueOf(event.getNewState().name()));
+    resourceVersion.setWebUrl(event.getWebUrl());
+    resourceVersion.setTitle(event.getTitle());
+    resourceVersion.setCreationDate(getEventDate(event));
     final String[] labels = event.getLabels().split(",");
     final Set<String> labelSet = new HashSet<>(Arrays.asList(labels));
-    newResourceVersion.setLabels(labelSet);
+    resourceVersion.setLabels(labelSet);
+    return resourceVersion;
+  }
 
-    final ResourceAnnotation newAnnotation =
+  private ResourceAnnotation populateResourceAnnotation(
+      final Session session, final TrackableResourceEvent event) {
+    final ResourceAnnotation annotation =
         new ResourceAnnotation(
-            eventTime,
+            getEventDate(event),
             event.getAnnotationId(),
             AnnotationType.valueOf(event.getAnnotationType().name()));
 
-    newAnnotation.setAssociatedContributor(
+    annotation.setAssociatedContributor(
         contributorRepository.getOrCreateContributor(session, event.getActor()));
 
+    return annotation;
+  }
+
+  private TrackableResource getTrackableResource(
+      final Session session, final TrackableResourceEvent event) {
     final Class<? extends TrackableResource> type =
         switch (event.getResourceType()) {
           case ISSUE -> Issue.class;
@@ -112,12 +115,18 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
 
     final TrackableResource resource;
     resource =
-        trackableResourceRepository.getOrCreate(
-            session, type, number, repo.getName(), event.getLandscapeToken());
+        trackableResourceRepository.getOrCreateTrackableResource(
+            session,
+            type,
+            Integer.parseInt(event.getResourceId()),
+            event.getRepositoryName(),
+            event.getLandscapeToken());
+    return resource;
+  }
 
-    trackableResourceRepository.addAnnotationEvent(
-        session, resource, newAnnotation, newResourceVersion);
-    linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
+  private Instant getEventDate(final TrackableResourceEvent event) {
+    return Instant.ofEpochSecond(
+        event.getEventTimestamp().getSeconds(), event.getEventTimestamp().getNanos());
   }
 
   private void linkResourceToRepository(
