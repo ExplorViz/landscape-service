@@ -9,6 +9,7 @@ import java.util.List;
 import net.explorviz.persistence.api.v3.model.DebugRunDto;
 import net.explorviz.persistence.api.v3.model.DebugSnapshotDto;
 import net.explorviz.persistence.api.v3.model.VariableDto;
+import net.explorviz.persistence.ogm.Commit;
 import net.explorviz.persistence.repository.DebugRunRepository;
 import net.explorviz.persistence.repository.DebugSnapshotRepository;
 import net.explorviz.persistence.repository.RepositoryRepository;
@@ -58,6 +59,21 @@ public class DebugResource {
     final Session session = sessionFactory.openSession();
     return repositoryRepository.fetchAllRepositoryNamesWithDebugRunsInLandscape(
         session, landscapeToken);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/commit/{repositoryName}/{debugRunId}")
+  public String getCommitForDebugRun(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestPath final String debugRunId) {
+    final Session session = sessionFactory.openSession();
+    return debugRunRepository
+        .findCommitForDebugRunAndRepositoryAndLandscapeToken(
+            session, debugRunId, repositoryName, landscapeToken)
+        .orElse(new Commit(""))
+        .getHash();
   }
 
   @GET

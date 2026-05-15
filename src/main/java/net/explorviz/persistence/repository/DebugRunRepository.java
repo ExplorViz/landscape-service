@@ -4,6 +4,8 @@ import com.google.common.collect.Lists;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import net.explorviz.persistence.ogm.Commit;
 import net.explorviz.persistence.ogm.DebugRun;
 import org.neo4j.ogm.session.Session;
 
@@ -22,5 +24,23 @@ public class DebugRunRepository {
             RETURN d;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
+  }
+
+  public Optional<Commit> findCommitForDebugRunAndRepositoryAndLandscapeToken(
+      final Session session,
+      final String debugRunId,
+      final String repositoryName,
+      final String landscapeToken) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})
+                  -[:CONTAINS]->(:Repository {name: $repoName)
+                  -[:HAS_DEBUG_RUN]->(:DebugRun {id: $debugId})
+                  -[:RUNS_ON]->(c:Commit)
+            RETURN c;
+            """,
+            Map.of("debugId", debugRunId, "repoName", repositoryName, "tokenId", landscapeToken)));
   }
 }

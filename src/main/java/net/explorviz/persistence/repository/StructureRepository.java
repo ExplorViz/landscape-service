@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
+import net.explorviz.persistence.api.v3.model.RepositoryDebugSelectionDto;
 import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
@@ -32,7 +33,11 @@ public class StructureRepository {
       String landscapeToken, String repositoryName, String commitHash) {}
 
   public record DebugDataRequest(
-      String landscapeToken, String repositoryName, String commitHash, String debugSnapshotId) {}
+      String landscapeToken,
+      String repositoryName,
+      String commitHash,
+      String debugRunId,
+      String debugSnapshotId) {}
 
   public record CombinedStaticDataRequest(
       String landscapeToken,
@@ -113,8 +118,8 @@ public class StructureRepository {
         """
         MATCH (l:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(:Commit {hash: $commitHash})
-        MATCH (c:Commit {hash: $commitHash})<-[:RUNS_ON]-(dr:DebugRun)
+          -[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)<-[:RUNS_ON]-(dr:DebugRun: $runId )
         MATCH (dr)
           -[:CONTAINS]->(ds:DebugSnapShot {id: $snapshotId})
           -[:CAPTURES]->(v:Variable)
@@ -156,6 +161,8 @@ public class StructureRepository {
                 request.repositoryName(),
                 "commitHash",
                 request.commitHash(),
+                "runId",
+                request.debugRunId(),
                 "snapshotId",
                 request.debugSnapshotId()));
     return mapper.buildFlatLandscape(request.landscapeToken(), result, TypeOfAnalysis.DEBUG, null);
@@ -203,6 +210,31 @@ public class StructureRepository {
                 new CombinedStaticDataRequest(
                     landscapeToken, sel.repositoryName(), hashes.get(0), hashes.get(1))));
       }
+    }
+    return unionFlatLandscapes(landscapeToken, parts);
+  }
+
+  /**
+   * Loads structure for several repositories (each with either one commit or a pair for comparison)
+   * and returns their union as one flat landscape. Intended for visualizing multiple repositories
+   * together.
+   */
+  public FlatLandscapeDto fetchFlatLandscapeForDebugBatch(
+      final Session session,
+      final String landscapeToken,
+      final List<RepositoryDebugSelectionDto> selections) {
+
+    final List<FlatLandscapeDto> parts = new ArrayList<>();
+    for (final RepositoryDebugSelectionDto sel : selections) {
+      final String debugRunId = sel.debugRunId();
+      final String debugSnapshotId = sel.debugSnapshotId();
+      final String commitHash = sel.commitHash();
+
+      parts.add(
+          fetchFlatLandscapeForDebugData(
+              session,
+              new DebugDataRequest(
+                  landscapeToken, sel.repositoryName(), commitHash, debugRunId, debugSnapshotId)));
     }
     return unionFlatLandscapes(landscapeToken, parts);
   }
@@ -415,8 +447,8 @@ public class StructureRepository {
     final String parentDistrictId = d != null ? d.parentDistrictId() : other.parentDistrictId();
 
     final Map<String, MetricValue> metrics = mergeBuildingMetrics(d, other, comp);
-    final Set<String> chimneyIds =
-        Set.of(); // TODO: change that to support debug snapshot comparison
+    final List<String> chimneyIds =
+        List.of(); // TODO: change that to support debug snapshot comparison
     return new BuildingDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),

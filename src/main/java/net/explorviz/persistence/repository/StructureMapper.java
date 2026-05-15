@@ -175,7 +175,7 @@ public class StructureMapper {
       final Set<String> containedBuildingIds,
       final Set<String> containedChimneyIds) {
     containedBuildingIds.add(id);
-    final List<Long> chimneyIds = node.childrenIds;
+    final List<String> chimneyIds = node.childrenIds.stream().map(String::valueOf).toList();
     chimneyIds.stream().map(String::valueOf).forEach(containedChimneyIds::add);
 
     final BuildingDto building =
@@ -185,7 +185,7 @@ public class StructureMapper {
             String.valueOf(node.parentId),
             (String) node.properties.get("language"),
             extractMetrics(node.properties),
-            containedChimneyIds);
+            chimneyIds);
     context.buildings().put(id, building);
   }
 
