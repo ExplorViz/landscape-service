@@ -152,12 +152,14 @@ public class StructureResource {
    * @param landscapeToken String identifier of the landscape
    * @param repositoryName Name of the repository for which to retrieve structure data
    * @param commitHash Identifier of the git commit for which to retrieve structure
+   * @param debugRunId Identifier of the debug run for which to retrieve structure
+   * @param debugSnapshotId Identifier of the debug snapshot for which to retrieve structure
    * @return The flat landscape containing the applications of the repository at the given commit,
-   *     where each application represents a city
+   *     debug run and debug snapshot, where each application represents a city
    */
   @GET
   @Produces(MediaType.APPLICATION_JSON)
-  @Path("/debug/{repositoryName}/{commitHash}/{debugSnapshotId}")
+  @Path("/debug/{repositoryName}/{commitHash}/{debugRunId}/{debugSnapshotId}")
   public FlatLandscapeDto getDebugStructureData(
       @RestPath final String landscapeToken,
       @RestPath final String repositoryName,
