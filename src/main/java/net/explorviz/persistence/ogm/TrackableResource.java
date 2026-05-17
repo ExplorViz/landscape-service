@@ -80,10 +80,6 @@ public abstract class TrackableResource {
     return versions;
   }
 
-  public void setVersions(final Set<ResourceVersion> versions) {
-    this.versions = versions;
-  }
-
   public void addVersion(final ResourceVersion version) {
     if (this.versions == null) {
       this.versions = new HashSet<>();
@@ -91,7 +87,6 @@ public abstract class TrackableResource {
     this.versions.add(version);
   }
 
-  // TODO: cleaner way or handle in repo?
   public ResourceVersion getCurrentVersion() {
     if (this.versions == null || this.versions.isEmpty()) {
       return null;

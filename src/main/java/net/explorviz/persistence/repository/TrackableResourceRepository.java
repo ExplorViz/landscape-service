@@ -54,7 +54,7 @@ public class TrackableResourceRepository {
         """
         MATCH (:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(t:%s)-[:HAS_VERSION]->(:ResourceVersion)-[:CREATED_BY]->(c:Contributor {name: $contributorName})
+          -[:CONTAINS]->(t:%s)-[:HAS_VERSION]->(:ResourceVersion)-[:CREATED_BY]->(c:Contributor {gitUsername: $contributorName})
         RETURN DISTINCT t;
         """
             .formatted(type.getSimpleName());
@@ -63,7 +63,7 @@ public class TrackableResourceRepository {
         Map.of(
             "tokenId", tokenId,
             "repoName", repoName,
-            "contributorName", contributor.getName());
+            "contributorName", contributor.getGitUsername());
 
     final Iterable<T> results = session.query(type, cypher, params);
 

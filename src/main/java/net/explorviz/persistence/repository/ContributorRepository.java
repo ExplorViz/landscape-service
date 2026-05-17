@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import net.explorviz.persistence.ogm.Contributor;
+import net.explorviz.persistence.proto.ContributorData;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
@@ -31,19 +32,6 @@ public class ContributorRepository {
             Map.of("repoName", repoName)));
   }
 
-  public Optional<Contributor> findAnyContributor(final Session session, final String repoName) {
-    return Optional.ofNullable(
-        session.queryForObject(
-            Contributor.class,
-            """
-            MATCH (c:Contributor)-[:AUTHORED]->(commit:Commit)-[:IN_BRANCH]->(b:Branch)
-              WHERE b.name = $repoName
-              RETURN c
-              LIMIT 1;
-            """,
-            Map.of("repoName", repoName)));
-  }
-
   public Map<String, Long> countCommitsPerContributor(
       final Session session, final String repoName) {
     final List<Map<String, Object>> results =
@@ -51,7 +39,7 @@ public class ContributorRepository {
             session.query(
                 """
                 MATCH (c:Contributor)-[:AUTHORED]->(commit:Commit)-[:IN_BRANCH]->(b:Branch)
-                RETURN c.name AS name, count(DISTINCT commit) AS commitCount
+                RETURN c.gitUsername AS name, count(DISTINCT commit) AS commitCount
                 """,
                 Map.of("repoName", repoName)));
 
@@ -61,20 +49,9 @@ public class ContributorRepository {
                 row -> (String) row.get("name"), row -> (Long) row.get("commitCount")));
   }
 
-  public Contributor getOrCreateContributor(
-      final Session session, final net.explorviz.persistence.proto.ContributorData data) {
-    return findContributorByEmail(session, data.getEmail())
-        .orElseGet(
-            () ->
-                new Contributor(
-                    data.getGitUsername(),
-                    data.getEmail(),
-                    data.getGithubLogin(),
-                    data.getAvatarUrl()));
-  }
-
-  public Optional<Contributor> findContributorByEmail(final Session session, final String email) {
-    if (email == null || email.isEmpty()) {
+  public Optional<Contributor> findContributor(
+      final Session session, final String fieldName, final String fieldValue) {
+    if (fieldName == null || fieldName.isEmpty() || fieldValue == null || fieldValue.isEmpty()) {
       return Optional.empty();
     }
     return Optional.ofNullable(
@@ -82,10 +59,82 @@ public class ContributorRepository {
             Contributor.class,
             """
             MATCH (c:Contributor)
-            WHERE c.email = $email
+            WHERE c.%s = $fieldValue
             RETURN c
             LIMIT 1;
-            """,
-            Map.of("email", email)));
+            """
+                .formatted(fieldName),
+            Map.of("fieldValue", fieldValue)));
+  }
+
+  public Contributor getOrCreateContributor(final Session session, final ContributorData data) {
+    final Contributor contributor =
+        findExistingContributor(session, data)
+            .orElseGet(
+                () ->
+                    new Contributor(
+                        data.getGitUsername(),
+                        data.getEmail(),
+                        data.getGithubLogin(),
+                        data.getAvatarUrl()));
+
+    final boolean isUpdated = updateContributorFields(contributor, data);
+
+    if (contributor.getId() == null || isUpdated) {
+      session.save(contributor);
+    }
+    return contributor;
+  }
+
+  public Optional<Contributor> findExistingContributor(
+      final Session session, final ContributorData data) {
+    Optional<Contributor> contributor = findContributor(session, "email", data.getEmail());
+
+    if (contributor.isEmpty()
+        && isPresent(data.getGithubLogin())
+        && !"unknown".equals(data.getGithubLogin())) {
+      contributor = findContributor(session, "githubLogin", data.getGithubLogin());
+    }
+    if (contributor.isEmpty()
+        && isPresent(data.getGitUsername())
+        && !"unknown".equals(data.getGitUsername())) {
+      contributor = findContributor(session, "gitUsername", data.getGitUsername());
+    }
+    return contributor;
+  }
+
+  private boolean updateContributorFields(
+      final Contributor contributor, final ContributorData data) {
+    boolean updated = false;
+
+    if (isBlank(contributor.getGithubLogin())) {
+      contributor.setGithubLogin(data.getGithubLogin());
+      updated = true;
+    }
+
+    if (isBlank(contributor.getAvatarUrl())) {
+      contributor.setAvatarUrl(data.getAvatarUrl());
+      updated = true;
+    }
+
+    if (isBlank(contributor.getGitUsername())) {
+      contributor.setGitUsername(data.getGitUsername());
+      updated = true;
+    }
+
+    if (isBlank(contributor.getEmail())) {
+      contributor.setEmail(data.getEmail());
+      updated = true;
+    }
+
+    return updated;
+  }
+
+  private boolean isPresent(final String str) {
+    return str != null && !str.isBlank();
+  }
+
+  private boolean isBlank(final String str) {
+    return str == null || str.isBlank();
   }
 }

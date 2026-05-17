@@ -13,16 +13,10 @@ import org.neo4j.ogm.annotation.Relationship;
 public class Contributor {
   @Id @GeneratedValue private Long id;
 
-  private String name;
+  private String gitUsername;
   private String email;
-  private String username;
+  private String githubLogin;
   private String avatarUrl;
-
-  //  @Relationship(type = "CREATED", direction = Relationship.Direction.OUTGOING)
-  //  private Set<Issue> issues = new HashSet<>();
-  //
-  //  @Relationship(type = "OPENED", direction = Relationship.Direction.OUTGOING)
-  //  private Set<PullRequest> pullRequests = new HashSet<>();
 
   @Relationship(type = "AUTHORED", direction = Relationship.Direction.OUTGOING)
   private Set<Commit> commits = new HashSet<>();
@@ -32,20 +26,23 @@ public class Contributor {
     this.commits = new HashSet<>();
   }
 
-  public Contributor(final String name) {
-    this.name = name;
+  public Contributor(final String gitUsername) {
+    this.gitUsername = gitUsername;
   }
 
-  public Contributor(final String name, final String email) {
-    this.name = name;
+  public Contributor(final String gitUsername, final String email) {
+    this.gitUsername = gitUsername;
     this.email = email;
   }
 
   public Contributor(
-      final String name, final String email, final String username, final String avatarUrl) {
-    this.name = name;
+      final String gitUsername,
+      final String email,
+      final String githubLogin,
+      final String avatarUrl) {
+    this.gitUsername = gitUsername;
     this.email = email;
-    this.username = username;
+    this.githubLogin = githubLogin;
     this.avatarUrl = avatarUrl;
   }
 
@@ -54,12 +51,12 @@ public class Contributor {
     return id;
   }
 
-  public String getName() {
-    return name;
+  public String getGitUsername() {
+    return gitUsername;
   }
 
-  public void setName(final String name) {
-    this.name = name;
+  public void setGitUsername(final String gitUsername) {
+    this.gitUsername = gitUsername;
   }
 
   public String getEmail() {
@@ -70,12 +67,12 @@ public class Contributor {
     this.email = email;
   }
 
-  public String getUsername() {
-    return username;
+  public String getGithubLogin() {
+    return githubLogin;
   }
 
-  public void setUsername(final String username) {
-    this.username = username;
+  public void setGithubLogin(final String githubLogin) {
+    this.githubLogin = githubLogin;
   }
 
   public String getAvatarUrl() {
@@ -100,40 +97,4 @@ public class Contributor {
     }
     this.commits.add(commit);
   }
-
-  public void removeCommit(final Commit commit) {
-    if (this.commits != null) {
-      this.commits.remove(commit);
-    }
-  }
-
-  //  public Set<Issue> getIssues() {
-  //    return issues;
-  //  }
-  //
-  //  public void setIssues(final Set<Issue> issues) {
-  //    this.issues = issues;
-  //  }
-  //
-  //  public void addIssue(final Issue issue) {
-  //    if (this.issues == null) {
-  //      this.issues = new HashSet<>();
-  //    }
-  //    this.issues.add(issue);
-  //  }
-  //
-  //  public Set<PullRequest> getPullRequests() {
-  //    return pullRequests;
-  //  }
-  //
-  //  public void setPullRequests(final Set<PullRequest> pullRequests) {
-  //    this.pullRequests = pullRequests;
-  //  }
-  //
-  //  public void addPullRequest(final PullRequest pullRequest) {
-  //    if (this.pullRequests == null) {
-  //      this.pullRequests = new HashSet<>();
-  //    }
-  //    this.pullRequests.add(pullRequest);
-  //  }
 }

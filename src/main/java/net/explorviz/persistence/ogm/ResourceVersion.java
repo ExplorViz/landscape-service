@@ -37,29 +37,6 @@ public class ResourceVersion {
   @Relationship(type = "HAS_VERSION", direction = Relationship.Direction.INCOMING)
   private TrackableResource resource;
 
-  public ResourceVersion() {
-    // Empty Constructor Required by Neo4j OGM
-  }
-
-  public ResourceVersion(
-      final String externalId,
-      final Instant creationDate,
-      final String title,
-      final ResourceState state,
-      final Contributor createdBy,
-      final ResourceVersion derivedFrom,
-      final ResourceAnnotation generatedBy,
-      final TrackableResource resource) {
-    this.externalId = externalId;
-    this.creationDate = creationDate;
-    this.title = title;
-    this.state = state;
-    this.createdBy = createdBy;
-    this.derivedFrom = derivedFrom;
-    this.generatedBy = generatedBy;
-    this.resource = resource;
-  }
-
   public Long getId() {
     return id;
   }
