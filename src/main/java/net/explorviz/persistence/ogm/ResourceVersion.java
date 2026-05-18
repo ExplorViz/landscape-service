@@ -18,7 +18,6 @@ public class ResourceVersion {
 
   @DateLong private Instant creationDate;
 
-  // TODO: Clean up if not needed
   private String title;
   private String description;
   private Set<String> labels = new HashSet<>();
