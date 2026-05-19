@@ -58,88 +58,161 @@ public class ExampleDataResource {
         MERGE (d1)-[:CONTAINS]->(d2:Directory {name: "explorviz"})
         MERGE (d2)-[:CONTAINS]->(outerDir:Directory {name: "helloworld"})
         MERGE (outerDir)-[:CONTAINS]->(innerDir:Directory {name: "innerpackage"})
+
         MERGE (outerDir)-[:CONTAINS]->(file1:FileRevision {name: "File1.java"})
         MERGE (outerDir)-[:CONTAINS]->(file2:FileRevision {name: "File2.java"})
         MERGE (innerDir)-[:CONTAINS]->(file3:FileRevision {name: "File3.java"})
+
         MERGE (file1)-[:CONTAINS]->(func1:Function {name: "function1"})
         MERGE (file2)-[:CONTAINS]->(func2:Function {name: "function2"})
         MERGE (file3)-[:CONTAINS]->(func3:Function {name: "function3"})
 
         MERGE (r1)-[:HAS_ROOT]->(appRoot)
-        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr1:DebugRun)
-        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr2:DebugRun)
-        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr3:DebugRun)
 
-        MERGE (dr1)-[:RUNS_ON]->(c1:Commit {hash: "commit1"})
+        MERGE (dr1:DebugRun {debugRunKey: $repoName + "-debug-run-1"})
+        MERGE (dr2:DebugRun {debugRunKey: $repoName + "-debug-run-2"})
+        MERGE (dr3:DebugRun {debugRunKey: $repoName + "-debug-run-3"})
+
+        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr1)
+        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr2)
+        MERGE (r1)-[:HAS_DEBUG_RUN]->(dr3)
+
+        MERGE (c1:Commit {hash: "commit1"})
+        MERGE (c2:Commit {hash: "commit2"})
+
+        MERGE (dr1)-[:RUNS_ON]->(c1)
         MERGE (dr2)-[:RUNS_ON]->(c1)
-        MERGE (dr3)-[:RUNS_ON]->(c2:Commit {hash: "commit2"})
+        MERGE (dr3)-[:RUNS_ON]->(c2)
 
-        MERGE (dr1)-[:CONTAINS]->(ds11: DebugSnapshot)
-        MERGE (dr1)-[:CONTAINS]->(ds12: DebugSnapshot)
-        MERGE (dr1)-[:CONTAINS]->(ds13: DebugSnapshot)
+        MERGE (ds11:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-1-snapshot-1"})
+        SET ds11.timestamp = 1000000000,
+           ds11.lineOfBreakpoint = 42
 
-        SET ds11.timestamp = 1000000000, ds11.lineOfBreakpoint = 42
-        SET ds12.timestamp = 2000000000, ds12.lineOfBreakpoint = 142
-        SET ds13.timestamp = 3000000000, ds13.lineOfBreakpoint = 42
+        MERGE (ds12:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-1-snapshot-2"})
+        SET ds12.timestamp = 2000000000,
+           ds12.lineOfBreakpoint = 142
 
-        MERGE (dr2)-[:CONTAINS]->(ds21: DebugSnapshot)
-        MERGE (dr2)-[:CONTAINS]->(ds22: DebugSnapshot)
+        MERGE (ds13:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-1-snapshot-3"})
+        SET ds13.timestamp = 3000000000,
+           ds13.lineOfBreakpoint = 42
 
-        SET ds21.timestamp = 1000000000, ds21.lineOfBreakpoint = 42
-        SET ds22.timestamp = 2000000000, ds22.lineOfBreakpoint = 142
+        MERGE (dr1)-[:CONTAINS]->(ds11)
+        MERGE (dr1)-[:CONTAINS]->(ds12)
+        MERGE (dr1)-[:CONTAINS]->(ds13)
 
-        MERGE (dr3)-[:CONTAINS]->(ds31: DebugSnapshot)
-        MERGE (dr3)-[:CONTAINS]->(ds32: DebugSnapshot)
-        MERGE (dr3)-[:CONTAINS]->(ds33: DebugSnapshot)
+        MERGE (ds21:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-2-snapshot-1"})
+        SET ds21.timestamp = 1000000000,
+           ds21.lineOfBreakpoint = 42
 
-        SET ds31.timestamp = 1000000000, ds31.lineOfBreakpoint = 42
-        SET ds32.timestamp = 2000000000, ds32.lineOfBreakpoint = 142
-        SET ds33.timestamp = 3000000000, ds33.lineOfBreakpoint = 142
+        MERGE (ds22:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-2-snapshot-2"})
+        SET ds22.timestamp = 2000000000,
+           ds22.lineOfBreakpoint = 142
 
-        MERGE (ds11)-[:CAPTURES]->(var11: Variable)
+        MERGE (dr2)-[:CONTAINS]->(ds21)
+        MERGE (dr2)-[:CONTAINS]->(ds22)
+
+        MERGE (ds31:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-3-snapshot-1"})
+        SET ds31.timestamp = 1000000000,
+           ds31.lineOfBreakpoint = 42
+
+        MERGE (ds32:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-3-snapshot-2"})
+        SET ds32.timestamp = 2000000000,
+           ds32.lineOfBreakpoint = 142
+
+        MERGE (ds33:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-3-snapshot-3"})
+        SET ds33.timestamp = 3000000000,
+           ds33.lineOfBreakpoint = 142
+
+        MERGE (dr3)-[:CONTAINS]->(ds31)
+        MERGE (dr3)-[:CONTAINS]->(ds32)
+        MERGE (dr3)-[:CONTAINS]->(ds33)
+
+        MERGE (var11:Variable {variableKey: $repoName + "-debug-run-1-snapshot-1-var-x"})
+        SET var11.name = "x",
+           var11.value = "42",
+           var11.type = "int"
+
+        MERGE (var12:Variable {variableKey: $repoName + "-debug-run-1-snapshot-2-var-y"})
+        SET var12.name = "y",
+           var12.value = "999",
+           var12.type = "int"
+
+        MERGE (var13:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-isZ"})
+        SET var13.name = "isZ",
+           var13.value = "true",
+           var13.type = "boolean"
+
+        MERGE (var12valueChanged:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-y-changed"})
+        SET var12valueChanged.name = "y",
+           var12valueChanged.value = "333",
+           var12valueChanged.type = "int"
+
+        MERGE (ds11)-[:CAPTURES]->(var11)
         MERGE (ds12)-[:CAPTURES]->(var11)
-        MERGE (ds12)-[:CAPTURES]->(var12: Variable)
-        MERGE (ds13)-[:CAPTURES]->(var13: Variable)
-        MERGE (ds13)-[:CAPTURES]->(var12valueChanged: Variable)
+        MERGE (ds12)-[:CAPTURES]->(var12)
+        MERGE (ds13)-[:CAPTURES]->(var13)
+        MERGE (ds13)-[:CAPTURES]->(var12valueChanged)
 
-        SET var11.name = "x", var11.value = "42", var11.type = "int"
-        SET var12.name = "y", var12.value = "999", var12.type = "int"
-        SET var13.name = "isZ", var13.value = "true", var13.type = "boolean"
-        SET var12valueChanged.name = "y", var12valueChanged.value = "333", var12valueChanged.type = "int"
+        MERGE (var211:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-x"})
+        SET var211.name = "x",
+           var211.value = "42",
+           var211.type = "int"
 
-        MERGE (ds21)-[:CAPTURES]->(var211: Variable)
-        MERGE (ds21)-[:CAPTURES]->(var212: Variable)
-        MERGE (ds21)-[:CAPTURES]->(var213: Variable)
+        MERGE (var212:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-y"})
+        SET var212.name = "y",
+           var212.value = "999",
+           var212.type = "int"
 
-        SET var211.name = "x", var211.value = "42", var211.type = "int"
-        SET var212.name = "y", var212.value = "999", var212.type = "int"
-        SET var213.name = "isZ", var213.value = "true", var213.type = "boolean"
+        MERGE (var213:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-isZ"})
+        SET var213.name = "isZ",
+           var213.value = "true",
+           var213.type = "boolean"
 
-        MERGE (ds22)-[:CAPTURES]->(var221: Variable)
-        MERGE (ds22)-[:CAPTURES]->(var222: Variable)
-        MERGE (ds22)-[:CAPTURES]->(var223: Variable)
+        MERGE (ds21)-[:CAPTURES]->(var211)
+        MERGE (ds21)-[:CAPTURES]->(var212)
+        MERGE (ds21)-[:CAPTURES]->(var213)
 
-        SET var221.name = "x", var221.value = "42", var221.type = "int"
-        SET var222.name = "y", var222.value = "999", var222.type = "int"
-        SET var223.name = "isZ", var223.value = "true", var223.type = "boolean"
+        MERGE (var221:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-x"})
+        SET var221.name = "x",
+           var221.value = "42",
+           var221.type = "int"
 
-        MERGE (ds31)-[:CAPTURES]->(var31: Variable)
-        SET var31.name = "x", var31.value = "42", var31.type = "int"
+        MERGE (var222:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-y"})
+        SET var222.name = "y",
+           var222.value = "999",
+           var222.type = "int"
 
+        MERGE (var223:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-isZ"})
+        SET var223.name = "isZ",
+           var223.value = "true",
+           var223.type = "boolean"
+
+        MERGE (ds22)-[:CAPTURES]->(var221)
+        MERGE (ds22)-[:CAPTURES]->(var222)
+        MERGE (ds22)-[:CAPTURES]->(var223)
+
+        MERGE (var31:Variable {variableKey: $repoName + "-debug-run-3-var-x"})
+        SET var31.name = "x",
+           var31.value = "42",
+           var31.type = "int"
+
+        MERGE (ds31)-[:CAPTURES]->(var31)
         MERGE (ds32)-[:CAPTURES]->(var31)
-
         MERGE (ds33)-[:CAPTURES]->(var31)
 
         MERGE (var11)-[:MARKED_IN]->(file1)
         MERGE (var12)-[:MARKED_IN]->(file1)
         MERGE (var13)-[:MARKED_IN]->(file1)
         MERGE (var12valueChanged)-[:MARKED_IN]->(file1)
+
         MERGE (var211)-[:MARKED_IN]->(file1)
         MERGE (var212)-[:MARKED_IN]->(file1)
         MERGE (var213)-[:MARKED_IN]->(file2)
+
         MERGE (var221)-[:MARKED_IN]->(file1)
         MERGE (var222)-[:MARKED_IN]->(file2)
         MERGE (var223)-[:MARKED_IN]->(file3)
+
         MERGE (var31)-[:MARKED_IN]->(file1)
         """,
         Map.of("repoName", repoName));

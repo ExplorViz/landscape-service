@@ -19,7 +19,7 @@ public class DebugRunRepository {
             DebugRun.class,
             """
             MATCH (:Landscape {tokenId: $tokenId})
-                  -[:CONTAINS]->(:Repository {name: $repoName)
+                  -[:CONTAINS]->(:Repository {name: $repoName})
                   -[:HAS_DEBUG_RUN]->(d:DebugRun)
             RETURN d;
             """,
