@@ -22,15 +22,22 @@ public class CommitRepository {
    * every file included in the commit.
    */
   public Optional<Commit> findLatestFullyPersistedCommit(
-      final Session session, final String repoName, final String tokenId, final String branchName) {
+      final Session session,
+      final String repoName,
+      final String tokenId,
+      final String branchName,
+      final List<String> applicationNames) {
     return Optional.ofNullable(
         session.queryForObject(
             Commit.class,
             """
-            MATCH (:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(:Repository {name: $repoName})
-              -[:CONTAINS]->(c:Commit)
-              -[:BELONGS_TO]->(:Branch {name: $branchName})
+            MATCH (l:Landscape {tokenId: $tokenId})
+            MATCH (repo:Repository {name: $repoName})<-[:CONTAINS]-(l)
+            MATCH (repo)-[:CONTAINS]->(c:Commit)-[:BELONGS_TO]->(:Branch {name: $branchName})
+            WHERE all(appName IN $applicationNames WHERE EXISTS {
+              MATCH (l)-[:CONTAINS]->(a:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
+              MATCH (root)-[:CONTAINS*1..]->(f:FileRevision)<-[:CONTAINS]-(c)
+            })
             WITH c, [(c)-[:CONTAINS]->(f:FileRevision) | f] AS filesInCommit
             WHERE
               all(file IN filesInCommit WHERE file.hasFileData) AND
@@ -39,7 +46,15 @@ public class CommitRepository {
             ORDER BY c.commitDate DESC
             LIMIT 1;
             """,
-            Map.of("tokenId", tokenId, "repoName", repoName, "branchName", branchName)));
+            Map.of(
+                "tokenId",
+                tokenId,
+                "repoName",
+                repoName,
+                "branchName",
+                branchName,
+                "applicationNames",
+                applicationNames)));
   }
 
   public Optional<Commit> findCommitByHashAndLandscapeToken(

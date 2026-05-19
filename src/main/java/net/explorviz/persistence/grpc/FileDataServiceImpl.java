@@ -63,8 +63,8 @@ public class FileDataServiceImpl implements FileDataService {
 
     file.setLanguage(fileData.getLanguage().toString());
     file.setPackageName(fileData.getPackageName());
-    fileData.getImportNamesList().forEach(file::addImportNames);
-    fileData.getMetricsMap().forEach(file::addMetric);
+    file.setImportNames(fileData.getImportNamesList());
+    file.setMetrics(fileData.getMetricsMap());
     file.setLastEditor(fileData.getLastEditor());
     file.setAddedLines(fileData.getAddedLines());
     file.setModifiedLines(fileData.getModifiedLines());
@@ -72,14 +72,7 @@ public class FileDataServiceImpl implements FileDataService {
 
     fileData.getClassesList().forEach(c -> file.addClass(createClazz(session, c, fileData)));
 
-    fileData
-        .getFunctionsList()
-        .forEach(
-            f -> {
-              final Function function = new Function(f);
-              function.addParameters(f.getParametersList());
-              file.addFunction(function);
-            });
+    fileData.getFunctionsList().forEach(f -> file.addFunction(new Function(f)));
 
     file.setHasFileData(true);
 
@@ -121,7 +114,18 @@ public class FileDataServiceImpl implements FileDataService {
                        If found clazz has a type, then it must be from another commit,
                        therefore we create a new Clazz object. Same for clazz is null.
                       */
-                      .orElse(new Clazz(classData));
+                      .orElseGet(
+                          () -> {
+                            final Clazz newClazz = new Clazz(classData.getName());
+                            newClazz.setType(classData.getType());
+                            newClazz.setModifiers(classData.getModifiersList());
+                            newClazz.setImplementedInterfaces(
+                                classData.getImplementedInterfacesList());
+                            newClazz.setAnnotations(classData.getAnnotationsList());
+                            newClazz.setEnumValues(classData.getEnumValuesList());
+                            newClazz.setMetrics(classData.getMetricsMap());
+                            return newClazz;
+                          });
 
               classData
                   .getFieldsList()
@@ -134,21 +138,14 @@ public class FileDataServiceImpl implements FileDataService {
                   .getInnerClassesList()
                   .forEach(c -> clazz.addInnerClass(createClazz(session, c, fileData)));
 
-              classData
-                  .getFunctionsList()
-                  .forEach(
-                      f -> {
-                        final Function function = new Function(f);
-                        function.addParameters(f.getParametersList());
-                        clazz.addFunction(function);
-                      });
+              classData.getFunctionsList().forEach(f -> clazz.addFunction(new Function(f)));
 
               classData
                   .getSuperclassesList()
                   .forEach(
                       superFqn -> {
                         final String[] splitSuperFqn = superFqn.split("::");
-                        clazz.addSuperClass(
+                        clazz.addSuperclass(
                             clazzRepository
                                 .findClassByLandscapeTokenAndRepositoryAndClazzFqn(
                                     session,

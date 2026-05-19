@@ -7,14 +7,10 @@ import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.ClazzDto.ClassConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.FunctionDto.FunctionConvertible;
 import net.explorviz.persistence.ogm.Application;
-import net.explorviz.persistence.ogm.Clazz;
 import net.explorviz.persistence.ogm.Directory;
 import net.explorviz.persistence.ogm.FileRevision;
-import net.explorviz.persistence.ogm.Function;
 
 /**
  * Provides wrapper classes for turning single OGM Application objects into FlatLandscape city
@@ -32,8 +28,6 @@ public final class DefaultApplicationToCityConverter {
    *   <li>OGM Application -> City
    *   <li>OGM Directory -> District
    *   <li>OGM FileRevision -> Building
-   *   <li>OGM Clazz -> Clazz
-   *   <li>OGM Function -> Function
    * </ul>
    *
    * <p>The supplied originOfData is set for each converted model object.
@@ -54,8 +48,6 @@ public final class DefaultApplicationToCityConverter {
    *   <li>OGM Application -> City
    *   <li>OGM Directory -> District
    *   <li>OGM FileRevision -> Building
-   *   <li>OGM Clazz -> Clazz
-   *   <li>OGM Function -> Function
    * </ul>
    *
    * @param ogmApp OGM Application object. Should be hydrated to the desired depth.
@@ -168,20 +160,6 @@ public final class DefaultApplicationToCityConverter {
     }
 
     @Override
-    public Collection<? extends ClassConvertible> getClasses() {
-      return ogmFile.getClasses().stream()
-          .map(c -> new ClassWrapper(c, originOfData, commitComparison))
-          .toList();
-    }
-
-    @Override
-    public Collection<? extends FunctionConvertible> getFunctions() {
-      return ogmFile.getFunctions().stream()
-          .map(f -> new FunctionWrapper(f, originOfData, commitComparison))
-          .toList();
-    }
-
-    @Override
     public String getLanguage() {
       return ogmFile.getLanguage();
     }
@@ -189,80 +167,6 @@ public final class DefaultApplicationToCityConverter {
     @Override
     public Map<String, MetricValue> getMetrics() {
       return MetricValue.fromMap(ogmFile.getMetrics());
-    }
-  }
-
-  record ClassWrapper(
-      Clazz ogmClass, TypeOfAnalysis originOfData, CommitComparison commitComparison)
-      implements ClassConvertible {
-
-    @Override
-    public String getId() {
-      return ogmClass.getId().toString();
-    }
-
-    @Override
-    public String getName() {
-      return ogmClass.getName();
-    }
-
-    @Override
-    public TypeOfAnalysis getOriginOfData() {
-      return originOfData;
-    }
-
-    @Override
-    public CommitComparison getCommitComparison() {
-      return commitComparison;
-    }
-
-    @Override
-    public Collection<? extends ClassConvertible> getInnerClasses() {
-      return ogmClass.getInnerClasses().stream()
-          .map(c -> new ClassWrapper(c, originOfData, commitComparison))
-          .toList();
-    }
-
-    @Override
-    public Collection<? extends FunctionConvertible> getFunctions() {
-      return ogmClass.getFunctions().stream()
-          .map(f -> new FunctionWrapper(f, originOfData, commitComparison))
-          .toList();
-    }
-
-    @Override
-    public Map<String, MetricValue> getMetrics() {
-      return MetricValue.fromMap(ogmClass.getMetrics());
-    }
-  }
-
-  record FunctionWrapper(
-      Function ogmFunc, TypeOfAnalysis originOfData, CommitComparison commitComparison)
-      implements FunctionConvertible {
-
-    @Override
-    public String getId() {
-      return ogmFunc.getId().toString();
-    }
-
-    @Override
-    public String getName() {
-      return ogmFunc.getName();
-    }
-
-    @Override
-    public TypeOfAnalysis getOriginOfData() {
-      return originOfData;
-    }
-
-    @Override
-    public CommitComparison getCommitComparison() {
-      return commitComparison;
-    }
-
-    @Override
-    public Map<String, MetricValue> getMetrics() {
-      return MetricValue.fromMap(ogmFunc.getMetrics());
     }
   }
 }

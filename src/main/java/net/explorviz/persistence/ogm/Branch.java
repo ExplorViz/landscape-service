@@ -4,8 +4,10 @@ import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 
+/** Represents a git branch. */
 @NodeEntity
 public class Branch {
+
   @Id @GeneratedValue private Long id;
 
   private String name;
@@ -19,6 +21,6 @@ public class Branch {
   }
 
   public String getName() {
-    return this.name;
+    return name;
   }
 }

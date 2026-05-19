@@ -7,6 +7,13 @@ import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
 
+/**
+ * Represents a file system directory. Note that unlike the {@link FileRevision}, Directory nodes
+ * are not versioned based on git commits or according to their origin of data; they are purely
+ * organizational. Therefore, they are uniquely identified within an {@link Application} or a {@link
+ * Repository} by their path alone, and a Directory can contain multiple FileRevisions of the same
+ * name as long as the hashes differ.
+ */
 @NodeEntity
 public class Directory implements Comparable<Directory> {
 
@@ -28,14 +35,6 @@ public class Directory implements Comparable<Directory> {
     this.name = name;
   }
 
-  public void addSubdirectory(final Directory directory) {
-    subdirectories.add(directory);
-  }
-
-  public void addFileRevision(final FileRevision fileRevision) {
-    fileRevisions.add(fileRevision);
-  }
-
   public Long getId() {
     return id;
   }
@@ -48,8 +47,16 @@ public class Directory implements Comparable<Directory> {
     return new TreeSet<>(subdirectories);
   }
 
+  public void addSubdirectory(final Directory directory) {
+    subdirectories.add(directory);
+  }
+
   public SortedSet<FileRevision> getFileRevisions() {
     return new TreeSet<>(fileRevisions);
+  }
+
+  public void addFileRevision(final FileRevision fileRevision) {
+    fileRevisions.add(fileRevision);
   }
 
   @Override

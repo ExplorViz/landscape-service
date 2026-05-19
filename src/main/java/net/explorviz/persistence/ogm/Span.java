@@ -5,8 +5,19 @@ import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
 
+/**
+ * Represents an OpenTelemetry Span.
+ *
+ * @see <a href="https://opentelemetry.io/docs/concepts/signals/traces/#spans">OpenTelemetry
+ *     documentation</a>
+ */
 @NodeEntity
 public class Span implements Comparable<Span> {
+
+  /**
+   * Use a generated ID as opposed to OpenTelemetry's spanId since the same span could theoretically
+   * appear in multiple landscapes.
+   */
   @Id @GeneratedValue private Long id;
 
   private String spanId;
@@ -33,12 +44,28 @@ public class Span implements Comparable<Span> {
     return spanId;
   }
 
+  public long getStartTime() {
+    return startTime;
+  }
+
+  public void setStartTime(final long startTime) {
+    this.startTime = startTime;
+  }
+
+  public long getEndTime() {
+    return endTime;
+  }
+
+  public void setEndTime(final long endTime) {
+    this.endTime = endTime;
+  }
+
   public Span getParentSpan() {
     return parentSpan;
   }
 
-  public void setParentSpan(final Span span) {
-    this.parentSpan = span;
+  public void setParentSpan(final Span parentSpan) {
+    this.parentSpan = parentSpan;
   }
 
   public Function getFunction() {
@@ -47,22 +74,6 @@ public class Span implements Comparable<Span> {
 
   public void setFunction(final Function function) {
     this.function = function;
-  }
-
-  public long getStartTime() {
-    return startTime;
-  }
-
-  public long getEndTime() {
-    return endTime;
-  }
-
-  public void setStartTime(final long startTime) {
-    this.startTime = startTime;
-  }
-
-  public void setEndTime(final long endTime) {
-    this.endTime = endTime;
   }
 
   @Override

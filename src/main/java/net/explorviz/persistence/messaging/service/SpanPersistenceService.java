@@ -57,7 +57,7 @@ public class SpanPersistenceService {
     }
 
     final Trace trace = traceRepository.getOrCreateTrace(session, spanData.getTraceId());
-    trace.addChildSpan(span);
+    trace.addSpan(span);
 
     final Landscape landscape =
         landscapeRepository.getOrCreateLandscape(session, spanData.getLandscapeTokenId());

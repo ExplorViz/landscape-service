@@ -443,4 +443,70 @@ class StateDataServiceTest {
             .directories(2)
             .build());
   }
+
+  @Test
+  void testGetStateDataForNewApplicationInExistingRepo() {
+    String appNameOne = "app1";
+    String appNameTwo = "app2";
+    String commitHash = "commit1";
+
+    // 1. Setup app1 and a commit with a file
+    StateDataRequest prepRequest =
+        StateDataRequest.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .putAllApplicationPaths(Map.of(appNameOne, "app1"))
+            .build();
+    stateDataService
+        .getStateData(prepRequest)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    CommitData commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(1).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash("hash1").setFilePath("app1/File1.java"))
+            .build();
+    commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    FileData fileData =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash("hash1")
+            .setFilePath("app1/File1.java")
+            .setLanguage(Language.JAVA)
+            .build();
+    fileDataService.persistFile(fileData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    // 2. Request state for app1 - should return commit1
+    StateData state1 =
+        stateDataService
+            .getStateData(prepRequest)
+            .await()
+            .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+    assertEquals(commitHash, state1.getCommitId());
+
+    // 3. Request state for app1 AND app2 - should return ""
+    StateDataRequest bothRequest =
+        StateDataRequest.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .putAllApplicationPaths(Map.of(appNameOne, "app1", appNameTwo, "app2"))
+            .build();
+    StateData stateBoth =
+        stateDataService
+            .getStateData(bothRequest)
+            .await()
+            .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+    assertEquals("", stateBoth.getCommitId());
+  }
 }

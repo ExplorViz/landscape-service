@@ -7,8 +7,19 @@ import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Relationship;
 
+/**
+ * Represents an OpenTelemetry Trace.
+ *
+ * @see <a href="https://opentelemetry.io/docs/concepts/signals/traces/">OpenTelemetry
+ *     documentation</a>
+ */
 @NodeEntity
 public class Trace {
+
+  /**
+   * Use a generated ID as opposed to OpenTelemetry's traceId since the same trace could
+   * theoretically appear in multiple landscapes.
+   */
   @Id @GeneratedValue private Long id;
 
   private String traceId;
@@ -28,18 +39,8 @@ public class Trace {
     this.traceId = traceId;
   }
 
-  public void addChildSpan(final Span span) {
-    spans.add(span);
-    startTime = startTime != null ? Math.min(startTime, span.getStartTime()) : span.getStartTime();
-    endTime = endTime != null ? Math.max(endTime, span.getEndTime()) : span.getEndTime();
-  }
-
   public String getTraceId() {
     return traceId;
-  }
-
-  public SortedSet<Span> getSpans() {
-    return new TreeSet<>(spans);
   }
 
   public Long getStartTime() {
@@ -56,5 +57,15 @@ public class Trace {
 
   public void setEndTime(final long endTime) {
     this.endTime = endTime;
+  }
+
+  public SortedSet<Span> getSpans() {
+    return new TreeSet<>(spans);
+  }
+
+  public void addSpan(final Span span) {
+    spans.add(span);
+    startTime = startTime != null ? Math.min(startTime, span.getStartTime()) : span.getStartTime();
+    endTime = endTime != null ? Math.max(endTime, span.getEndTime()) : span.getEndTime();
   }
 }

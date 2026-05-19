@@ -11,6 +11,17 @@ The persistence-service communicates with the [code-agent](https://git.se.inform
 
 # Table of Contents
 
+- [persistence-service](#persistence-service)
+- [Table of Contents](#table-of-contents)
+- [Development Instructions](#development-instructions)
+  - [Prerequisites](#prerequisites)
+  - [Code Style](#code-style)
+    - [Formatting](#formatting)
+    - [Pre-commit hook](#pre-commit-hook)
+  - [Running the application in dev mode](#running-the-application-in-dev-mode)
+  - [Packaging and running the application](#packaging-and-running-the-application)
+  - [Creating a native executable](#creating-a-native-executable)
+  - [Testing](#testing)
 - [Database Model](#database-model)
   - [Node Fields](#node-fields)
     - [Application](#application)
@@ -31,8 +42,8 @@ The persistence-service communicates with the [code-agent](https://git.se.inform
 - [REST-API](#rest-api)
   - [v2](#v2)
     - [GET /v2/landscapes/{landscapeToken}/structure](#get-v2landscapeslandscapetokenstructure)
-    - [GET /v2/landscapes/{landscapeToken}/dynamic?from={}&to={}](#get-v2landscapeslandscapetokendynamicfromto)
-    - [GET /v2/landscapes/{landscapeToken}/timestamps?oldest={}newest={}&commit={}](#get-v2landscapeslandscapetokentimestampsoldestnewestcommit)
+    - [GET /v2/landscapes/{landscapeToken}/dynamic?from={}\&to={}](#get-v2landscapeslandscapetokendynamicfromto)
+    - [GET /v2/landscapes/{landscapeToken}/timestamps?oldest={}\&newest={}\&commit={}](#get-v2landscapeslandscapetokentimestampsoldestnewestcommit)
     - [GET /v2/code/applications/{landscapeToken}](#get-v2codeapplicationslandscapetoken)
     - [GET /v2/code/commit-tree/{landscapeToken}/{applicationName}](#get-v2codecommit-treelandscapetokenapplicationname)
     - [GET /v2/code/metrics/{landscapeToken}/{applicationName}/{commitHash}](#get-v2codemetricslandscapetokenapplicationnamecommithash)
@@ -44,18 +55,93 @@ The persistence-service communicates with the [code-agent](https://git.se.inform
     - [GET /v3/landscapes/{landscapeToken}/structure/runtime](#get-v3landscapeslandscapetokenstructureruntime)
     - [GET /v3/landscapes/{landscapeToken}/structure/evolution/{repositoryName}/{commitHash}](#get-v3landscapeslandscapetokenstructureevolutionrepositorynamecommithash)
     - [GET /v3/landscapes/{landscapeToken}/structure/evolution/{repositoryName}/{firstCommitHash}-{secondCommitHash}](#get-v3landscapeslandscapetokenstructureevolutionrepositorynamefirstcommithash-secondcommithash)
-    - [GET /v3/landscapes/{landscapeToken}/dynamic?from={}&to?{}](#get-v3landscapeslandscapetokendynamicfromto)
-    - [GET /v3/landscapes/{landscapeToken}/timestamps?oldest={}&newest={}&commit={}](#get-v3landscapeslandscapetokentimestampsoldestnewestcommit)
+    - [GET /v3/landscapes/{landscapeToken}/dynamic?from={}\&to={}](#get-v3landscapeslandscapetokendynamicfromto)
+    - [GET /v3/landscapes/{landscapeToken}/timestamps?oldest={}\&newest={}\&commit={}](#get-v3landscapeslandscapetokentimestampsoldestnewestcommit)
     - [GET /v3/landscapes/{landscapeToken}/repositories](#get-v3landscapeslandscapetokenrepositories)
     - [GET /v3/landscapes/{landscapeToken}/commit-tree/{repositoryName}](#get-v3landscapeslandscapetokencommit-treerepositoryname)
     - [DELETE /v3/landscapes/{landscapeToken}/trace-data](#delete-v3landscapeslandscapetokentrace-data)
-- [Development Instructions](#development-instructions)
-  - [Prerequisites](#prerequisites)
-  - [Code Style](#code-style)
-  - [Running the application in dev mode](#running-the-application-in-dev-mode)
-  - [Packaging and running the application](#packaging-and-running-the-application)
-  - [Creating a native executable](#creating-a-native-executable)
-  - [Testing](#testing)
+
+# Development Instructions
+
+## Prerequisites
+
+- **Java**: JDK 17 or higher
+- **Docker**: Installed and running, since the persistence-service starts its own Docker container in dev mode and when running tests
+
+## Code Style
+
+### Formatting
+
+We recommend using the [IntelliJ IDEA IDE](https://www.jetbrains.com/idea/). Your code should follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html). This is enforced using [Spotless](https://github.com/diffplug/spotless) as part of a pre-commit hook. Before committing, run `./gradlew spotlessApply` to automatically fix any formatting issues.
+
+To integrate this format with IntelliJ's formatter (`Ctrl + Alt + L` shortcut), we recommend the  official [google-java-format](https://plugins.jetbrains.com/plugin/8527-google-java-format) plugin. Carefully follow [these](https://github.com/google/google-java-format/blob/master/README.md#intellij-android-studio-and-other-jetbrains-ides) instructions to install it. Alternatively, you can use one of the plugins for the [Spotless IDE hook](https://github.com/diffplug/spotless/blob/main/plugin-gradle/IDE_HOOK.md). This hook also integrates with Visual Studio Code.
+
+### Pre-commit hook
+
+As part of a git pre-commit hook, your code is checked using [Spotless](https://github.com/diffplug/spotless), [Checkstyle](https://checkstyle.sourceforge.io/) and [PMD](https://pmd.github.io/). If any of these checks fails, the commit is blocked until the issues are resolved. Additionally, all tests must pass for the commit to be successful. Please ensure that all issues are adequately resolved before commiting your changes. If absolutely required, you can skip the pre-commit hook validation using the `--no-verify` flag, but ensure the issues are addressed before creating a merge request.
+
+## Running the application in dev mode
+
+You can run your application in dev mode that enables live reloading using:
+
+```shell script
+./gradlew quarkusDev
+```
+
+When starting the persistence-service in dev mode, a Neo4j Docker container is automatically started as part of Quarkus's [Dev Services](https://docs.quarkiverse.io/quarkus-neo4j/dev/index.html#dev-services). If an existing Neo4j container is reachable via the default URI (http://localhost:7687), e.g. when running Neo4j as part of the [Docker deployment](https://git.se.informatik.uni-kiel.de/ExplorViz/code/deployment/-/tree/main/docker) or via the Docker compose included in this repository's `.dev` folder, then that instance is used instead.
+
+An overview of the available endpoints is provided in the Quarkus Dev UI at http://localhost:8085/q/dev/. If you are only concerned with providing data to the frontend, you can use the dev-exclusive `/example` endpoints to populate the database with example data.
+
+You can also inspect and manipulate the current state of the database using [Neo4j Browser](https://neo4j.com/docs/browser/). By default, the browser runs on http://localhost:7474.
+
+## Packaging and running the application
+
+The application can be packaged using:
+
+```shell script
+./gradlew build
+```
+
+It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
+Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
+
+The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
+
+If you want to build an _über-jar_, execute the following command:
+
+```shell script
+./gradlew build -Dquarkus.package.jar.type=uber-jar
+```
+
+The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
+
+## Creating a native executable
+
+You can create a native executable using:
+
+```shell script
+./gradlew build -Dquarkus.native.enabled=true
+```
+
+Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+
+```shell script
+./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true
+```
+
+You can then execute your native executable with: `./build/persistence-service-1.0.0-SNAPSHOT-runner`
+
+If you want to learn more about building native executables, please consult <https://quarkus.io/guides/gradle-tooling>.
+
+## Testing
+
+To ensure the persistence-service is working properly, there are a number of tests that can be executed using the following command:
+
+```
+./gradlew quarkusTest
+```
+
+The tests are also run as part of the git pre-commit hook.
 
 # Database Model
 
@@ -68,35 +154,35 @@ The persistence-service communicates with the [code-agent](https://git.se.inform
 | Field  |   Type   |
 |--------|----------|
 | **id** | **Long** |
-| name   | string   |
+| name   | String   |
 
 ### Branch
 
 | Field  |   Type   |
 |--------|----------|
 | **id** | **Long** |
-| name   | string   |
+| name   | String   |
 
 ### Clazz
 
-|         Field         |        Type         |
-|-----------------------|---------------------|
-| **id**                | **Long**            |
-| name                  | string              |
-| type                  | ClassType           |
-| modifiers             | set[String]         |
-| implementedInterfaces | set[String]         |
-| annotations           | set[String]         |
-| enumValues            | set[String]         |
-| metrics               | map[String, Double] |
+|         Field         |           Type            |
+|-----------------------|---------------------------|
+| **id**                | **Long**                  |
+| name                  | String                    |
+| type                  | ClassType                 |
+| modifiers             | Set&lt;String&gt;         |
+| implementedInterfaces | Set&lt;String&gt;         |
+| annotations           | Set&lt;String&gt;         |
+| enumValues            | Set&lt;String&gt;         |
+| metrics               | Map&lt;String, Double&gt; |
 
 ### Commit
 
 |   Field    |   Type   |
 |------------|----------|
 | **id**     | **Long** |
-| hash       | string   |
-| author     | string   |
+| hash       | String   |
+| author     | String   |
 | authorDate | Instant  |
 | commitDate | Instant  |
 
@@ -105,100 +191,100 @@ The persistence-service communicates with the [code-agent](https://git.se.inform
 | Field  |   Type   |
 |--------|----------|
 | **id** | **Long** |
-| name   | string   |
+| name   | String   |
 
 ### Field
 
-|   Field   |     Type     |
-|-----------|--------------|
-| **id**    | **Long**     |
-| name      | string       |
-| type      | String       |
-| modifiers | list[String] |
+|   Field   |        Type        |
+|-----------|--------------------|
+| **id**    | **Long**           |
+| name      | String             |
+| type      | String             |
+| modifiers | List&lt;String&gt; |
 
 ### FileRevision
 
-|     Field     |        Type         |
-|---------------|---------------------|
-| **id**        | **Long**            |
-| hash          | string              |
-| name          | string              |
-| hasFileData   | boolean             |
-| language      | Language            |
-| packageName   | String              |
-| importNames   | set[String]         |
-| metrics       | map[String, Double] |
-| lastEditor    | String              |
-| addedLines    | int                 |
-| modifiedLines | int                 |
-| deletedLines  | int                 |
+|     Field     |           Type            |
+|---------------|---------------------------|
+| **id**        | **Long**                  |
+| name          | String                    |
+| hash          | String                    |
+| hasFileData   | boolean                   |
+| language      | Language                  |
+| packageName   | String                    |
+| importNames   | Set&lt;String&gt;         |
+| lastEditor    | String                    |
+| addedLines    | int                       |
+| modifiedLines | int                       |
+| deletedLines  | int                       |
+| metrics       | Map&lt;String, Double&gt; |
 
 ### Function
 
-|        Field        |        Type         |
-|---------------------|---------------------|
-| **id**              | **Long**            |
-| name                | string              |
-| returnType          | String              |
-| isConstructor       | boolean             |
-| annotations         | set[String]         |
-| modifiers           | set[String]         |
-| outgoingMethodCalls | set[String]         |
-| metrics             | map[String, Double] |
-| startLine           | int                 |
-| endLine             | int                 |
+|        Field        |           Type            |
+|---------------------|---------------------------|
+| **id**              | **Long**                  |
+| name                | String                    |
+| returnType          | String                    |
+| constructor         | boolean                   |
+| annotations         | Set&lt;String&gt;         |
+| modifiers           | Set&lt;String&gt;         |
+| outgoingMethodCalls | Set&lt;String&gt;         |
+| startLine           | int                       |
+| endLine             | int                       |
+| metrics             | Map&lt;String, Double&gt; |
 
 ### Landscape
 
 |    Field    |    Type    |
 |-------------|------------|
-| **tokenId** | **string** |
+| **tokenId** | **String** |
 
 ### Parameter
 
-|   Field   |     Type     |
-|-----------|--------------|
-| **id**    | **Long**     |
-| name      | string       |
-| type      | String       |
-| modifiers | list[String] |
+|   Field   |        Type        |
+|-----------|--------------------|
+| **id**    | **Long**           |
+| name      | String             |
+| type      | String             |
+| modifiers | List&lt;String&gt; |
 
 ### Repository
 
 | Field  |   Type   |
 |--------|----------|
 | **id** | **Long** |
-| name   | string   |
+| name   | String   |
 
 ### Span
 
-|   Field    |   Type   |
-|------------|----------|
-| **id**     | **Long** |
-| spanId     | string   |
-| start_time | long     |
-| end_time   | long     |
+|   Field   |   Type   |
+|-----------|----------|
+| **id**    | **Long** |
+| spanId    | String   |
+| startTime | long     |
+| endTime   | long     |
 
 ### Tag
 
 | Field  |   Type   |
 |--------|----------|
 | **id** | **Long** |
-| name   | string   |
+| name   | String   |
 
 ### Trace
 
-|   Field    |   Type   |
-|------------|----------|
-| **id**     | **Long** |
-| traceId    | string   |
-| start_time | long     |
-| end_time   | long     |
+|   Field   |   Type   |
+|-----------|----------|
+| **id**    | **Long** |
+| traceId   | String   |
+| startTime | Long     |
+| endTime   | Long     |
 
 ## Updating the Database Model
 
-The database model was created using the web application arrows.app.
-This is free to use and is officially recommended by Neo4j.
+The database model was created using the web application [arrows.app](https://arrows.app/).
+It is free to use and is officially recommended by Neo4j.
 
 The model can be exported in formats such as PNG and JSON.
 The latest versions can be found under `./resources/`.
@@ -338,6 +424,27 @@ FlatLandscapeDto getCombinedStaticStructureData(String landscapeToken, String re
 Retrieve the union of landscape structure data for the two provided commits within the given landscape and repository.
 The value for the `commitComparison` attribute is set relative to the second commit, e.g. "DELETED" is written if some component is present in the first commit, but not the second.
 
+### POST /v3/landscapes/{landscapeToken}/structure/evolution/batch
+
+```Java
+FlatLandscapeDto postEvolutionStructureBatch(
+    String landscapeToken,
+    EvolutionStructureBatchRequest request);
+```
+
+Request JSON body:
+
+```json
+{
+  "repositories": [
+    { "repositoryName": "repo-a", "commitHashes": ["abc123"] },
+    { "repositoryName": "repo-b", "commitHashes": ["def456", "789ghi"] }
+  ]
+}
+```
+
+Each entry lists a repository name and either one commit hash or two hashes (baseline then target; comparison semantics match `GET .../evolution/{repositoryName}/{firstCommitHash}-{secondCommitHash}`). Repository names must be unique in the list. Returns one flat landscape containing the merged structure from all requested repositories.
+
 ### GET /v3/landscapes/{landscapeToken}/dynamic?from={}&to={}
 
 ```Java
@@ -368,7 +475,7 @@ Retrieves the names of all repositories in a landscape.
 CommitTreeDto getCommitTreeForRepositoryAndLandscape(String landscapeToken, String repositoryName);
 ```
 
-Returns the tree of commits associated with a repository in a lanscape.
+Returns the tree of commits associated with a repository in a landscape.
 
 ### DELETE /v3/landscapes/{landscapeToken}/trace-data
 
@@ -377,83 +484,3 @@ void deleteTraceData(String landscapeToken);
 ```
 
 Deletes all data gathered from runtime analysis associated with a landscape from the database.
-
-# Development Instructions
-
-## Prerequisites
-
-- Java 17 or higher
-- A running Docker application, since the persistence-service starts its own docker container
-
-## Code Style
-
-### Formatting
-
-We recommend using the [IntelliJ IDEA IDE](https://www.jetbrains.com/idea/). Your code should follow the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html). This is enforced using [Spotless](https://github.com/diffplug/spotless) as part of a pre-commit hook. Before committing, run `./gradlew spotlessApply` to automatically fix any formatting issues.
-
-To integrate this format with IntelliJ's formatter (`Ctrl + Alt + L` shortcut), we recommend the  official [google-java-format](https://plugins.jetbrains.com/plugin/8527-google-java-format) plugin. Carefully follow [these](https://github.com/google/google-java-format/blob/master/README.md#intellij-android-studio-and-other-jetbrains-ides) instructions to install it. Alternatively, you can use one of the plugins for the [Spotless IDE hook](https://github.com/diffplug/spotless/blob/main/plugin-gradle/IDE_HOOK.md). This hook also integrates with Visual Studio Code.
-
-### Pre-commit hook
-
-As part of a git pre-commit hook, your code is checked using [Spotless](https://github.com/diffplug/spotless), [Checkstyle](https://checkstyle.sourceforge.io/) and [PMD](https://pmd.github.io/). If any of these checks fails, the commit is blocked until the issues are resolved. Additionally, all tests must pass for the commit to be successful. Please ensure that all issues are adequately resolved before commiting your changes. If absolutely required, you can skip the pre-commit hook validation using the `--no-verify` flag, but ensure the issues are addressed before creating a merge request.
-
-## Running the application in dev mode
-
-You can run your application in dev mode that enables live reloading using:
-
-```shell script
-./gradlew quarkusDev
-```
-
-When starting the persistence-service in dev mode, a Neo4j Docker container is automatically started as part of Quarkus's [Dev Services](https://docs.quarkiverse.io/quarkus-neo4j/dev/index.html#dev-services). If an existing Neo4j container is reachable via the default URI (http://localhost:7687), e.g. when running Neo4j as part of the [Docker deployment](https://git.se.informatik.uni-kiel.de/ExplorViz/code/deployment/-/tree/main/docker) or via the Docker compose included in this repository's `.dev` folder, then that instance is used instead.
-
-An overview of the available endpoints is provided in the Quarkus Dev UI at http://localhost:8085/q/dev/. If you are only concerned with providing data to the frontend, you can use the dev-exclusive `/example` endpoints to populate the database with example data.
-
-## Packaging and running the application
-
-The application can be packaged using:
-
-```shell script
-./gradlew build
-```
-
-It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
-
-The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./gradlew build -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./build/persistence-service-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/gradle-tooling>.
-
-## Testing
-
-To ensure the persistence-service is working properly, there are a number of tests that can be executed using the following command:
-
-```
-./gradlew quarkusTest
-```
-
-The tests are also run as part of the git pre-commit hook.

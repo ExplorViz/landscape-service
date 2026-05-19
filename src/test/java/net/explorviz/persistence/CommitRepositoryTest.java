@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import net.explorviz.persistence.ogm.Branch;
 import net.explorviz.persistence.ogm.Commit;
@@ -51,14 +52,14 @@ class CommitRepositoryTest {
     commit1.setBranch(branch);
 
     Commit commit2 = new Commit("commit2");
-    commit2.addParent(commit1);
+    commit2.addParentCommit(commit1);
     commit2.addFileRevision(file1);
     commit2.addFileRevision(file2);
     commit2.setCommitDate(Instant.ofEpochMilli(2000));
     commit2.setBranch(branch);
 
     Commit commit3 = new Commit("commit3");
-    commit3.addParent(commit2);
+    commit3.addParentCommit(commit2);
     commit3.addFileRevision(file1);
     commit3.addFileRevision(file2);
     commit3.addFileRevision(file3);
@@ -77,7 +78,8 @@ class CommitRepositoryTest {
     session.save(landscape);
 
     Optional<Commit> latestCommit =
-        commitRepository.findLatestFullyPersistedCommit(session, "myrepo", "mytokenvalue", "main");
+        commitRepository.findLatestFullyPersistedCommit(
+            session, "myrepo", "mytokenvalue", "main", List.of());
 
     assertTrue(latestCommit.isPresent());
     assertEquals("commit2", latestCommit.get().getHash());

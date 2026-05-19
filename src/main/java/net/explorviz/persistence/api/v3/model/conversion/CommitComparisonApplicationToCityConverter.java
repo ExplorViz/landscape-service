@@ -12,20 +12,14 @@ import java.util.function.BiFunction;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
 import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
-import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.ClassWrapper;
 import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.DirectoryWrapper;
 import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.FileRevisionWrapper;
-import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter.FunctionWrapper;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto.BuildingConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.ClazzDto.ClassConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto.DistrictConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.FunctionDto.FunctionConvertible;
 import net.explorviz.persistence.ogm.Application;
-import net.explorviz.persistence.ogm.Clazz;
 import net.explorviz.persistence.ogm.Directory;
 import net.explorviz.persistence.ogm.FileRevision;
-import net.explorviz.persistence.ogm.Function;
 
 /**
  * Provides wrapper classes for turning two versions of the same OGM Application object into a
@@ -43,8 +37,6 @@ public final class CommitComparisonApplicationToCityConverter {
    *   <li>OGM Application -> City
    *   <li>OGM Directory -> District
    *   <li>OGM FileRevision -> Building
-   *   <li>OGM Clazz -> Clazz
-   *   <li>OGM Function -> Function
    * </ul>
    *
    * <p>The value for {@link CommitComparison} is set depending on whether a component is part of
@@ -181,26 +173,6 @@ public final class CommitComparisonApplicationToCityConverter {
     }
 
     @Override
-    public Collection<ClassConvertible> getClasses() {
-      return compareSortedSets(
-          firstFile.getClasses(),
-          secondFile.getClasses(),
-          ComparisonClassWrapper::new,
-          c1 -> new ClassWrapper(c1, TypeOfAnalysis.STATIC, CommitComparison.REMOVED),
-          c2 -> new ClassWrapper(c2, TypeOfAnalysis.STATIC, CommitComparison.ADDED));
-    }
-
-    @Override
-    public Collection<FunctionConvertible> getFunctions() {
-      return compareSortedSets(
-          firstFile.getFunctions(),
-          secondFile.getFunctions(),
-          ComparisonFunctionWrapper::new,
-          f1 -> new FunctionWrapper(f1, TypeOfAnalysis.STATIC, CommitComparison.REMOVED),
-          f2 -> new FunctionWrapper(f2, TypeOfAnalysis.STATIC, CommitComparison.ADDED));
-    }
-
-    @Override
     public String getLanguage() {
       return secondFile.getLanguage();
     }
@@ -208,87 +180,6 @@ public final class CommitComparisonApplicationToCityConverter {
     @Override
     public Map<String, MetricValue> getMetrics() {
       return MetricValue.fromMaps(secondFile.getMetrics(), firstFile.getMetrics());
-    }
-  }
-
-  record ComparisonClassWrapper(Clazz firstClass, Clazz secondClass) implements ClassConvertible {
-
-    @Override
-    public String getId() {
-      return firstClass.getId().toString();
-    }
-
-    @Override
-    public String getName() {
-      return firstClass.getName();
-    }
-
-    @Override
-    public TypeOfAnalysis getOriginOfData() {
-      return TypeOfAnalysis.STATIC;
-    }
-
-    @Override
-    public CommitComparison getCommitComparison() {
-      return Objects.equals(firstClass.getId(), secondClass.getId())
-          ? CommitComparison.UNCHANGED
-          : CommitComparison.MODIFIED;
-    }
-
-    @Override
-    public Collection<ClassConvertible> getInnerClasses() {
-      return compareSortedSets(
-          firstClass.getInnerClasses(),
-          secondClass.getInnerClasses(),
-          ComparisonClassWrapper::new,
-          c1 -> new ClassWrapper(c1, TypeOfAnalysis.STATIC, CommitComparison.REMOVED),
-          c2 -> new ClassWrapper(c2, TypeOfAnalysis.STATIC, CommitComparison.ADDED));
-    }
-
-    @Override
-    public Collection<FunctionConvertible> getFunctions() {
-      return compareSortedSets(
-          firstClass.getFunctions(),
-          secondClass.getFunctions(),
-          ComparisonFunctionWrapper::new,
-          f1 -> new FunctionWrapper(f1, TypeOfAnalysis.STATIC, CommitComparison.REMOVED),
-          f2 -> new FunctionWrapper(f2, TypeOfAnalysis.STATIC, CommitComparison.ADDED));
-    }
-
-    @Override
-    public Map<String, MetricValue> getMetrics() {
-      return MetricValue.fromMaps(secondClass.getMetrics(), firstClass.getMetrics());
-    }
-  }
-
-  record ComparisonFunctionWrapper(Function firstFunc, Function secondFunc)
-      implements FunctionConvertible {
-
-    @Override
-    public String getId() {
-      return firstFunc.getId().toString();
-    }
-
-    @Override
-    public String getName() {
-      return firstFunc.getName();
-    }
-
-    @Override
-    public TypeOfAnalysis getOriginOfData() {
-      return TypeOfAnalysis.STATIC;
-    }
-
-    @Override
-    public CommitComparison getCommitComparison() {
-      return Objects.equals(firstFunc.getId(), secondFunc.getId())
-          ? CommitComparison.UNCHANGED
-          : CommitComparison.MODIFIED;
-    }
-
-    @Override
-    public Map<String, MetricValue> getMetrics() {
-      return MetricValue.fromMaps(secondFunc.getMetrics(), firstFunc.getMetrics());
     }
   }
 

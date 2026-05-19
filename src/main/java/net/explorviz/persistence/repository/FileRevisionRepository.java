@@ -21,7 +21,7 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class FileRevisionRepository {
 
   private static final String FIND_LONGEST_PATH_MATCH_FOR_FQN_WITHOUT_COMMIT =
@@ -164,7 +164,7 @@ public class FileRevisionRepository {
                 session, fileIdentifier.getFileHash(), repoName, landscapeTokenId, pathSegments)
             .orElse(null);
     if (file == null) {
-      file = new FileRevision(fileIdentifier.getFileHash(), pathSegments[pathSegments.length - 1]);
+      file = new FileRevision(pathSegments[pathSegments.length - 1], fileIdentifier.getFileHash());
     }
 
     commit.addFileRevision(file);
@@ -213,13 +213,47 @@ public class FileRevisionRepository {
    * file must additionally be part of a commit with the given hash, otherwise nothing is matched.
    *
    * @param session OGM session object
-   * @param applicationName Name of the application in which to search
+   * @param repoName Name of the repository in which to search
    * @param commitHash Hash of the git commit to which the file must belong
    * @param pathSegments List of directory names + the file name, beginning at the application's
    *     root directory
    * @param landscapeToken Token ID of the landscape in which to search
    * @return An Optional describing the specified FileRevision. Empty if no FileRevision is matched.
    */
+  public Optional<FileRevision> findFileRevisionFromRepoNameAndCommitHashAndPath(
+      final Session session,
+      final String repoName,
+      final String commitHash,
+      final String[] pathSegments,
+      final String landscapeToken) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            FileRevision.class,
+            """
+                MATCH (l:Landscape {tokenId: $tokenId})
+                  -[:CONTAINS]->(:Repository {name: $repoName})
+                  -[:HAS_ROOT]->(repoRootDir:Directory)
+                MATCH p = (repoRootDir)-[:CONTAINS]->*(file:FileRevision)
+                WHERE
+                  length(p) = size($pathSegments) AND
+                  all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $pathSegments[j-1]) AND
+                  EXISTS {
+                    (:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                  }
+                OPTIONAL MATCH (file)-[r:CONTAINS*0..3]->(sub)
+                RETURN file, r, sub;
+            """,
+            Map.of(
+                "tokenId",
+                landscapeToken,
+                "repoName",
+                repoName,
+                "pathSegments",
+                pathSegments,
+                "commitHash",
+                commitHash)));
+  }
+
   public Optional<FileRevision> findFileRevisionFromAppNameAndCommitHashAndPath(
       final Session session,
       final String applicationName,
@@ -298,19 +332,19 @@ public class FileRevisionRepository {
     final Result result =
         session.query(
             """
-                MATCH (l:Landscape {tokenId: $tokenId})
-                  -[:CONTAINS]->(:Application {name: $appName})
-                  -[:HAS_ROOT]->(appRoot:Directory)
-                WHERE (l)
-                  -[:CONTAINS]->(:Repository)
-                  -[:HAS_ROOT]->(:Directory)
-                  -[:CONTAINS*0..]->(appRoot)
-                MATCH p = (appRoot)-[:CONTAINS]->*(f:FileRevision)
-                WHERE (:Commit {hash: $commitHash})-[:CONTAINS]->(f)
-                WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
-                RETURN DISTINCT
-                  f AS file,
-                  apoc.text.join(nodeNames, "/") AS filePath;
+            MATCH (l:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(:Application {name: $appName})
+              -[:HAS_ROOT]->(appRoot:Directory)
+            WHERE (l)
+              -[:CONTAINS]->(:Repository)
+              -[:HAS_ROOT]->(:Directory)
+              -[:CONTAINS*0..]->(appRoot)
+            MATCH p = (appRoot)-[:CONTAINS]->*(f:FileRevision)
+            WHERE (:Commit {hash: $commitHash})-[:CONTAINS]->(f)
+            WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
+            RETURN DISTINCT
+              f AS file,
+              apoc.text.join(nodeNames, "/") AS filePath;
             """,
             Map.of(
                 "tokenId", landscapeToken, "appName", applicationName, "commitHash", commitHash));
@@ -336,15 +370,15 @@ public class FileRevisionRepository {
     final Result result =
         session.query(
             """
-                MATCH (l:Landscape {tokenId: $tokenId})
-                  -[:CONTAINS]->(:Repository {name: $repoName})
-                  -[:HAS_ROOT]->(repoRoot:Directory)
-                MATCH p = (repoRoot)-[:CONTAINS*]->(f:FileRevision)
-                WHERE (:Commit {hash: $commitHash})-[:CONTAINS]->(f)
-                WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
-                RETURN DISTINCT
-                  f AS file,
-                  apoc.text.join(nodeNames, "/") AS filePath;
+            MATCH (l:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(:Repository {name: $repoName})
+              -[:HAS_ROOT]->(repoRoot:Directory)
+            MATCH p = (repoRoot)-[:CONTAINS*]->(f:FileRevision)
+            WHERE (:Commit {hash: $commitHash})-[:CONTAINS]->(f)
+            WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
+            RETURN DISTINCT
+              f AS file,
+              apoc.text.join(nodeNames, "/") AS filePath;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repoName, "commitHash", commitHash));
 

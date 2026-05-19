@@ -261,10 +261,10 @@ public class ExampleDataResource {
     commit1.setBranch(branch1);
     commit1.setAuthorDate(Instant.ofEpochMilli(1000));
     commit2.setBranch(branch1);
-    commit2.addParent(commit1);
+    commit2.addParentCommit(commit1);
     commit2.setAuthorDate(Instant.ofEpochMilli(1000));
     commit3.setBranch(branch2);
-    commit3.addParent(commit1);
+    commit3.addParentCommit(commit1);
     commit1.setAuthorDate(Instant.ofEpochMilli(1500));
     repository.addCommit(commit1);
     repository.addCommit(commit2);
@@ -384,17 +384,21 @@ public class ExampleDataResource {
   }
 
   private void addRandomFileMetrics(final FileRevision fileRevision) {
-    fileRevision.addMetric("LCOM4", Math.floor(Math.random() * 5));
-    fileRevision.addMetric("loc", Math.floor(Math.random() * 250));
-    fileRevision.addMetric("cyclomatic_complexity", Math.floor(Math.random() * 10));
-    fileRevision.addMetric("cyclomatic_complexity_weighted", Math.floor(Math.random() * 10));
+    fileRevision.setMetrics(
+        Map.ofEntries(
+            Map.entry("LCOM4", Math.floor(Math.random() * 5)),
+            Map.entry("loc", Math.floor(Math.random() * 250)),
+            Map.entry("cyclomatic_complexity", Math.floor(Math.random() * 10)),
+            Map.entry("cyclomatic_complexity_weighted", Math.floor(Math.random() * 10))));
   }
 
   private void addRandomClassMetrics(final Clazz clazz) {
-    clazz.addMetric("LCOM4", Math.floor(Math.random() * 5));
-    clazz.addMetric("loc", Math.floor(Math.random() * 250));
-    clazz.addMetric("cyclomatic_complexity", Math.floor(Math.random() * 10));
-    clazz.addMetric("cyclomatic_complexity_weighted", Math.floor(Math.random() * 10));
+    clazz.setMetrics(
+        Map.ofEntries(
+            Map.entry("LCOM4", Math.floor(Math.random() * 5)),
+            Map.entry("loc", Math.floor(Math.random() * 250)),
+            Map.entry("cyclomatic_complexity", Math.floor(Math.random() * 10)),
+            Map.entry("cycolomatic_complexity_weighted", Math.floor(Math.random() * 10))));
   }
 
   /**
@@ -432,7 +436,7 @@ public class ExampleDataResource {
     final long randNumb = (long) (Math.random() * 100_000_000_000.0);
     span.setStartTime(randNumb);
     span.setEndTime(randNumb + 1);
-    trace.addChildSpan(span);
+    trace.addSpan(span);
   }
 
   @GET

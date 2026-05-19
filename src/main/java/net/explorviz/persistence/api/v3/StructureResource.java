@@ -1,23 +1,22 @@
 package net.explorviz.persistence.api.v3;
 
 import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
-import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
-import net.explorviz.persistence.api.v3.model.conversion.CommitComparisonApplicationToCityConverter;
-import net.explorviz.persistence.api.v3.model.conversion.DefaultApplicationToCityConverter;
-import net.explorviz.persistence.api.v3.model.conversion.LandscapeFlattener;
-import net.explorviz.persistence.api.v3.model.landscape.CityDto.CityConvertible;
+import net.explorviz.persistence.api.v3.model.EvolutionStructureBatchRequest;
+import net.explorviz.persistence.api.v3.model.FileDetailedDto;
+import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.persistence.ogm.Application;
-import net.explorviz.persistence.repository.ApplicationRepository;
-import net.explorviz.persistence.repository.CommitRepository;
+import net.explorviz.persistence.ogm.FileRevision;
+import net.explorviz.persistence.repository.FileDetailedMapper;
+import net.explorviz.persistence.repository.StructureRepository;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -28,9 +27,8 @@ public class StructureResource {
 
   @Inject SessionFactory sessionFactory;
 
-  @Inject ApplicationRepository applicationRepository;
-
-  @Inject CommitRepository commitRepository;
+  @Inject StructureRepository structureRepository;
+  @Inject FileDetailedMapper fileDetailedMapper;
 
   /** Retrieve all structure data gathered from runtime analysis. */
   @GET
@@ -39,14 +37,7 @@ public class StructureResource {
   public FlatLandscapeDto getRuntimeStructureData(@RestPath final String landscapeToken) {
     final Session session = sessionFactory.openSession();
 
-    final List<Application> ogmApps =
-        applicationRepository.fetchAllApplicationsHydratedForRuntimeData(session, landscapeToken);
-
-    return LandscapeFlattener.flattenLandscape(
-        landscapeToken,
-        ogmApps.stream()
-            .map(a -> DefaultApplicationToCityConverter.convert(a, TypeOfAnalysis.RUNTIME))
-            .toList());
+    return structureRepository.fetchFlatLandscapeForRuntimeData(session, landscapeToken);
   }
 
   /**
@@ -67,15 +58,9 @@ public class StructureResource {
       @RestPath final String commitHash) {
     final Session session = sessionFactory.openSession();
 
-    final List<Application> ogmApps =
-        applicationRepository.fetchHydratedApplicationsInRepositoryForCommit(
-            session, landscapeToken, repositoryName, commitHash);
-
-    return LandscapeFlattener.flattenLandscape(
-        landscapeToken,
-        ogmApps.stream()
-            .map(a -> DefaultApplicationToCityConverter.convert(a, TypeOfAnalysis.STATIC))
-            .toList());
+    return structureRepository.fetchFlatLandscapeForStaticData(
+        session,
+        new StructureRepository.StaticDataRequest(landscapeToken, repositoryName, commitHash));
   }
 
   /**
@@ -100,32 +85,42 @@ public class StructureResource {
       @RestPath final String secondCommitHash) {
     final Session session = sessionFactory.openSession();
 
-    final List<Application> firstCommitApps =
-        applicationRepository.fetchHydratedApplicationsInRepositoryForCommit(
-            session, landscapeToken, repositoryName, firstCommitHash);
+    return structureRepository.fetchCombinedFlatLandscape(
+        session,
+        new StructureRepository.CombinedStaticDataRequest(
+            landscapeToken, repositoryName, firstCommitHash, secondCommitHash));
+  }
 
-    final List<Application> secondCommitApps =
-        applicationRepository.fetchHydratedApplicationsInRepositoryForCommit(
-            session, landscapeToken, repositoryName, secondCommitHash);
+  /**
+   * Retrieves static structure for multiple repositories in one request. Each list entry names a
+   * repository and supplies either one commit hash or two hashes (baseline then target, identical
+   * to {@link #getCombinedStaticStructureData}). Results are merged into a single flat landscape.
+   */
+  @POST
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/batch")
+  public FlatLandscapeDto postEvolutionStructureBatch(
+      @RestPath final String landscapeToken, final EvolutionStructureBatchRequest request) {
 
-    final List<CityConvertible> cityConvertibles = new ArrayList<>();
+    final List<RepositoryEvolutionSelectionDto> repositories =
+        EvolutionStructureBatchValidator.validatedSelections(request);
 
-    firstCommitApps.forEach(
-        firstCommitApp -> {
-          final Optional<Application> secondApp =
-              secondCommitApps.stream()
-                  .filter(a -> a.getName().equals(firstCommitApp.getName()))
-                  .findAny();
+    final Session session = sessionFactory.openSession();
 
-          cityConvertibles.add(
-              secondApp
-                  .map(
-                      secondCommitApp ->
-                          CommitComparisonApplicationToCityConverter.convert(
-                              firstCommitApp, secondCommitApp))
-                  .orElseGet(() -> DefaultApplicationToCityConverter.convert(firstCommitApp)));
-        });
+    return structureRepository.fetchFlatLandscapeForEvolutionBatch(
+        session, landscapeToken, repositories);
+  }
 
-    return LandscapeFlattener.flattenLandscape(landscapeToken, cityConvertibles);
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/file-revision/{id}")
+  public FileDetailedDto getFileDetailsById(
+      @RestPath final String landscapeToken, @RestPath final Long id) {
+    final Session session = sessionFactory.openSession();
+
+    return Optional.ofNullable(session.load(FileRevision.class, id))
+        .map(fileDetailedMapper::map)
+        .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }
 }

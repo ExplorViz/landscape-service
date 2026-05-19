@@ -4,14 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import net.explorviz.persistence.api.v3.model.MetricValue;
-import net.explorviz.persistence.api.v3.model.landscape.ClazzDto.ClassConvertible;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
-import net.explorviz.persistence.api.v3.model.landscape.FunctionDto.FunctionConvertible;
 import net.explorviz.persistence.proto.Language;
 
 /**
@@ -26,13 +22,6 @@ import net.explorviz.persistence.proto.Language;
  * @param language Can be used to specify a programming language if applicable, such as with files.
  *     Can be set to {@link Language#LANGUAGE_UNSPECIFIED} if the language cannot be uniquely
  *     determined
- * @param classIds IDs of all classes which are directly contained in this building
- * @param functionIds IDs of all top-level functions which are contained in this building
- * @param allContainedClassIds ID values for all classes which are contained inside this Building,
- *     <strong>even transitively</strong> (i.e. nested classes). This is required for faster lookups
- * @param allContainedFunctionIds ID values for all functions which are contained inside this
- *     Building, <strong>even transitively</strong> (i.e. inside nested classes). This is required
- *     for faster lookups
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered through analysis, such
  *     as cyclomatic complexity or lines of code
  */
@@ -42,26 +31,17 @@ public record BuildingDto(
     String parentCityId,
     @JsonInclude(Include.NON_NULL) String parentDistrictId,
     @JsonInclude(Include.NON_NULL) String language,
-    List<String> classIds,
-    List<String> functionIds,
-    List<String> allContainedClassIds,
-    List<String> allContainedFunctionIds,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
 
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);
     Objects.requireNonNull(parentCityId);
-    Objects.requireNonNull(classIds);
-    Objects.requireNonNull(functionIds);
   }
 
   /** Must be implemented by any object which can be represented as a building during flattening. */
   public interface BuildingConvertible extends FlatConvertible {
-    Collection<? extends ClassConvertible> getClasses();
-
-    Collection<? extends FunctionConvertible> getFunctions();
-
     default String getLanguage() {
+
       return null;
     }
 

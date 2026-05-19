@@ -70,7 +70,7 @@ class FileRevisionRepositoryTest {
     String repoName = "testRepo";
     String commitHash = "commit1";
 
-    FileRevision file = new FileRevision(fileHash, fileName);
+    FileRevision file = new FileRevision(fileName, fileHash);
 
     Landscape landscape = new Landscape(token);
     Repository repo = new Repository(repoName);

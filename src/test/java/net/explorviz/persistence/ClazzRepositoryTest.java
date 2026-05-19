@@ -37,7 +37,7 @@ public class ClazzRepositoryTest {
   void testFindLongestClassPathMatchOnDBWithoutClazzNodes() {
     String[] classPath = {"A", "B", "C"};
 
-    FileRevision file1 = new FileRevision("hash", "File1.java");
+    FileRevision file1 = new FileRevision("File1.java", "hash");
     file1.setHasFileData(true);
 
     session.save(file1);
@@ -163,7 +163,7 @@ public class ClazzRepositoryTest {
   void testCreateClazzPathForDBWithoutClazzNodes() {
     String[] classPath = {"A", "B", "C"};
 
-    FileRevision file1 = new FileRevision("hash", "File1.java");
+    FileRevision file1 = new FileRevision("File1.java", "hash");
     file1.setHasFileData(true);
 
     session.save(file1);

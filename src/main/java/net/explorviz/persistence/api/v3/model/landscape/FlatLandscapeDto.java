@@ -16,23 +16,18 @@ import java.util.Objects;
  * @param cities All city model objects in the landscape, indexed by their ID
  * @param districts All district model objects in the landscape, indexed by their ID
  * @param buildings All building model objects in the landscape, indexed by their ID
- * @param classes All class model objects in the landscape, indexed by their ID
- * @param functions All function model objects in the landscape, indexed by their ID
+ * @param buildings All building model objects in the landscape, indexed by their ID
  */
 public record FlatLandscapeDto(
     String landscapeToken,
     Map<String, CityDto> cities,
     Map<String, DistrictDto> districts,
-    Map<String, BuildingDto> buildings,
-    Map<String, ClazzDto> classes,
-    Map<String, FunctionDto> functions) {
+    Map<String, BuildingDto> buildings) {
 
   public FlatLandscapeDto {
     Objects.requireNonNull(landscapeToken);
     Objects.requireNonNull(cities);
     Objects.requireNonNull(districts);
     Objects.requireNonNull(buildings);
-    Objects.requireNonNull(classes);
-    Objects.requireNonNull(functions);
   }
 }

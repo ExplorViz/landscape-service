@@ -1,13 +1,12 @@
 package net.explorviz.persistence.ogm;
 
-import com.google.protobuf.ProtocolStringList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import net.explorviz.persistence.proto.ClassData;
 import net.explorviz.persistence.proto.ClassType;
 import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
@@ -15,26 +14,19 @@ import org.neo4j.ogm.annotation.NodeEntity;
 import org.neo4j.ogm.annotation.Properties;
 import org.neo4j.ogm.annotation.Relationship;
 
+/** Represents a class in object-oriented programming languages. */
 @NodeEntity
+@SuppressWarnings("PMD.TooManyMethods")
 public class Clazz implements Comparable<Clazz> {
+
   @Id @GeneratedValue private Long id;
 
   private String name;
 
   private ClassType type;
 
-  private Set<String> modifiers;
-
-  private Set<String> implementedInterfaces;
-
-  private Set<String> annotations;
-
-  private Set<String> enumValues;
-
-  @Properties private Map<String, Double> metrics;
-
   @Relationship(type = "INHERITS", direction = Relationship.Direction.OUTGOING)
-  private final SortedSet<Clazz> superClasses = new TreeSet<>();
+  private final SortedSet<Clazz> superclasses = new TreeSet<>();
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final SortedSet<Clazz> innerClasses = new TreeSet<>();
@@ -45,57 +37,22 @@ public class Clazz implements Comparable<Clazz> {
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final Set<Field> fields = new HashSet<>();
 
+  private final Set<String> modifiers = new HashSet<>();
+
+  private final Set<String> implementedInterfaces = new HashSet<>();
+
+  private final Set<String> annotations = new HashSet<>();
+
+  private final Set<String> enumValues = new HashSet<>();
+
+  @Properties private final Map<String, Double> metrics = new HashMap<>();
+
   public Clazz() {
-    this.modifiers = new HashSet<>();
-    this.implementedInterfaces = new HashSet<>();
-    this.annotations = new HashSet<>();
-    this.enumValues = new HashSet<>();
-    this.metrics = new HashMap<>();
+    // Empty constructor required by Neo4j OGM
   }
 
   public Clazz(final String name) {
     this.name = name;
-    this.modifiers = new HashSet<>();
-    this.implementedInterfaces = new HashSet<>();
-    this.annotations = new HashSet<>();
-    this.enumValues = new HashSet<>();
-    this.metrics = new HashMap<>();
-  }
-
-  public Clazz(final String name, final ClassType type) {
-    this.name = name;
-    this.type = type;
-    this.modifiers = new HashSet<>();
-    this.implementedInterfaces = new HashSet<>();
-    this.annotations = new HashSet<>();
-    this.enumValues = new HashSet<>();
-    this.metrics = new HashMap<>();
-  }
-
-  public Clazz(final ClassData classData) {
-    this.name = classData.getName();
-    this.type = classData.getType();
-    this.modifiers = new HashSet<>(classData.getModifiersList());
-    this.implementedInterfaces = new HashSet<>(classData.getImplementedInterfacesList());
-    this.annotations = new HashSet<>(classData.getAnnotationsList());
-    this.enumValues = new HashSet<>(classData.getEnumValuesList());
-    this.metrics = classData.getMetricsMap();
-  }
-
-  public void addSuperClass(final Clazz superClass) {
-    superClasses.add(superClass);
-  }
-
-  public void addInnerClass(final Clazz innerClass) {
-    innerClasses.add(innerClass);
-  }
-
-  public void addFunction(final Function function) {
-    functions.add(function);
-  }
-
-  public void addField(final Field field) {
-    fields.add(field);
   }
 
   public Long getId() {
@@ -110,44 +67,85 @@ public class Clazz implements Comparable<Clazz> {
     return type;
   }
 
-  public SortedSet<Function> getFunctions() {
-    return new TreeSet<>(functions);
+  public void setType(final ClassType type) {
+    this.type = type;
+  }
+
+  public SortedSet<Clazz> getSuperclasses() {
+    return new TreeSet<>(superclasses);
+  }
+
+  public void addSuperclass(final Clazz superclass) {
+    superclasses.add(superclass);
   }
 
   public SortedSet<Clazz> getInnerClasses() {
     return new TreeSet<>(innerClasses);
   }
 
-  public void setType(final ClassType type) {
-    this.type = type;
+  public void addInnerClass(final Clazz innerClass) {
+    innerClasses.add(innerClass);
   }
 
-  public void setModifiers(final ProtocolStringList modifiers) {
-    this.modifiers = new HashSet<>(modifiers);
+  public SortedSet<Function> getFunctions() {
+    return new TreeSet<>(functions);
   }
 
-  public void setImplementedInterfaces(final ProtocolStringList interfaces) {
-    this.implementedInterfaces = new HashSet<>(interfaces);
+  public void addFunction(final Function function) {
+    functions.add(function);
   }
 
-  public void setAnnotations(final ProtocolStringList annotations) {
-    this.annotations = new HashSet<>(annotations);
+  public Set<Field> getFields() {
+    return Set.copyOf(fields);
   }
 
-  public void setEnumValues(final ProtocolStringList enumValues) {
-    this.enumValues = new HashSet<>(enumValues);
+  public void addField(final Field field) {
+    fields.add(field);
   }
 
-  public void setMetrics(final Map<String, Double> metrics) {
-    this.metrics = metrics;
+  public Set<String> getModifiers() {
+    return Set.copyOf(modifiers);
   }
 
-  public void addMetric(final String metricName, final Double metricValue) {
-    metrics.put(metricName, metricValue);
+  public void setModifiers(final Collection<String> modifiers) {
+    this.modifiers.clear();
+    this.modifiers.addAll(modifiers);
+  }
+
+  public Set<String> getImplementedInterfaces() {
+    return Set.copyOf(implementedInterfaces);
+  }
+
+  public void setImplementedInterfaces(final Collection<String> implementedInterfaces) {
+    this.implementedInterfaces.clear();
+    this.implementedInterfaces.addAll(implementedInterfaces);
+  }
+
+  public Set<String> getAnnotations() {
+    return Set.copyOf(annotations);
+  }
+
+  public void setAnnotations(final Collection<String> annotations) {
+    this.annotations.clear();
+    this.annotations.addAll(annotations);
+  }
+
+  public Set<String> getEnumValues() {
+    return Set.copyOf(enumValues);
+  }
+
+  public void setEnumValues(final Collection<String> enumValues) {
+    this.enumValues.clear();
+    this.enumValues.addAll(enumValues);
   }
 
   public Map<String, Double> getMetrics() {
-    return metrics;
+    return Map.copyOf(metrics);
+  }
+
+  public void setMetrics(final Map<String, Double> metrics) {
+    this.metrics.clear();
+    this.metrics.putAll(metrics);
   }
 
   @Override

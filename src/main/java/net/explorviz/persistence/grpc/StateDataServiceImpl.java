@@ -4,6 +4,7 @@ import io.quarkus.grpc.GrpcService;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import net.explorviz.persistence.ogm.Application;
@@ -59,7 +60,8 @@ public class StateDataServiceImpl implements StateDataService {
                   session,
                   request.getRepositoryName(),
                   request.getLandscapeToken(),
-                  request.getBranchName())
+                  request.getBranchName(),
+                  new ArrayList<>(request.getApplicationPathsMap().keySet()))
               .map(Commit::getHash)
               .orElse("");
       stateDataBuilder.setCommitId(commitId);
