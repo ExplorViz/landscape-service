@@ -197,7 +197,7 @@ class CommitServiceTest {
 
     assertNotNull(commit);
     assertNotNull(tag);
-    assertEquals(2, count);
+    assertEquals(1, count);
     assertEquals(fileNameOne, it.next().getName());
     assertEquals(fileNameTwo, it.next().getName());
     assertTrue(correctRepoPath);
