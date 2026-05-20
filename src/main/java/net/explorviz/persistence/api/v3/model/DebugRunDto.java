@@ -1,5 +1,7 @@
 package net.explorviz.persistence.api.v3.model;
 
+import java.util.List;
+
 /**
  * Represents a debugging session together with basic metadata.
  *
@@ -8,6 +10,12 @@ package net.explorviz.persistence.api.v3.model;
  * @param numOfSnapshots Number of snapshots captured for this debug run
  * @param startTime Start time of the debug run
  * @param endTime End time of the debug run, if the run has finished
+ * @param debugSnapshots The snapshots recorded during this debug run
  */
 public record DebugRunDto(
-    String id, String status, Integer numOfSnapshots, Long startTime, Long endTime) {}
+    String id,
+    String status,
+    Integer numOfSnapshots,
+    Long startTime,
+    Long endTime,
+    List<DebugSnapshotDto> debugSnapshots) {}

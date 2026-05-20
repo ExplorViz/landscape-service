@@ -48,7 +48,16 @@ public class DebugResource {
                     data.getStatus(),
                     data.getNumOfSnapshots(),
                     data.getStartTime(),
-                    data.getEndTime()))
+                    data.getEndTime(),
+                    data.getDebugSnapshots().stream()
+                        .map(
+                            ds ->
+                                new DebugSnapshotDto(
+                                    ds.getId().toString(),
+                                    ds.getLineOfBreakpoint(),
+                                    ds.getNumOfVariables(),
+                                    ds.getTimestamp()))
+                        .toList()))
         .toList();
   }
 
