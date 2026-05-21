@@ -10,6 +10,7 @@ import java.util.List;
  * @param numOfSnapshots Number of snapshots captured for this debug run
  * @param startTime Start time of the debug run
  * @param endTime End time of the debug run, if the run has finished
+ * @param commitHash The commit hash associated with this debug run
  * @param debugSnapshots The snapshots recorded during this debug run
  */
 public record DebugRunDto(
@@ -18,4 +19,5 @@ public record DebugRunDto(
     Integer numOfSnapshots,
     Long startTime,
     Long endTime,
+    String commitHash,
     List<DebugSnapshotDto> debugSnapshots) {}

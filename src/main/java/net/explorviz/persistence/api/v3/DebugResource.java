@@ -49,6 +49,7 @@ public class DebugResource {
                     data.getNumOfSnapshots(),
                     data.getStartTime(),
                     data.getEndTime(),
+                    data.getCommit().getHash(),
                     data.getDebugSnapshots().stream()
                         .map(
                             ds ->

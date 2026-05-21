@@ -2,15 +2,15 @@ package net.explorviz.persistence.api.v3.model;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 
-public enum CommitComparison implements Comparison {
+public enum DebugSnapshotComparison implements Comparison {
   ADDED("ADDED"),
-  MODIFIED("MODIFIED"),
+  CHANGED("CHANGED"),
   REMOVED("REMOVED"),
   UNCHANGED("UNCHANGED");
 
   private final String name;
 
-  CommitComparison(final String name) {
+  DebugSnapshotComparison(final String name) {
     this.name = name;
   }
 

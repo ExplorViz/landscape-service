@@ -87,7 +87,7 @@ public class StructureResource {
       @RestPath final String secondCommitHash) {
     final Session session = sessionFactory.openSession();
 
-    return structureRepository.fetchCombinedFlatLandscape(
+    return structureRepository.fetchCombinedFlatLandscapeForStaticData(
         session,
         new StructureRepository.CombinedStaticDataRequest(
             landscapeToken, repositoryName, firstCommitHash, secondCommitHash));

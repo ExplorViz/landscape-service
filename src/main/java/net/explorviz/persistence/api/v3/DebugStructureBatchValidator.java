@@ -37,20 +37,37 @@ final class DebugStructureBatchValidator {
     if (!seenRepositoryNames.add(repositoryName)) {
       throw new BadRequestException("Duplicate repository name: " + repositoryName);
     }
+    validateCommitHash(repositoryName, selection.commitHash());
     validateDebugRunId(repositoryName, selection.debugRunId());
-    validateDebugSnapshotId(repositoryName, selection.debugSnapshotId());
+    validateDebugSnapshotIds(repositoryName, selection.debugSnapshotIds());
+  }
+
+  private static void validateDebugSnapshotIds(
+      final String repositoryName, final List<String> debugSnapshotIds) {
+
+    if (debugSnapshotIds == null || debugSnapshotIds.isEmpty() || debugSnapshotIds.size() > 2) {
+      throw new BadRequestException(
+          "Each repository must have one or two debug snapshot ids (repository: "
+              + repositoryName
+              + ")");
+    }
+    debugSnapshotIds.forEach((id) -> validateDebugSnapshotId(repositoryName, id));
+  }
+
+  private static void validateCommitHash(final String repositoryName, final String commitHash) {
+    requireNonBlankIdOrHash(repositoryName + "/Commit", commitHash);
   }
 
   private static void validateDebugRunId(final String repositoryName, final String debugRunId) {
-    requireNonBlankId(repositoryName + "/DebugRun", debugRunId);
+    requireNonBlankIdOrHash(repositoryName + "/DebugRun", debugRunId);
   }
 
   private static void validateDebugSnapshotId(
       final String repositoryName, final String debugSnapshotId) {
-    requireNonBlankId(repositoryName + "/DebugSnapshot", debugSnapshotId);
+    requireNonBlankIdOrHash(repositoryName + "/DebugSnapshot", debugSnapshotId);
   }
 
-  private static void requireNonBlankId(final String origin, final String id) {
+  private static void requireNonBlankIdOrHash(final String origin, final String id) {
     if (id == null || id.isBlank()) {
       throw new BadRequestException(origin + ": Id must be non-blank");
     }

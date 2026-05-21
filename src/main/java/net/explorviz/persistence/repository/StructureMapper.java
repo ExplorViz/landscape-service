@@ -79,7 +79,7 @@ public class StructureMapper {
     final Set<String> containedBuildingIds = new HashSet<>();
     final Set<String> containedChimneyIds = new HashSet<>();
 
-    final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null);
+    final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null, null);
 
     if (node.labels.contains("Application")) {
       handleApplication(
@@ -89,7 +89,9 @@ public class StructureMapper {
           node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
     } else if (node.labels.contains("FileRevision")) {
       handleFileRevision(
-          node, id, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
+          node, id, fqn, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
+    } else if (node.labels.contains("Variable")) {
+      handleVariable(node, id, parentCityId, base, context, containedChimneyIds);
     }
 
     return new TraversalResult(containedDistrictIds, containedBuildingIds, containedChimneyIds);
@@ -123,7 +125,7 @@ public class StructureMapper {
 
     final CityDto city =
         new CityDto(
-            new FlatBaseModel(id, name, "", context.origin(), null),
+            new FlatBaseModel(id, name, "", context.origin(), null, null),
             directDistrictIds,
             directBuildingIds,
             new ArrayList<>(containedDistrictIds),
@@ -169,14 +171,27 @@ public class StructureMapper {
   private void handleFileRevision(
       final NodeData node,
       final String id,
+      final String fqn,
       final String parentCityId,
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedBuildingIds,
       final Set<String> containedChimneyIds) {
     containedBuildingIds.add(id);
-    final List<String> chimneyIds = node.childrenIds.stream().map(String::valueOf).toList();
-    chimneyIds.stream().map(String::valueOf).forEach(containedChimneyIds::add);
+
+    final List<String> childChimneyIds = new ArrayList<>();
+
+    for (final Long childId : node.childrenIds) {
+      final NodeData child = context.nodesById().get(childId);
+      if (child != null) {
+        if (child.labels.contains("Variable")) {
+          childChimneyIds.add(String.valueOf(child.id));
+        }
+
+        final TraversalResult res = traverse(child, fqn, parentCityId, context);
+        containedChimneyIds.addAll(res.chimneyIds);
+      }
+    }
 
     final BuildingDto building =
         new BuildingDto(
@@ -185,8 +200,27 @@ public class StructureMapper {
             String.valueOf(node.parentId),
             (String) node.properties.get("language"),
             extractMetrics(node.properties),
-            chimneyIds);
+            childChimneyIds);
     context.buildings().put(id, building);
+  }
+
+  private void handleVariable(
+      final NodeData node,
+      final String id,
+      final String parentCityId,
+      final FlatBaseModel base,
+      final TraversalContext context,
+      final Set<String> containedChimneyIds) {
+    containedChimneyIds.add(id);
+
+    final ChimneyDto chimney =
+        new ChimneyDto(
+            base,
+            parentCityId,
+            String.valueOf(node.parentId),
+            (String) node.properties.get("value"),
+            extractMetrics(node.properties));
+    context.chimneys().put(id, chimney);
   }
 
   private NodeData parseNodeData(final Map<String, Object> row) {

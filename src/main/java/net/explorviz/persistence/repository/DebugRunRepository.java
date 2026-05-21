@@ -21,8 +21,10 @@ public class DebugRunRepository {
             MATCH (:Landscape {tokenId: $tokenId})
                   -[:CONTAINS]->(:Repository {name: $repoName})
                   -[:HAS_DEBUG_RUN]->(d:DebugRun)
-            OPTIONAL MATCH (d)-[r:CONTAINS]->(ds:DebugSnapshot)
-            RETURN d, r, ds;
+                  -[r2:RUNS_ON]->(c:Commit)
+            OPTIONAL MATCH (d)-[r1:CONTAINS]->(ds:DebugSnapshot)
+            OPTIONAL MATCH (d)-[r2:RUNS_ON]->(c:Commit)
+            RETURN d, r1, ds, r2, c;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
   }

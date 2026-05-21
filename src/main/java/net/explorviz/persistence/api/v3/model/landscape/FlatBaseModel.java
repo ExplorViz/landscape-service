@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.Objects;
 import net.explorviz.persistence.api.v3.model.CommitComparison;
+import net.explorviz.persistence.api.v3.model.DebugSnapshotComparison;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 
 /**
@@ -17,6 +18,8 @@ import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
  * @param originOfData Analysis method through which this object was discovered
  * @param commitComparison Only applicable to git analysis: Indicates this object's relationship
  *     regarding two selected commits
+ * @param debugSnapshotComparison Only applicable to variable inspection in debug mode: Indicates
+ *     this variable's value relationship regarding two selected snapshots
  */
 @RegisterForReflection
 public record FlatBaseModel(
@@ -24,7 +27,8 @@ public record FlatBaseModel(
     String name,
     @JsonInclude(Include.NON_NULL) String fqn,
     @JsonInclude(Include.NON_NULL) TypeOfAnalysis originOfData,
-    @JsonInclude(Include.NON_NULL) CommitComparison commitComparison) {
+    @JsonInclude(Include.NON_NULL) CommitComparison commitComparison,
+    @JsonInclude(Include.NON_NULL) DebugSnapshotComparison debugSnapshotComparison) {
 
   public FlatBaseModel {
     Objects.requireNonNull(id);
@@ -42,6 +46,10 @@ public record FlatBaseModel(
     }
 
     default CommitComparison getCommitComparison() {
+      return null;
+    }
+
+    default DebugSnapshotComparison getDebugSnapshotComparison() {
       return null;
     }
   }

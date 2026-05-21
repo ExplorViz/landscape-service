@@ -67,6 +67,10 @@ public class DebugRun implements Comparable<DebugRun> {
     return new TreeSet<>(debugSnapshots);
   }
 
+  public Commit getCommit() {
+    return commit;
+  }
+
   public void addDebugSnapshot(final DebugSnapshot debugSnapshot) {
     debugSnapshots.add(debugSnapshot);
   }
