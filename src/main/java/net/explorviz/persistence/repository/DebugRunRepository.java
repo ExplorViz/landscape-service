@@ -23,8 +23,8 @@ public class DebugRunRepository {
                   -[:HAS_DEBUG_RUN]->(d:DebugRun)
                   -[r2:RUNS_ON]->(c:Commit)
             OPTIONAL MATCH (d)-[r1:CONTAINS]->(ds:DebugSnapshot)
-            OPTIONAL MATCH (d)-[r2:RUNS_ON]->(c:Commit)
-            RETURN d, r1, ds, r2, c;
+            OPTIONAL MATCH (ds)-[r3:MARKED_IN]->(f:FileRevision)
+            RETURN d, r1, ds, r2, c, r3, f;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
   }
