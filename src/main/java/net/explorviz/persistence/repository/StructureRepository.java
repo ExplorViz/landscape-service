@@ -129,7 +129,7 @@ public class StructureRepository {
         MATCH (l:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(c:Commit {hash: $commitHash})
-        MATCH (c)<-[:RUNS_ON]-(dr:DebugRun: $runId )
+        MATCH (c)<-[:RUNS_ON]-(dr:DebugRun {id: $runId } )
         MATCH (dr)
           -[:CONTAINS]->(ds:DebugSnapShot {id: $snapshotId})
           -[:CAPTURES]->(v:Variable)
