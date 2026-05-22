@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * Request body for fetching static structure data for multiple repositories at once. Each entry
- * selects one debug snapshot within that repository.
+ * selects one or two debug snapshots within that repository.
  *
  * @param repositories Non-empty list of per-repository debug snapshot selections
  */

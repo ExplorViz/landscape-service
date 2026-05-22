@@ -17,11 +17,15 @@ import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.persistence.api.v3.model.landscape.FlatLandscapeDto;
+import org.jboss.logging.Logger;
+import org.jboss.logging.Logger.Level;
 import org.neo4j.ogm.model.Result;
 
 /** Mapper class for converting Neo4j results into FlatLandscapeDto. */
 @ApplicationScoped
 public class StructureMapper {
+
+  private static final Logger LOGGER = Logger.getLogger(StructureMapper.class);
 
   public FlatLandscapeDto buildFlatLandscape(
       final String landscapeToken,
@@ -48,6 +52,9 @@ public class StructureMapper {
       final NodeData appNode = nodesById.get(appId);
       traverse(appNode, repositoryName != null ? repositoryName : "", null, context);
     }
+
+    LOGGER.log(Level.WARN, "nodes by id Data: " + nodesById.toString());
+    LOGGER.log(Level.WARN, "application Data: " + applicationIds.toString());
 
     return new FlatLandscapeDto(
         landscapeToken,

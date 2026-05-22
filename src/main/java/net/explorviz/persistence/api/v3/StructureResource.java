@@ -116,7 +116,7 @@ public class StructureResource {
 
   /**
    * Retrieves static structure for multiple repositories in one request. Each list entry names a
-   * repository and supplies a debug run and a debug snapshot id.
+   * repository and supplies a debug run and one or two debug snapshot ids.
    */
   @POST
   @Consumes(MediaType.APPLICATION_JSON)

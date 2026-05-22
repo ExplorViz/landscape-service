@@ -129,9 +129,13 @@ public class StructureRepository {
         MATCH (l:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(c:Commit {hash: $commitHash})
-        MATCH (c)<-[:RUNS_ON]-(dr:DebugRun {id: $runId } )
-        MATCH (dr)
-          -[:CONTAINS]->(ds:DebugSnapShot {id: $snapshotId})
+        MATCH (c)<-[:RUNS_ON]-(dr:DebugRun)
+        WHERE id(dr) = toInteger($runId)
+
+        MATCH (dr)-[:CONTAINS]->(ds:DebugSnapshot)
+        WHERE id(ds) = toInteger($snapshotId)
+
+        MATCH (ds)
           -[:CAPTURES]->(v:Variable)
           -[:MARKED_IN]->(f:FileRevision)
 
@@ -250,9 +254,10 @@ public class StructureRepository {
   }
 
   /**
-   * Loads structure for several repositories (each with either one snapshot or a pair for
-   * comparison, but not necessarily from the same debug run and returns their union as one flat
-   * landscape. Intended for visualizing multiple repositories together.
+   * Loads structure for several repositories. Each selection contains either one snapshot or a pair
+   * of snapshots from the same(!) debug run for comparison, since runtime object identities are not
+   * stable across different debug runs. The resulting structures are returned as one combined flat
+   * landscape intended for visualizing multiple repositories together.
    */
   public FlatLandscapeDto fetchFlatLandscapeForDebugBatch(
       final Session session,

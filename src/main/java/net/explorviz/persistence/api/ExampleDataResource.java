@@ -80,6 +80,9 @@ public class ExampleDataResource {
         MERGE (c1:Commit {hash: "commit1"})
         MERGE (c2:Commit {hash: "commit2"})
 
+        MERGE (r1)-[:CONTAINS]->(c1)
+        MERGE (r1)-[:CONTAINS]->(c2)
+
         MERGE (dr1)-[:RUNS_ON]->(c1)
         MERGE (dr2)-[:RUNS_ON]->(c1)
         MERGE (dr3)-[:RUNS_ON]->(c2)
