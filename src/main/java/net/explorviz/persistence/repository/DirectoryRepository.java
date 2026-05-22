@@ -46,6 +46,56 @@ public class DirectoryRepository {
     return resultIterator.next();
   }
 
+  public Long getRepositoryRootDirectoryId(
+      final Session session, final String landscapeTokenId, final String repoName) {
+    return session.queryForObject(
+        Long.class,
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+          -[:HAS_ROOT]->(root:Directory {name: $repoName})
+        RETURN id(root)
+        LIMIT 1
+        """,
+        Map.of("tokenId", landscapeTokenId, "repoName", repoName));
+  }
+
+  public Long mergeDirectoryPathFromRoot(
+      final Session session,
+      final Long rootDirectoryId,
+      final String[] directorySegments,
+      final String directoryKey,
+      final Map<String, Long> directoryLeafCache) {
+    final Long cached = directoryLeafCache.get(directoryKey);
+    if (cached != null) {
+      return cached;
+    }
+
+    Long parentId = rootDirectoryId;
+    for (int i = 1; i < directorySegments.length; i++) {
+      parentId = mergeChildDirectory(session, parentId, directorySegments[i]);
+    }
+    directoryLeafCache.put(directoryKey, parentId);
+    return parentId;
+  }
+
+  private Long mergeChildDirectory(
+      final Session session, final Long parentId, final String directoryName) {
+    final Result result =
+        session.query(
+            """
+            MATCH (parent:Directory) WHERE id(parent) = $parentId
+            MERGE (parent)-[:CONTAINS]->(child:Directory {name: $directoryName})
+            RETURN id(child) AS childId
+            """,
+            Map.of("parentId", parentId, "directoryName", directoryName));
+
+    final Iterator<Map<String, Object>> rows = result.queryResults().iterator();
+    if (!rows.hasNext()) {
+      throw new NoSuchElementException("Failed to merge directory '" + directoryName + "'");
+    }
+    return (Long) rows.next().get("childId");
+  }
+
   public Directory createDirectoryStructureAndReturnLastDirStaticData(
       final Session session,
       final String[] filePath,
@@ -68,7 +118,9 @@ public class DirectoryRepository {
       lastDir.addSubdirectory(newDir);
       lastDir = newDir;
     }
-    session.save(existingDir);
+    if (remainingPath.length > 0) {
+      session.save(existingDir);
+    }
 
     return lastDir;
   }

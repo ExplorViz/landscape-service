@@ -2,6 +2,8 @@ package net.explorviz.persistence.util;
 
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.UndeclaredThrowableException;
 import net.explorviz.persistence.proto.CommitData;
 import net.explorviz.persistence.proto.ContributorData;
 import net.explorviz.persistence.proto.FileData;
@@ -24,21 +26,22 @@ public final class GrpcExceptionMapper {
    */
   public static StatusRuntimeException mapToGrpcException(
       final Exception e, final String contextInfo) {
-    if (e instanceof StatusRuntimeException) {
-      return (StatusRuntimeException) e;
+    final Exception unwrapped = unwrapException(e);
+    if (unwrapped instanceof StatusRuntimeException statusRuntimeException) {
+      return statusRuntimeException;
     }
 
-    if (e instanceof IllegalArgumentException) {
+    if (unwrapped instanceof IllegalArgumentException) {
       return Status.INVALID_ARGUMENT
-          .withCause(e)
-          .withDescription(e.getMessage())
+          .withCause(unwrapped)
+          .withDescription(unwrapped.getMessage())
           .asRuntimeException();
     }
 
     return Status.CANCELLED
-        .withCause(e)
+        .withCause(unwrapped)
         .withDescription("Something went wrong: " + contextInfo + " All changes were rolled back.")
-        .augmentDescription("Exception details: " + e.getMessage())
+        .augmentDescription("Exception details: " + describeException(unwrapped))
         .asRuntimeException();
   }
 
@@ -75,8 +78,11 @@ public final class GrpcExceptionMapper {
   public static StatusRuntimeException mapToGrpcException(
       final Exception e, final ContributorData contributorData) {
     final String contextInfo =
-        "Regarding the call to persistContributor for the contributor with name '"
+        "Regarding the call to persistContributor for the contributor"
+            + "with name '"
             + contributorData.getGitUsername()
+            + "' and email '"
+            + contributorData.getEmail()
             + "'.";
     return mapToGrpcException(e, contextInfo);
   }
@@ -84,9 +90,35 @@ public final class GrpcExceptionMapper {
   public static StatusRuntimeException mapToGrpcException(
       final Exception e, final TrackableResourceEvent trackableResourceEvent) {
     final String contextInfo =
-        "Regarding the call to persistTrackableResourceEvent for the event with title '"
+        "Regarding the call to persistTrackableResourceEvent for "
+            + "the event with title '"
             + trackableResourceEvent.getTitle()
+            + "' and resource id '"
+            + trackableResourceEvent.getResourceId()
             + "'.";
     return mapToGrpcException(e, contextInfo);
+  }
+
+  private static Exception unwrapException(final Exception e) {
+    Exception current = e;
+    while (current.getCause() instanceof Exception cause
+        && (current instanceof UndeclaredThrowableException
+            || current instanceof InvocationTargetException
+            || current.getMessage() == null
+            || current.getMessage().isBlank())) {
+      current = cause;
+    }
+    return current;
+  }
+
+  private static String describeException(final Exception e) {
+    if (e.getMessage() != null && !e.getMessage().isBlank()) {
+      return e.getMessage();
+    }
+    if (e instanceof StatusRuntimeException statusRuntimeException
+        && statusRuntimeException.getStatus().getDescription() != null) {
+      return statusRuntimeException.getStatus().getDescription();
+    }
+    return e.getClass().getName();
   }
 }

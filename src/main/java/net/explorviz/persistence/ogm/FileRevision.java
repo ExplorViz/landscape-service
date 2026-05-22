@@ -188,7 +188,20 @@ public class FileRevision implements Comparable<FileRevision> {
 
   @Override
   public int compareTo(final FileRevision other) {
-    return name.compareTo(other.name);
+    final int nameCompare = name.compareTo(other.name);
+    if (nameCompare != 0) {
+      return nameCompare;
+    }
+    if (hash == null && other.hash == null) {
+      return 0;
+    }
+    if (hash == null) {
+      return -1;
+    }
+    if (other.hash == null) {
+      return 1;
+    }
+    return hash.compareTo(other.hash);
   }
 
   @Override

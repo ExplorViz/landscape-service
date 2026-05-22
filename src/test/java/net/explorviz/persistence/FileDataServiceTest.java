@@ -1140,4 +1140,102 @@ class FileDataServiceTest {
             .files(2)
             .build());
   }
+
+  @Test
+  void testPersistFileWithSuperclassAcrossMultipleCommits() {
+    String commitHashOne = "commit1";
+    String commitHashTwo = "commit2";
+    String parentName = "Parent";
+    String parentPath = "src/" + parentName + ".java";
+    String parentHashOne = "parent-hash-1";
+    String parentHashTwo = "parent-hash-2";
+    String childName = "Child";
+    String childPath = "src/" + childName + ".java";
+    String childHash = "child-hash";
+    String parentFqn = parentPath + "::" + parentName;
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(commitHashOne)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+                .addAddedFiles(
+                    FileIdentifier.newBuilder()
+                        .setFileHash(parentHashOne)
+                        .setFilePath(parentPath)
+                        .build())
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    fileDataService
+        .persistFile(
+            FileData.newBuilder()
+                .setLandscapeToken(landscapeToken)
+                .setRepositoryName(repoName)
+                .setFileHash(parentHashOne)
+                .setFilePath(parentPath)
+                .setLanguage(Language.JAVA)
+                .addClasses(
+                    ClassData.newBuilder().setName(parentName).setType(ClassType.CLASS).build())
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(commitHashTwo)
+                .setParentCommitId(commitHashOne)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(2).setNanos(100).build())
+                .addModifiedFiles(
+                    FileIdentifier.newBuilder()
+                        .setFileHash(parentHashTwo)
+                        .setFilePath(parentPath)
+                        .build())
+                .addAddedFiles(
+                    FileIdentifier.newBuilder()
+                        .setFileHash(childHash)
+                        .setFilePath(childPath)
+                        .build())
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    fileDataService
+        .persistFile(
+            FileData.newBuilder()
+                .setLandscapeToken(landscapeToken)
+                .setRepositoryName(repoName)
+                .setFileHash(childHash)
+                .setFilePath(childPath)
+                .setLanguage(Language.JAVA)
+                .addClasses(
+                    ClassData.newBuilder()
+                        .setName(childName)
+                        .setType(ClassType.CLASS)
+                        .addSuperclasses(parentFqn)
+                        .build())
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Boolean inheritsFromAnalyzedParent =
+        session.queryForObject(
+            Boolean.class,
+            """
+            MATCH (:FileRevision {hash: $childHash})-[:CONTAINS]->(:Clazz {name: $childName})
+              -[:INHERITS]->(:Clazz {name: $parentName})
+            RETURN true;
+            """,
+            Map.of("childHash", childHash, "childName", childName, "parentName", parentName));
+
+    assertTrue(inheritsFromAnalyzedParent);
+  }
 }

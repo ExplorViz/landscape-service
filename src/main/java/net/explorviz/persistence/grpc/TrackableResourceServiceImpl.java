@@ -41,13 +41,14 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   @Blocking
   public Uni<Empty> persistTrackableResourceEvent(final TrackableResourceEvent request) {
     final Session session = sessionFactory.openSession();
-
     try (Transaction tx = session.beginTransaction()) {
       saveTrackableResourceEvent(session, request);
       tx.commit();
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GGrpcExceptionMapper
+    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
+    } finally {
+      session.clear();
     }
   }
 

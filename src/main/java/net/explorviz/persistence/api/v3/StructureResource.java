@@ -119,7 +119,7 @@ public class StructureResource {
       @RestPath final String landscapeToken, @RestPath final Long id) {
     final Session session = sessionFactory.openSession();
 
-    return Optional.ofNullable(session.load(FileRevision.class, id))
+    return Optional.ofNullable(session.load(FileRevision.class, id, 3))
         .map(fileDetailedMapper::map)
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }

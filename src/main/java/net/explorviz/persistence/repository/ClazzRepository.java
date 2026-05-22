@@ -164,16 +164,18 @@ public class ClazzRepository {
       final String tokenId,
       final String repoName,
       final String fileHash,
+      final String[] pathSegments,
       final String clazzName) {
     return Optional.ofNullable(
         session.queryForObject(
             Clazz.class,
             """
-            MATCH (:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(:Repository {name: $repoName})
-              -[:CONTAINS]->(:Commit)
-              -[:CONTAINS]->(f:FileRevision {hash: $fileHash})
-              -[:CONTAINS]->(cl:Clazz {name: $clazzName})
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:HAS_ROOT]->(root:Directory)
+            MATCH p = (root)-[:CONTAINS]->*(file:FileRevision {hash: $fileHash})
+            WHERE all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $pathSegments[j-1])
+              AND length(p) = size($pathSegments)
+            MATCH (file)-[:CONTAINS]->(cl:Clazz {name: $clazzName})
             RETURN cl
             LIMIT 1;
             """,
@@ -184,6 +186,8 @@ public class ClazzRepository {
                 repoName,
                 "fileHash",
                 fileHash,
+                "pathSegments",
+                pathSegments,
                 "clazzName",
                 clazzName)));
   }
@@ -201,24 +205,21 @@ public class ClazzRepository {
               + String.join("::", splitSuperFqn));
     }
     final String superClassName = splitSuperFqn[1];
-    final String[] filePath = splitSuperFqn[0].split("/");
+    final String[] pathSegments = splitSuperFqn[0].split("/");
 
     return Optional.ofNullable(
         session.queryForObject(
             Clazz.class,
             """
-            MATCH (:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(r:Repository {name: $repoName})
-              -[:CONTAINS]->(:Commit)
-              -[:CONTAINS]->(file:FileRevision {name: $fileName})
-              -[:CONTAINS]->(cl:Clazz {name: $clazzName})
-            MATCH (r)-[:HAS_ROOT]->(root:Directory {name: $repoName})
-            WITH cl, root, $pathSegments AS pathSegments
-            MATCH p = (root)-[:CONTAINS]->(:Directory)
-                      -[:CONTAINS]->*(file)
-            WHERE
-            all(j IN range(1, length(p)-1) WHERE nodes(p)[j].name = pathSegments[j-1])
-              AND size(nodes(p))-1 = size(pathSegments)
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:HAS_ROOT]->(root:Directory)
+            MATCH p = (root)-[:CONTAINS]->*(file:FileRevision)
+            WHERE all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $pathSegments[j-1])
+              AND length(p) = size($pathSegments)
+            MATCH (file)-[:CONTAINS]->(cl:Clazz {name: $clazzName})
+            WITH cl, file
+            ORDER BY file.hasFileData DESC, id(file) DESC
+            LIMIT 1
             RETURN cl;
             """,
             Map.of(
@@ -228,10 +229,8 @@ public class ClazzRepository {
                 repoName,
                 "clazzName",
                 superClassName,
-                "fileName",
-                filePath[filePath.length - 1],
                 "pathSegments",
-                filePath)));
+                pathSegments)));
   }
 
   public Optional<Clazz> findClassFromInheritingClass(

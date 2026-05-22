@@ -35,13 +35,13 @@ public class Commit {
   private final Set<FileRevision> fileRevisions = new HashSet<>();
 
   @Relationship(type = "ADDED", direction = Relationship.Direction.OUTGOING)
-  private Set<FileRevision> addedFileRevisions = new HashSet<>();
+  private final Set<FileRevision> addedFileRevisions = new HashSet<>();
 
   @Relationship(type = "DELETED", direction = Relationship.Direction.OUTGOING)
-  private Set<FileRevision> deletedFileRevisions = new HashSet<>();
+  private final Set<FileRevision> deletedFileRevisions = new HashSet<>();
 
   @Relationship(type = "MODIFIED", direction = Relationship.Direction.OUTGOING)
-  private Set<FileRevision> modifiedFileRevisions = new HashSet<>();
+  private final Set<FileRevision> modifiedFileRevisions = new HashSet<>();
 
   @Relationship(type = "IS_TAGGED_WITH", direction = Relationship.Direction.OUTGOING)
   private final Set<Tag> tags = new HashSet<>();
@@ -58,21 +58,27 @@ public class Commit {
   }
 
   public void addAddedFileRevision(final FileRevision fileRevision) {
-    final Set<FileRevision> newAddedFileRevisions = new HashSet<>(addedFileRevisions);
-    newAddedFileRevisions.add(fileRevision);
-    addedFileRevisions = Set.copyOf(newAddedFileRevisions);
+    addedFileRevisions.add(fileRevision);
+  }
+
+  public void addAddedFileRevisions(final Iterable<FileRevision> fileRevisions) {
+    for (final FileRevision fileRevision : fileRevisions) {
+      addedFileRevisions.add(fileRevision);
+    }
   }
 
   public void addDeletedFileRevision(final FileRevision fileRevision) {
-    final Set<FileRevision> newDeletedFileRevisions = new HashSet<>(deletedFileRevisions);
-    newDeletedFileRevisions.add(fileRevision);
-    deletedFileRevisions = Set.copyOf(newDeletedFileRevisions);
+    deletedFileRevisions.add(fileRevision);
   }
 
   public void addModifiedFileRevision(final FileRevision fileRevision) {
-    final Set<FileRevision> newModifiedFileRevisions = new HashSet<>(modifiedFileRevisions);
-    newModifiedFileRevisions.add(fileRevision);
-    modifiedFileRevisions = Set.copyOf(newModifiedFileRevisions);
+    modifiedFileRevisions.add(fileRevision);
+  }
+
+  public void addModifiedFileRevisions(final Iterable<FileRevision> fileRevisions) {
+    for (final FileRevision fileRevision : fileRevisions) {
+      modifiedFileRevisions.add(fileRevision);
+    }
   }
 
   public String getHash() {

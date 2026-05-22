@@ -48,7 +48,6 @@ public class StateDataServiceImpl implements StateDataService {
   @Override
   public Uni<StateData> getStateData(final StateDataRequest request) {
     final Session session = sessionFactory.openSession();
-
     try (Transaction tx = session.beginTransaction()) {
       saveStateData(session, request);
       tx.commit();
@@ -69,6 +68,8 @@ public class StateDataServiceImpl implements StateDataService {
       return Uni.createFrom().item(stateDataBuilder.build());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
+    } finally {
+      session.clear();
     }
   }
 

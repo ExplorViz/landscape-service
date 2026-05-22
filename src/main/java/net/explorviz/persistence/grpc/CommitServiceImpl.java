@@ -7,13 +7,13 @@ import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.persistence.ogm.Branch;
 import net.explorviz.persistence.ogm.Commit;
 import net.explorviz.persistence.ogm.Contributor;
-import net.explorviz.persistence.ogm.FileRevision;
 import net.explorviz.persistence.ogm.Repository;
 import net.explorviz.persistence.ogm.Tag;
 import net.explorviz.persistence.proto.CommitData;
@@ -50,13 +50,14 @@ public class CommitServiceImpl implements CommitService {
   @Override
   public Uni<Empty> persistCommit(final CommitData request) {
     final Session session = sessionFactory.openSession();
-
     try (Transaction tx = session.beginTransaction()) {
       saveCommitData(session, request);
       tx.commit();
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GGrpcExceptionMapper
+    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
+    } finally {
+      session.clear();
     }
   }
 
@@ -96,59 +97,44 @@ public class CommitServiceImpl implements CommitService {
         Instant.ofEpochSecond(
             commitData.getAuthorDate().getSeconds(), commitData.getAuthorDate().getNanos()));
     repo.addCommit(commit);
+    session.save(List.of(repo, branch, commit));
 
-    commitData
-        .getAddedFilesList()
-        .forEach(
-            f -> {
-              final FileRevision r =
-                  fileRevisionRepository.createFileStructureFromStaticData(
-                      session,
-                      f,
-                      commitData.getRepositoryName(),
-                      commitData.getLandscapeToken(),
-                      commit);
-              commit.addAddedFileRevision(r);
-            });
+    fileRevisionRepository.persistCommitFilesInBatches(
+        session,
+        commitData.getAddedFilesList(),
+        commitData.getRepositoryName(),
+        commitData.getLandscapeToken(),
+        commitData.getCommitId(),
+        FileRevisionRepository.CommitFileLinkType.ADDED);
 
-    commitData
-        .getModifiedFilesList()
-        .forEach(
-            f -> {
-              final FileRevision r =
-                  fileRevisionRepository.createFileStructureFromStaticData(
-                      session,
-                      f,
-                      commitData.getRepositoryName(),
-                      commitData.getLandscapeToken(),
-                      commit);
-              commit.addModifiedFileRevision(r);
-            });
+    fileRevisionRepository.persistCommitFilesInBatches(
+        session,
+        commitData.getModifiedFilesList(),
+        commitData.getRepositoryName(),
+        commitData.getLandscapeToken(),
+        commitData.getCommitId(),
+        FileRevisionRepository.CommitFileLinkType.MODIFIED);
 
     if (!commitData.getParentCommitId().isEmpty()
         && !NO_PARENT_ID.equals(commitData.getParentCommitId())) {
-      final Map<String, FileRevision> parentFiles =
-          fileRevisionRepository.findStaticFilesWithFqnForRepositoryAndCommitAndLandscapeToken(
-              session,
-              commitData.getRepositoryName(),
-              commitData.getParentCommitId(),
-              commitData.getLandscapeToken());
-
-      final List<String> modifiedPaths =
+      final Set<String> modifiedPaths =
           commitData.getModifiedFilesList().stream()
               .map(FileIdentifier::getFilePath)
-              .collect(Collectors.toList());
-      final List<String> deletedPaths =
+              .collect(Collectors.toCollection(HashSet::new));
+      final Set<String> deletedPaths =
           commitData.getDeletedFilesList().stream()
               .map(FileIdentifier::getFilePath)
-              .collect(Collectors.toList());
+              .collect(Collectors.toCollection(HashSet::new));
 
-      parentFiles.forEach(
-          (path, fileRevision) -> {
-            if (!modifiedPaths.contains(path) && !deletedPaths.contains(path)) {
-              commit.addFileRevision(fileRevision);
-            }
-          });
+      fileRevisionRepository.copyUnchangedFilesFromParentCommit(
+          session,
+          new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
+              commitData.getLandscapeToken(),
+              commitData.getRepositoryName(),
+              commitData.getParentCommitId(),
+              commitData.getCommitId(),
+              modifiedPaths,
+              deletedPaths));
     }
 
     commitData

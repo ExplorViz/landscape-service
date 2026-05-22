@@ -35,6 +35,10 @@ public class FileDataServiceImpl implements FileDataService {
   @Blocking
   @Override
   public Uni<Empty> persistFile(final FileData request) {
+    return persistSingleFile(request);
+  }
+
+  private Uni<Empty> persistSingleFile(final FileData request) {
     final Session session = sessionFactory.openSession();
 
     try (Transaction tx = session.beginTransaction()) {
@@ -81,12 +85,15 @@ public class FileDataServiceImpl implements FileDataService {
 
   private Clazz createClazz(
       final Session session, final ClassData classData, final FileData fileData) {
+    final String[] pathSegments = fileData.getFilePath().split("/");
+
     return clazzRepository
         .findClassByLandscapeTokenAndRepositoryAndFileHashAndClazzName(
             session,
             fileData.getLandscapeToken(),
             fileData.getRepositoryName(),
             fileData.getFileHash(),
+            pathSegments,
             classData.getName())
         .orElseGet(
             () -> {
