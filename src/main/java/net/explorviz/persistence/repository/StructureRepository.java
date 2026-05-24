@@ -122,7 +122,7 @@ public class StructureRepository {
         request.landscapeToken(), result, TypeOfAnalysis.STATIC, request.repositoryName());
   }
 
-  public FlatLandscapeDto fetchFlatLandscapeForDebugData(
+  public FlatLandscapeDto fetchFlatLandscapeForStaticDebugData(
       final Session session, final DebugDataRequest request) {
     final String query =
         """
@@ -179,7 +179,8 @@ public class StructureRepository {
                 request.debugRunId(),
                 "snapshotId",
                 request.debugSnapshotId()));
-    return mapper.buildFlatLandscape(request.landscapeToken(), result, TypeOfAnalysis.DEBUG, null);
+    return mapper.buildFlatLandscape(
+        request.landscapeToken(), result, TypeOfAnalysis.DEBUG_STATIC, null);
   }
 
   public FlatLandscapeDto fetchCombinedFlatLandscapeForStaticData(
@@ -199,11 +200,11 @@ public class StructureRepository {
     return merge(request.landscapeToken(), first, second, TypeOfAnalysis.STATIC);
   }
 
-  public FlatLandscapeDto fetchCombinedFlatLandscapeForDebugData(
+  public FlatLandscapeDto fetchCombinedFlatLandscapeForStaticDebugData(
       final Session session, final CombinedDebugDataRequest request) {
 
     final FlatLandscapeDto first =
-        fetchFlatLandscapeForDebugData(
+        fetchFlatLandscapeForStaticDebugData(
             session,
             new DebugDataRequest(
                 request.landscapeToken(),
@@ -212,7 +213,7 @@ public class StructureRepository {
                 request.debugRunId(),
                 request.firstSnapshotId()));
     final FlatLandscapeDto second =
-        fetchFlatLandscapeForDebugData(
+        fetchFlatLandscapeForStaticDebugData(
             session,
             new DebugDataRequest(
                 request.landscapeToken(),
@@ -221,7 +222,7 @@ public class StructureRepository {
                 request.debugRunId(),
                 request.secondSnapshotId()));
 
-    return merge(request.landscapeToken(), first, second, TypeOfAnalysis.DEBUG);
+    return merge(request.landscapeToken(), first, second, TypeOfAnalysis.DEBUG_STATIC);
   }
 
   /**
@@ -275,13 +276,14 @@ public class StructureRepository {
       if (debugSnapshotIds.size() == 1) {
 
         parts.add(
-            fetchFlatLandscapeForDebugData(
+            fetchFlatLandscapeForStaticDebugData(
                 session,
                 new DebugDataRequest(
                     landscapeToken, repoName, commitHash, debugRunId, firstSnapshotId)));
       } else {
+        final String secondSnapshotId = debugSnapshotIds.getLast();
         parts.add(
-            fetchCombinedFlatLandscapeForDebugData(
+            fetchCombinedFlatLandscapeForStaticDebugData(
                 session,
                 new CombinedDebugDataRequest(
                     landscapeToken,
@@ -289,7 +291,7 @@ public class StructureRepository {
                     commitHash,
                     debugRunId,
                     firstSnapshotId,
-                    debugSnapshotIds.getLast())));
+                    secondSnapshotId)));
       }
     }
     return unionFlatLandscapes(landscapeToken, parts);
@@ -399,7 +401,7 @@ public class StructureRepository {
   private <T> Comparison determineComparison(
       final T firstNode, final T secondNode, final TypeOfAnalysis origin) {
 
-    if (origin == TypeOfAnalysis.DEBUG) {
+    if (origin == TypeOfAnalysis.DEBUG_STATIC) {
       return determineDebugComparison(firstNode, secondNode);
     }
 

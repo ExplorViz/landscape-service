@@ -168,7 +168,7 @@ public class StructureResource {
       @RestPath final String debugSnapshotId) {
     final Session session = sessionFactory.openSession();
 
-    return structureRepository.fetchFlatLandscapeForDebugData(
+    return structureRepository.fetchFlatLandscapeForStaticDebugData(
         session,
         new StructureRepository.DebugDataRequest(
             landscapeToken, repositoryName, commitHash, debugRunId, debugSnapshotId));
