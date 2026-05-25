@@ -93,7 +93,15 @@ public class StructureMapper {
           node, id, name, context, containedDistrictIds, containedBuildingIds, containedChimneyIds);
     } else if (node.labels.contains("Directory")) {
       handleDirectory(
-          node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
+          node,
+          id,
+          fqn,
+          parentCityId,
+          base,
+          context,
+          containedDistrictIds,
+          containedBuildingIds,
+          containedChimneyIds);
     } else if (node.labels.contains("FileRevision")) {
       handleFileRevision(
           node, id, fqn, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
@@ -149,7 +157,8 @@ public class StructureMapper {
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedDistrictIds,
-      final Set<String> containedBuildingIds) {
+      final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyIds) {
     final List<String> childDistrictIds = new ArrayList<>();
     final List<String> childBuildingIds = new ArrayList<>();
 
@@ -166,6 +175,7 @@ public class StructureMapper {
         final TraversalResult res = traverse(child, fqn, parentCityId, context);
         containedDistrictIds.addAll(res.districtIds);
         containedBuildingIds.addAll(res.buildingIds);
+        containedChimneyIds.addAll(res.chimneyIds);
       }
     }
 
