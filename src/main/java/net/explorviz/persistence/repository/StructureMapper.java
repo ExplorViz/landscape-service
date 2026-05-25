@@ -236,6 +236,7 @@ public class StructureMapper {
             parentCityId,
             String.valueOf(node.parentId),
             (String) node.properties.get("value"),
+            (String) node.properties.get("type"),
             extractMetrics(node.properties));
     context.chimneys().put(id, chimney);
   }

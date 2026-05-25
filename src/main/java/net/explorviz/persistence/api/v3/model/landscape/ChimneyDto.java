@@ -28,6 +28,7 @@ public record ChimneyDto(
     String parentCityId,
     @JsonInclude(Include.NON_NULL) String parentBuildingId,
     @JsonInclude(Include.NON_NULL) String value,
+    @JsonInclude(Include.NON_NULL) String type,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
 
   public ChimneyDto {
@@ -38,7 +39,10 @@ public record ChimneyDto(
   /** Must be implemented by any object which can be represented as a chimney during flattening. */
   public interface ChimneyConvertible extends FlatConvertible {
     default String getValue() {
+      return null;
+    }
 
+    default String getType() {
       return null;
     }
 

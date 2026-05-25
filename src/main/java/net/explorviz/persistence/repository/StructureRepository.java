@@ -602,6 +602,7 @@ public class StructureRepository {
         idMap.get(parentCityId),
         parentBuildingId != null ? idMap.get(parentBuildingId) : null,
         d != null ? d.value() : other.value(),
+        d != null ? d.type() : other.type(),
         metrics);
   }
 
