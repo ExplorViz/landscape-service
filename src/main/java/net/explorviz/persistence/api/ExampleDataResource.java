@@ -130,80 +130,99 @@ public class ExampleDataResource {
         MERGE (dr3)-[:CONTAINS]->(ds32)
         MERGE (dr3)-[:CONTAINS]->(ds33)
 
-        MERGE (var11:Variable {variableKey: $repoName + "-debug-run-1-snapshot-1-var-x"})
+        MERGE (var11:Variable {variableKey: $repoName + "-debug-run-1-snapshot-1-var-x-object-a"})
         SET var11.name = "x",
            var11.value = "42",
-           var11.type = "int"
+           var11.type = "int",
+           var11.instanceId = "object-a"
 
-        MERGE (var12:Variable {variableKey: $repoName + "-debug-run-1-snapshot-2-var-y"})
+        MERGE (var11b:Variable {variableKey: $repoName + "-debug-run-1-snapshot-1-var-x-object-b"})
+        SET var11b.name = "x",
+           var11b.value = "84",
+           var11b.type = "int",
+           var11b.instanceId = "object-b"
+
+        MERGE (var12:Variable {variableKey: $repoName + "-debug-run-1-snapshot-2-var-y-object-a"})
         SET var12.name = "y",
            var12.value = "999",
-           var12.type = "int"
+           var12.type = "int",
+           var12.instanceId = "object-a"
 
-        MERGE (var13:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-isZ"})
+        MERGE (var13:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-isZ-object-a"})
         SET var13.name = "isZ",
            var13.value = "true",
-           var13.type = "boolean"
+           var13.type = "boolean",
+           var13.instanceId = "object-a"
 
-        MERGE (var12valueChanged:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-y-changed"})
+        MERGE (var12valueChanged:Variable {variableKey: $repoName + "-debug-run-1-snapshot-3-var-y-object-a-changed"})
         SET var12valueChanged.name = "y",
            var12valueChanged.value = "333",
-           var12valueChanged.type = "int"
+           var12valueChanged.type = "int",
+           var12valueChanged.instanceId = "object-a"
 
         MERGE (ds11)-[:CAPTURES]->(var11)
+        MERGE (ds11)-[:CAPTURES]->(var11b)
         MERGE (ds12)-[:CAPTURES]->(var11)
         MERGE (ds12)-[:CAPTURES]->(var12)
         MERGE (ds13)-[:CAPTURES]->(var13)
         MERGE (ds13)-[:CAPTURES]->(var12valueChanged)
 
-        MERGE (var211:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-x"})
+        MERGE (var211:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-x-object-a"})
         SET var211.name = "x",
            var211.value = "42",
-           var211.type = "int"
+           var211.type = "int",
+           var211.instanceId = "object-a"
 
-        MERGE (var212:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-y"})
+        MERGE (var212:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-y-object-a"})
         SET var212.name = "y",
            var212.value = "999",
-           var212.type = "int"
+           var212.type = "int",
+           var212.instanceId = "object-a"
 
-        MERGE (var213:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-isZ"})
+        MERGE (var213:Variable {variableKey: $repoName + "-debug-run-2-snapshot-1-var-isZ-object-b"})
         SET var213.name = "isZ",
            var213.value = "true",
-           var213.type = "boolean"
+           var213.type = "boolean",
+           var213.instanceId = "object-b"
 
         MERGE (ds21)-[:CAPTURES]->(var211)
         MERGE (ds21)-[:CAPTURES]->(var212)
         MERGE (ds21)-[:CAPTURES]->(var213)
 
-        MERGE (var221:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-x"})
+        MERGE (var221:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-x-object-a"})
         SET var221.name = "x",
            var221.value = "42",
-           var221.type = "int"
+           var221.type = "int",
+           var221.instanceId = "object-a"
 
-        MERGE (var222:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-y"})
+        MERGE (var222:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-y-object-b"})
         SET var222.name = "y",
            var222.value = "999",
-           var222.type = "int"
+           var222.type = "int",
+           var222.instanceId = "object-b"
 
-        MERGE (var223:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-isZ"})
+        MERGE (var223:Variable {variableKey: $repoName + "-debug-run-2-snapshot-2-var-isZ-object-c"})
         SET var223.name = "isZ",
            var223.value = "true",
-           var223.type = "boolean"
+           var223.type = "boolean",
+           var223.instanceId = "object-c"
 
         MERGE (ds22)-[:CAPTURES]->(var221)
         MERGE (ds22)-[:CAPTURES]->(var222)
         MERGE (ds22)-[:CAPTURES]->(var223)
 
-        MERGE (var31:Variable {variableKey: $repoName + "-debug-run-3-var-x"})
+        MERGE (var31:Variable {variableKey: $repoName + "-debug-run-3-var-x-object-a"})
         SET var31.name = "x",
            var31.value = "42",
-           var31.type = "int"
+           var31.type = "int",
+           var31.instanceId = "object-a"
 
         MERGE (ds31)-[:CAPTURES]->(var31)
         MERGE (ds32)-[:CAPTURES]->(var31)
         MERGE (ds33)-[:CAPTURES]->(var31)
 
         MERGE (var11)-[:MARKED_IN]->(file1)
+        MERGE (var11b)-[:MARKED_IN]->(file1)
         MERGE (var12)-[:MARKED_IN]->(file1)
         MERGE (var13)-[:MARKED_IN]->(file1)
         MERGE (var12valueChanged)-[:MARKED_IN]->(file1)
