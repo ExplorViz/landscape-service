@@ -13,12 +13,12 @@ import net.explorviz.persistence.api.v3.model.MetricValue;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
 import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyPlatformDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.persistence.api.v3.model.landscape.FlatLandscapeDto;
 import org.jboss.logging.Logger;
-import org.jboss.logging.Logger.Level;
 import org.neo4j.ogm.model.Result;
 
 /** Mapper class for converting Neo4j results into FlatLandscapeDto. */
@@ -46,21 +46,25 @@ public class StructureMapper {
 
     final TraversalContext context =
         new TraversalContext(
-            nodesById, new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), origin);
+            nodesById,
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            origin);
 
     for (final Long appId : applicationIds) {
       final NodeData appNode = nodesById.get(appId);
       traverse(appNode, repositoryName != null ? repositoryName : "", null, context);
     }
 
-    LOGGER.log(Level.WARN, "nodes by id Data: " + nodesById.toString());
-    LOGGER.log(Level.WARN, "application Data: " + applicationIds.toString());
-
     return new FlatLandscapeDto(
         landscapeToken,
         context.cities(),
         context.districts(),
         context.buildings(),
+        context.chimneyPlatforms(),
         context.chimneys());
   }
 
@@ -69,6 +73,7 @@ public class StructureMapper {
       Map<String, CityDto> cities,
       Map<String, DistrictDto> districts,
       Map<String, BuildingDto> buildings,
+      Map<String, ChimneyPlatformDto> chimneyPlatforms,
       Map<String, ChimneyDto> chimneys,
       TypeOfAnalysis origin) {}
 
@@ -84,24 +89,53 @@ public class StructureMapper {
 
     final Set<String> containedDistrictIds = new HashSet<>();
     final Set<String> containedBuildingIds = new HashSet<>();
+    final Set<String> containedChimneyPlatformIds = new HashSet<>();
     final Set<String> containedChimneyIds = new HashSet<>();
 
     final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null, null);
 
     if (node.labels.contains("Application")) {
       handleApplication(
-          node, id, name, context, containedDistrictIds, containedBuildingIds, containedChimneyIds);
+          node,
+          id,
+          name,
+          context,
+          containedDistrictIds,
+          containedBuildingIds,
+          containedChimneyPlatformIds,
+          containedChimneyIds);
     } else if (node.labels.contains("Directory")) {
       handleDirectory(
-          node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
+          node,
+          id,
+          fqn,
+          parentCityId,
+          base,
+          context,
+          containedDistrictIds,
+          containedBuildingIds,
+          containedChimneyPlatformIds,
+          containedChimneyIds);
     } else if (node.labels.contains("FileRevision")) {
       handleFileRevision(
-          node, id, fqn, parentCityId, base, context, containedBuildingIds, containedChimneyIds);
+          node,
+          id,
+          fqn,
+          parentCityId,
+          base,
+          context,
+          containedBuildingIds,
+          containedChimneyPlatformIds,
+          containedChimneyIds);
     } else if (node.labels.contains("Variable")) {
       handleVariable(node, id, parentCityId, base, context, containedChimneyIds);
     }
 
-    return new TraversalResult(containedDistrictIds, containedBuildingIds, containedChimneyIds);
+    return new TraversalResult(
+        containedDistrictIds,
+        containedBuildingIds,
+        containedChimneyPlatformIds,
+        containedChimneyIds);
   }
 
   private void handleApplication(
@@ -111,6 +145,7 @@ public class StructureMapper {
       final TraversalContext context,
       final Set<String> containedDistrictIds,
       final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyPlatformIds,
       final Set<String> containedChimneyIds) {
     final List<String> directDistrictIds = new ArrayList<>();
     final List<String> directBuildingIds = new ArrayList<>();
@@ -126,6 +161,7 @@ public class StructureMapper {
         final TraversalResult res = traverse(child, "", id, context);
         containedDistrictIds.addAll(res.districtIds);
         containedBuildingIds.addAll(res.buildingIds);
+        containedChimneyPlatformIds.addAll(res.chimneyPlatformIds);
         containedChimneyIds.addAll(res.chimneyIds);
       }
     }
@@ -137,10 +173,12 @@ public class StructureMapper {
             directBuildingIds,
             new ArrayList<>(containedDistrictIds),
             new ArrayList<>(containedBuildingIds),
+            new ArrayList<>(containedChimneyPlatformIds),
             new ArrayList<>(containedChimneyIds));
     context.cities().put(id, city);
   }
 
+  @SuppressWarnings("PMD.ExcessiveParameterList")
   private void handleDirectory(
       final NodeData node,
       final String id,
@@ -149,7 +187,9 @@ public class StructureMapper {
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedDistrictIds,
-      final Set<String> containedBuildingIds) {
+      final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyPlatformIds,
+      final Set<String> containedChimneyIds) {
     final List<String> childDistrictIds = new ArrayList<>();
     final List<String> childBuildingIds = new ArrayList<>();
 
@@ -166,6 +206,8 @@ public class StructureMapper {
         final TraversalResult res = traverse(child, fqn, parentCityId, context);
         containedDistrictIds.addAll(res.districtIds);
         containedBuildingIds.addAll(res.buildingIds);
+        containedChimneyPlatformIds.addAll(res.chimneyPlatformIds);
+        containedChimneyIds.addAll(res.chimneyIds);
       }
     }
 
@@ -183,22 +225,36 @@ public class StructureMapper {
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedBuildingIds,
+      final Set<String> containedChimneyPlatformIds,
       final Set<String> containedChimneyIds) {
     containedBuildingIds.add(id);
 
-    final List<String> childChimneyIds = new ArrayList<>();
+    final Set<String> instanceIds = new HashSet<>();
+    final List<String> childChimneyPlatformIds = new ArrayList<>();
+
+    final Map<String, List<String>> chimneyIdsByChimneyPlatformId = new HashMap<>();
 
     for (final Long childId : node.childrenIds) {
       final NodeData child = context.nodesById().get(childId);
-      if (child != null) {
-        if (child.labels.contains("Variable")) {
-          childChimneyIds.add(String.valueOf(child.id));
-        }
-
-        final TraversalResult res = traverse(child, fqn, parentCityId, context);
-        containedChimneyIds.addAll(res.chimneyIds);
+      if (child == null) {
+        continue;
       }
+
+      if (child.labels.contains("Variable")) {
+        final String instanceId = (String) child.properties.get("instanceId");
+        chimneyIdsByChimneyPlatformId
+            .computeIfAbsent(instanceId, ignored -> new ArrayList<>())
+            .add(String.valueOf(child.id));
+        instanceIds.add(instanceId);
+      }
+
+      final TraversalResult res = traverse(child, fqn, parentCityId, context);
+      containedChimneyIds.addAll(res.chimneyIds); // child and contained chimney ids are the same
     }
+
+    childChimneyPlatformIds.addAll(instanceIds);
+    // Since chimney platforms are only handled here, the child and contained ids are the same
+    containedChimneyPlatformIds.addAll(instanceIds);
 
     final BuildingDto building =
         new BuildingDto(
@@ -207,8 +263,26 @@ public class StructureMapper {
             String.valueOf(node.parentId),
             (String) node.properties.get("language"),
             extractMetrics(node.properties),
-            childChimneyIds);
+            childChimneyPlatformIds);
     context.buildings().put(id, building);
+
+    instanceIds.forEach(
+        instanceId -> {
+          final FlatBaseModel chimneyPlatformModel =
+              new FlatBaseModel(
+                  instanceId,
+                  base.name() + "#" + instanceId,
+                  base.fqn() + "#" + instanceId,
+                  base.originOfData(),
+                  base.commitComparison(),
+                  base.debugSnapshotComparison());
+          final List<String> chimneyIds =
+              chimneyIdsByChimneyPlatformId.getOrDefault(instanceId, List.of());
+          final ChimneyPlatformDto chimneyPlatform =
+              new ChimneyPlatformDto(
+                  chimneyPlatformModel, parentCityId, instanceId, id, chimneyIds);
+          context.chimneyPlatforms().put(instanceId, chimneyPlatform);
+        });
   }
 
   private void handleVariable(
@@ -224,7 +298,7 @@ public class StructureMapper {
         new ChimneyDto(
             base,
             parentCityId,
-            String.valueOf(node.parentId),
+            (String) node.properties.get("instanceId"),
             (String) node.properties.get("value"),
             extractMetrics(node.properties));
     context.chimneys().put(id, chimney);
@@ -298,5 +372,8 @@ public class StructureMapper {
   }
 
   private record TraversalResult(
-      Set<String> districtIds, Set<String> buildingIds, Set<String> chimneyIds) {}
+      Set<String> districtIds,
+      Set<String> buildingIds,
+      Set<String> chimneyPlatformIds,
+      Set<String> chimneyIds) {}
 }

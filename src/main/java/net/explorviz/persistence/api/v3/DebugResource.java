@@ -115,6 +115,7 @@ public class DebugResource {
                     data.getName(),
                     data.getType(),
                     data.getValue(),
+                    data.getInstanceId(),
                     data.getMetrics()))
         .toList();
   }

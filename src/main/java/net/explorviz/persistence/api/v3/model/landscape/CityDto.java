@@ -34,6 +34,7 @@ public record CityDto(
     List<String> buildingIds,
     List<String> allContainedDistrictIds,
     List<String> allContainedBuildingIds,
+    List<String> allContainedChimneyPlatformIds,
     List<String> allContainedChimneyIds) {
 
   public CityDto {
@@ -42,6 +43,7 @@ public record CityDto(
     Objects.requireNonNull(buildingIds);
     Objects.requireNonNull(allContainedDistrictIds);
     Objects.requireNonNull(allContainedBuildingIds);
+    Objects.requireNonNull(allContainedChimneyPlatformIds);
     Objects.requireNonNull(allContainedChimneyIds);
   }
 

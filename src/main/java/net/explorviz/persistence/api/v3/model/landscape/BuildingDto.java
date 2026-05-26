@@ -25,7 +25,7 @@ import net.explorviz.persistence.proto.Language;
  *     determined
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered through analysis, such
  *     as cyclomatic complexity or lines of code
- * @param chimneyIds The ID of the chimneys this building is a parent of
+ * @param chimneyPlatformIds The ID of the chimney platforms this building is a parent of
  */
 @RegisterForReflection
 public record BuildingDto(
@@ -34,7 +34,7 @@ public record BuildingDto(
     @JsonInclude(Include.NON_NULL) String parentDistrictId,
     @JsonInclude(Include.NON_NULL) String language,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics,
-    List<String> chimneyIds) {
+    List<String> chimneyPlatformIds) {
 
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);
@@ -52,7 +52,7 @@ public record BuildingDto(
       return Map.of();
     }
 
-    default List<String> getChimneys() {
+    default List<String> getChimneyPlatforms() {
       return List.of();
     }
   }

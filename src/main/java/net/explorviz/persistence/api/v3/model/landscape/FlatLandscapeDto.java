@@ -16,6 +16,7 @@ import java.util.Objects;
  * @param cities All city model objects in the landscape, indexed by their ID
  * @param districts All district model objects in the landscape, indexed by their ID
  * @param buildings All building model objects in the landscape, indexed by their ID
+ * @param chimneyPlatforms All chimney platform model objects in the landscape, indexed by their ID
  * @param chimneys All chimney model objects in the landscape, indexed by their ID
  */
 public record FlatLandscapeDto(
@@ -23,6 +24,7 @@ public record FlatLandscapeDto(
     Map<String, CityDto> cities,
     Map<String, DistrictDto> districts,
     Map<String, BuildingDto> buildings,
+    Map<String, ChimneyPlatformDto> chimneyPlatforms,
     Map<String, ChimneyDto> chimneys) {
 
   public FlatLandscapeDto {
@@ -30,6 +32,7 @@ public record FlatLandscapeDto(
     Objects.requireNonNull(cities);
     Objects.requireNonNull(districts);
     Objects.requireNonNull(buildings);
+    Objects.requireNonNull(chimneyPlatforms);
     Objects.requireNonNull(chimneys);
   }
 }

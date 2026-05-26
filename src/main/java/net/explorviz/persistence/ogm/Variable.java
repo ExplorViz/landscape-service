@@ -21,6 +21,8 @@ public class Variable implements Comparable<Variable> {
 
   @Id @GeneratedValue private Long id;
 
+  private String instanceId;
+
   private String name;
 
   private String type;
@@ -45,6 +47,12 @@ public class Variable implements Comparable<Variable> {
     this.value = value;
   }
 
+  public Variable(final String name, final String value, final String instanceId) {
+    this.name = name;
+    this.value = value;
+    this.instanceId = instanceId;
+  }
+
   public Long getId() {
     return id;
   }
@@ -67,6 +75,10 @@ public class Variable implements Comparable<Variable> {
 
   public String getType() {
     return type;
+  }
+
+  public String getInstanceId() {
+    return instanceId;
   }
 
   public void setType(final String type) {

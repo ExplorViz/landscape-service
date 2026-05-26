@@ -26,7 +26,7 @@ import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConver
 public record ChimneyDto(
     @JsonUnwrapped FlatBaseModel flatBaseModel,
     String parentCityId,
-    @JsonInclude(Include.NON_NULL) String parentBuildingId,
+    @JsonInclude(Include.NON_NULL) String parentChimneyPlatformId,
     @JsonInclude(Include.NON_NULL) String value,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
 

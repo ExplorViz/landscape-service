@@ -14,4 +14,9 @@ import java.util.Map;
  *     modifications observed during the debugging session
  */
 public record VariableDto(
-    String id, String name, String type, String value, Map<String, Double> metrics) {}
+    String id,
+    String name,
+    String type,
+    String value,
+    String instanceId,
+    Map<String, Double> metrics) {}

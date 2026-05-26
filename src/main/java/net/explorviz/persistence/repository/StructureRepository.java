@@ -18,6 +18,7 @@ import net.explorviz.persistence.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.persistence.api.v3.model.TypeOfAnalysis;
 import net.explorviz.persistence.api.v3.model.landscape.BuildingDto;
 import net.explorviz.persistence.api.v3.model.landscape.ChimneyDto;
+import net.explorviz.persistence.api.v3.model.landscape.ChimneyPlatformDto;
 import net.explorviz.persistence.api.v3.model.landscape.CityDto;
 import net.explorviz.persistence.api.v3.model.landscape.DistrictDto;
 import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel;
@@ -301,16 +302,19 @@ public class StructureRepository {
     final Map<String, CityDto> cities = new HashMap<>();
     final Map<String, DistrictDto> districts = new HashMap<>();
     final Map<String, BuildingDto> buildings = new HashMap<>();
+    final Map<String, ChimneyPlatformDto> chimneyPlatforms = new HashMap<>();
     final Map<String, ChimneyDto> chimneys = new HashMap<>();
 
     for (final FlatLandscapeDto part : parts) {
       cities.putAll(part.cities());
       districts.putAll(part.districts());
       buildings.putAll(part.buildings());
+      chimneyPlatforms.putAll(part.chimneyPlatforms());
       chimneys.putAll(part.chimneys());
     }
 
-    return new FlatLandscapeDto(landscapeToken, cities, districts, buildings, chimneys);
+    return new FlatLandscapeDto(
+        landscapeToken, cities, districts, buildings, chimneyPlatforms, chimneys);
   }
 
   private FlatLandscapeDto merge(
@@ -328,14 +332,17 @@ public class StructureRepository {
     final Map<String, CityDto> cities = new HashMap<>();
     final Map<String, DistrictDto> districts = new HashMap<>();
     final Map<String, BuildingDto> buildings = new HashMap<>();
+    final Map<String, ChimneyPlatformDto> chimneyPlatforms = new HashMap<>();
     final Map<String, ChimneyDto> chimneys = new HashMap<>();
 
     mergeNodes(first.cities(), second.cities(), cities, idMap, origin);
     mergeNodes(first.districts(), second.districts(), districts, idMap, origin);
     mergeNodes(first.buildings(), second.buildings(), buildings, idMap, origin);
+    mergeNodes(
+        first.chimneyPlatforms(), second.chimneyPlatforms(), chimneyPlatforms, idMap, origin);
     mergeNodes(first.chimneys(), second.chimneys(), chimneys, idMap, origin);
 
-    return new FlatLandscapeDto(token, cities, districts, buildings, chimneys);
+    return new FlatLandscapeDto(token, cities, districts, buildings, chimneyPlatforms, chimneys);
   }
 
   private <T> void populateIdMap(
@@ -494,6 +501,9 @@ public class StructureRepository {
     if (dto instanceof BuildingDto d) {
       return (T) withComparisonBuilding(d, (BuildingDto) otherDto, comp, idMap);
     }
+    if (dto instanceof ChimneyPlatformDto d) {
+      return (T) withComparisonChimneyPlatform(d, (ChimneyPlatformDto) otherDto, comp, idMap);
+    }
     if (dto instanceof ChimneyDto d) {
       return (T) withComparisonChimney(d, (ChimneyDto) otherDto, comp, idMap);
     }
@@ -521,6 +531,12 @@ public class StructureRepository {
             safeGet(other, CityDto::allContainedBuildingIds),
             idMap);
 
+    final List<String> allChimneyPlatforms =
+        mergeLists(
+            safeGet(d, CityDto::allContainedChimneyPlatformIds),
+            safeGet(other, CityDto::allContainedChimneyPlatformIds),
+            idMap);
+
     final List<String> allChimneys =
         mergeLists(
             safeGet(d, CityDto::allContainedChimneyIds),
@@ -535,6 +551,7 @@ public class StructureRepository {
         buildingIds,
         allDistricts,
         allBuildings,
+        allChimneyPlatforms,
         allChimneys);
   }
 
@@ -572,16 +589,38 @@ public class StructureRepository {
     final String parentDistrictId = d != null ? d.parentDistrictId() : other.parentDistrictId();
 
     final Map<String, MetricValue> metrics = mergeBuildingMetrics(d, other, comp);
-    final List<String> chimneyIds =
+    final List<String> chimneyPlatformIds =
         mergeLists(
-            safeGet(d, BuildingDto::chimneyIds), safeGet(other, BuildingDto::chimneyIds), idMap);
+            safeGet(d, BuildingDto::chimneyPlatformIds),
+            safeGet(other, BuildingDto::chimneyPlatformIds),
+            idMap);
     return new BuildingDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),
         parentDistrictId != null ? idMap.get(parentDistrictId) : null,
         d != null ? d.language() : other.language(),
         metrics,
-        chimneyIds);
+        chimneyPlatformIds);
+  }
+
+  private ChimneyPlatformDto withComparisonChimneyPlatform(
+      final ChimneyPlatformDto d,
+      final ChimneyPlatformDto other,
+      final Comparison comp,
+      final Map<String, String> idMap) {
+    final FlatBaseModel base = d != null ? d.flatBaseModel() : other.flatBaseModel();
+    final String parentCityId = d != null ? d.parentCityId() : other.parentCityId();
+    final String parentBuildingId = d != null ? d.parentBuildingId() : other.parentBuildingId();
+    final List<String> chimneyIds = d != null ? d.chimneyIds() : other.chimneyIds();
+
+    final List<String> idMappedChimneyIds = chimneyIds.stream().map(idMap::get).toList();
+
+    return new ChimneyPlatformDto(
+        withBaseComparison(base, idMap.get(base.id()), comp),
+        idMap.get(parentCityId),
+        parentBuildingId != null ? idMap.get(parentBuildingId) : null,
+        d != null ? idMap.get(d.instanceId()) : idMap.get(other.instanceId()),
+        idMappedChimneyIds);
   }
 
   private ChimneyDto withComparisonChimney(
@@ -591,14 +630,15 @@ public class StructureRepository {
       final Map<String, String> idMap) {
     final FlatBaseModel base = d != null ? d.flatBaseModel() : other.flatBaseModel();
     final String parentCityId = d != null ? d.parentCityId() : other.parentCityId();
-    final String parentBuildingId = d != null ? d.parentBuildingId() : other.parentBuildingId();
+    final String parentChimneyPlatformId =
+        d != null ? d.parentChimneyPlatformId() : other.parentChimneyPlatformId();
 
     final Map<String, MetricValue> metrics = mergeChimneyMetrics(d, other, comp);
 
     return new ChimneyDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),
-        parentBuildingId != null ? idMap.get(parentBuildingId) : null,
+        parentChimneyPlatformId != null ? idMap.get(parentChimneyPlatformId) : null,
         d != null ? d.value() : other.value(),
         metrics);
   }
