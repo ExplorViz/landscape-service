@@ -163,6 +163,7 @@ public final class LandscapeFlattener {
     resultContainer.cities.add(city);
     resultContainer.districts.addAll(context.districts);
     resultContainer.buildings.addAll(context.buildings);
+    resultContainer.chimneys.addAll(context.chimneys);
   }
 
   private static void flattenDistrict(

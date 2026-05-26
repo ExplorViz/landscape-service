@@ -16,8 +16,7 @@ import net.explorviz.persistence.api.v3.model.landscape.FlatBaseModel.FlatConver
  * @param flatBaseModel Container for attributes shared by all flat data objects
  * @param parentCityId The ID of the city in which this chimney resides. Chimneys must always have a
  *     parent city, although it may be transitively via some buildings and districts
- * @param parentBuildingId The ID of the building of which this chimney is a direct child. Buildings
- *     that appear directly on a city do not have a parent district
+ * @param parentChimneyPlatformId The ID of the platform of which this chimney is a direct child.
  * @param value The current value of the variable represented by this chimney
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered during the debugging
  *     session, such as the number of modifications since the variable started being monitored
@@ -28,6 +27,7 @@ public record ChimneyDto(
     String parentCityId,
     @JsonInclude(Include.NON_NULL) String parentChimneyPlatformId,
     @JsonInclude(Include.NON_NULL) String value,
+    @JsonInclude(Include.NON_NULL) String type,
     @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
 
   public ChimneyDto {
@@ -38,7 +38,10 @@ public record ChimneyDto(
   /** Must be implemented by any object which can be represented as a chimney during flattening. */
   public interface ChimneyConvertible extends FlatConvertible {
     default String getValue() {
+      return null;
+    }
 
+    default String getType() {
       return null;
     }
 

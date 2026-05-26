@@ -103,7 +103,7 @@ public final class DefaultApplicationToCityConverter {
     @Override
     public Collection<? extends ChimneyConvertible> getChimneys() {
 
-      if (originOfData == TypeOfAnalysis.DEBUG) {
+      if (originOfData == TypeOfAnalysis.DEBUG_STATIC) {
         return ogmApp.getRootDirectory().getFileRevisions().stream()
             .map(FileRevision::getVariables)
             .flatMap(Set::stream)
