@@ -329,6 +329,7 @@ public class StructureRepository {
     populateIdMap(first.cities(), second.cities(), idMap);
     populateIdMap(first.districts(), second.districts(), idMap);
     populateIdMap(first.buildings(), second.buildings(), idMap);
+    populateIdMap(first.chimneyPlatforms(), second.chimneyPlatforms(), idMap);
     populateIdMap(first.chimneys(), second.chimneys(), idMap);
 
     final Map<String, CityDto> cities = new HashMap<>();
@@ -484,6 +485,9 @@ public class StructureRepository {
     if (dto instanceof BuildingDto d) {
       return d.flatBaseModel().id();
     }
+    if (dto instanceof ChimneyPlatformDto d) {
+      return d.flatBaseModel().id();
+    }
     if (dto instanceof ChimneyDto d) {
       return d.flatBaseModel().id();
     }
@@ -610,19 +614,23 @@ public class StructureRepository {
       final ChimneyPlatformDto other,
       final Comparison comp,
       final Map<String, String> idMap) {
+
     final FlatBaseModel base = d != null ? d.flatBaseModel() : other.flatBaseModel();
     final String parentCityId = d != null ? d.parentCityId() : other.parentCityId();
     final String parentBuildingId = d != null ? d.parentBuildingId() : other.parentBuildingId();
-    final List<String> chimneyIds = d != null ? d.chimneyIds() : other.chimneyIds();
 
-    final List<String> idMappedChimneyIds = chimneyIds.stream().map(idMap::get).toList();
+    final List<String> chimneyIds =
+        mergeLists(
+            safeGet(d, ChimneyPlatformDto::chimneyIds),
+            safeGet(other, ChimneyPlatformDto::chimneyIds),
+            idMap);
 
     return new ChimneyPlatformDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),
         parentBuildingId != null ? idMap.get(parentBuildingId) : null,
         d != null ? idMap.get(d.instanceId()) : idMap.get(other.instanceId()),
-        idMappedChimneyIds);
+        chimneyIds);
   }
 
   private ChimneyDto withComparisonChimney(
