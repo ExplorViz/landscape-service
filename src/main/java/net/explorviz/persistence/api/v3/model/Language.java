@@ -1,10 +1,18 @@
 package net.explorviz.persistence.api.v3.model;
 
 public enum Language {
+  LANGUAGE_UNSPECIFIED,
+  C,
+  CPP,
+  CSHARP,
+  GO,
   JAVA,
   JAVASCRIPT,
-  TYPESCRIPT,
-  PYTHON,
+  KOTLIN,
+  PHP,
   PLAINTEXT,
-  LANGUAGE_UNSPECIFIED
+  PYTHON,
+  RUST,
+  SWIFT,
+  TYPESCRIPT
 }
