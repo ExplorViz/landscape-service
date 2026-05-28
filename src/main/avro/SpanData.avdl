@@ -1,4 +1,4 @@
-@namespace("net.explorviz.persistence.avro")
+@namespace("net.explorviz.landscape.avro")
 protocol SpanDataProtocol {
   record SpanData {
     string spanId;
