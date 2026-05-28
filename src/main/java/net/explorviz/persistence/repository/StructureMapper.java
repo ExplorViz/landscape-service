@@ -246,10 +246,11 @@ public class StructureMapper {
             .computeIfAbsent(instanceId, ignored -> new ArrayList<>())
             .add(String.valueOf(child.id));
         instanceIds.add(instanceId);
-      }
 
-      final TraversalResult res = traverse(child, fqn, parentCityId, context);
-      containedChimneyIds.addAll(res.chimneyIds); // child and contained chimney ids are the same
+        final TraversalResult res =
+            traverse(child, appendInstanceId(fqn, instanceId), parentCityId, context);
+        containedChimneyIds.addAll(res.chimneyIds); // child and contained chimney ids are the same
+      }
     }
 
     childChimneyPlatformIds.addAll(instanceIds);
@@ -271,8 +272,8 @@ public class StructureMapper {
           final FlatBaseModel chimneyPlatformModel =
               new FlatBaseModel(
                   instanceId,
-                  base.name() + "#" + instanceId,
-                  base.fqn() + "#" + instanceId,
+                  appendInstanceId(base.name(), instanceId),
+                  appendInstanceId(base.fqn(), instanceId),
                   base.originOfData(),
                   base.commitComparison(),
                   base.debugSnapshotComparison());
@@ -283,6 +284,10 @@ public class StructureMapper {
                   chimneyPlatformModel, parentCityId, instanceId, id, chimneyIds);
           context.chimneyPlatforms().put(instanceId, chimneyPlatform);
         });
+  }
+
+  private String appendInstanceId(final String base, final String instanceId) {
+    return base + "#" + instanceId;
   }
 
   private void handleVariable(
