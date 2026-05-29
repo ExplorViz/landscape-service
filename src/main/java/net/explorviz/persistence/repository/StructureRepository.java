@@ -631,8 +631,8 @@ public class StructureRepository {
     return new ChimneyPlatformDto(
         withBaseComparison(base, idMap.get(base.id()), comp),
         idMap.get(parentCityId),
-        parentBuildingId != null ? idMap.get(parentBuildingId) : null,
         d != null ? idMap.get(d.instanceId()) : idMap.get(other.instanceId()),
+        parentBuildingId != null ? idMap.get(parentBuildingId) : null,
         chimneyIds);
   }
 
