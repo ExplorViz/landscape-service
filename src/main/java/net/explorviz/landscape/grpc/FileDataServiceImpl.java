@@ -4,8 +4,11 @@ import com.google.protobuf.Empty;
 import io.grpc.Status;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.common.annotation.Blocking;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Map;
 import net.explorviz.landscape.ogm.Clazz;
 import net.explorviz.landscape.ogm.Field;
@@ -14,7 +17,6 @@ import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.proto.ClassData;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.FileDataService;
-import net.explorviz.landscape.repository.ClazzRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -23,13 +25,49 @@ import org.neo4j.ogm.transaction.Transaction;
 @GrpcService
 public class FileDataServiceImpl implements FileDataService {
 
-  @Inject ClazzRepository clazzRepository;
   @Inject SessionFactory sessionFactory;
+  @Inject FileDataBatchWriter fileDataBatchWriter;
 
   @Blocking
   @Override
   public Uni<Empty> persistFile(final FileData request) {
     return persistSingleFile(request);
+  }
+
+  /**
+   * Client-streaming variant: accepts a stream of {@link FileData} messages for an entire commit,
+   * collects them, and persists the whole set in a single Neo4j transaction using batched UNWIND
+   * Cypher queries. This reduces bolt round-trips from O(12 × N) to O(max_class_depth + 6)
+   * regardless of N.
+   */
+  @Override
+  public Uni<Empty> persistFiles(final Multi<FileData> request) {
+    return request
+        .collect()
+        .asList()
+        .emitOn(Infrastructure.getDefaultWorkerPool())
+        .onItem()
+        .transformToUni(this::persistBatch);
+  }
+
+  private Uni<Empty> persistBatch(final List<FileData> files) {
+    final Session session = sessionFactory.openSession();
+    try (Transaction tx = session.beginTransaction()) {
+      fileDataBatchWriter.persistBatch(session, files);
+      tx.commit();
+      return Uni.createFrom().item(Empty.getDefaultInstance());
+    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+      final String context =
+          files.isEmpty()
+              ? "empty batch"
+              : files.size()
+                  + " files for repo '"
+                  + files.get(0).getRepositoryName()
+                  + "', landscape '"
+                  + files.get(0).getLandscapeToken()
+                  + "'";
+      return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, context));
+    }
   }
 
   private Uni<Empty> persistSingleFile(final FileData request) {
@@ -72,7 +110,7 @@ public class FileDataServiceImpl implements FileDataService {
     file.setModifiedLines(fileData.getModifiedLines());
     file.setDeletedLines(fileData.getDeletedLines());
 
-    fileData.getClassesList().forEach(c -> file.addClass(buildClazz(session, c, fileData)));
+    fileData.getClassesList().forEach(c -> file.addClass(buildClazz(c)));
 
     fileData.getFunctionsList().forEach(f -> file.addFunction(new Function(f)));
 
@@ -84,22 +122,20 @@ public class FileDataServiceImpl implements FileDataService {
   }
 
   /**
-   * Builds a {@link Clazz} node and its full sub-graph (fields, functions, inner classes,
-   * superclass links) entirely in memory. No intermediate database writes are performed; the graph
-   * is flushed by the single {@code session.save(file)} call in {@link #saveFileData}.
-   *
-   * <p>Superclass nodes are looked up via an indexed property access so that cross-file inheritance
-   * links remain correct even when files are processed out of declaration order.
+   * Builds a {@link Clazz} node and its full sub-graph (fields, functions, inner classes) entirely
+   * in memory. Superclass references are stored as FQN strings on the node, so no DB round-trips
+   * are needed. The graph is flushed by the single {@code session.save(file)} call in {@link
+   * #saveFileData}.
    */
-  private Clazz buildClazz(
-      final Session session, final ClassData classData, final FileData fileData) {
-    final Clazz clazz = resolveOrCreateClazz(session, classData, fileData);
+  private Clazz buildClazz(final ClassData classData) {
+    final Clazz clazz = new Clazz(classData.getName());
     clazz.setType(classData.getType());
     clazz.setModifiers(classData.getModifiersList());
     clazz.setImplementedInterfaces(classData.getImplementedInterfacesList());
     clazz.setAnnotations(classData.getAnnotationsList());
     clazz.setEnumValues(classData.getEnumValuesList());
     clazz.setMetrics(classData.getMetricsMap());
+    clazz.setSuperclassFqns(classData.getSuperclassesList());
 
     classData
         .getFieldsList()
@@ -107,45 +143,8 @@ public class FileDataServiceImpl implements FileDataService {
 
     classData.getFunctionsList().forEach(f -> clazz.addFunction(new Function(f)));
 
-    classData
-        .getInnerClassesList()
-        .forEach(c -> clazz.addInnerClass(buildClazz(session, c, fileData)));
-
-    // Superclass nodes may already exist (from previously processed files).
-    classData
-        .getSuperclassesList()
-        .forEach(
-            superFqn -> {
-              final String[] splitSuperFqn = superFqn.split("::");
-              clazz.addSuperclass(
-                  clazzRepository
-                      .findClassByLandscapeTokenAndRepositoryAndClazzFqn(
-                          session,
-                          fileData.getLandscapeToken(),
-                          fileData.getRepositoryName(),
-                          splitSuperFqn)
-                      .orElse(new Clazz(splitSuperFqn[1])));
-            });
+    classData.getInnerClassesList().forEach(c -> clazz.addInnerClass(buildClazz(c)));
 
     return clazz;
-  }
-
-  /**
-   * Reuses a placeholder {@link Clazz} node when another file referenced this class via INHERITS
-   * before its defining file was analyzed. If the matched class is already fully populated from
-   * another commit, a fresh node is created instead.
-   */
-  private Clazz resolveOrCreateClazz(
-      final Session session, final ClassData classData, final FileData fileData) {
-    return clazzRepository
-        .findClassFromInheritingClass(
-            session,
-            fileData.getLandscapeToken(),
-            fileData.getRepositoryName(),
-            classData.getName())
-        .map(
-            existingClazz ->
-                existingClazz.getType() == null ? existingClazz : new Clazz(classData.getName()))
-        .orElseGet(() -> new Clazz(classData.getName()));
   }
 }

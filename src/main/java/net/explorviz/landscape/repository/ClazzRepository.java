@@ -14,7 +14,7 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.UseObjectForClearerAPI"})
+@SuppressWarnings("PMD.UseObjectForClearerAPI")
 public class ClazzRepository {
 
   @Inject SessionFactory sessionFactory;
@@ -190,58 +190,6 @@ public class ClazzRepository {
                 pathSegments,
                 "clazzName",
                 clazzName)));
-  }
-
-  public Optional<Clazz> findClassByLandscapeTokenAndRepositoryAndClazzFqn(
-      final Session session,
-      final String tokenId,
-      final String repoName,
-      final String[] splitSuperFqn) {
-    if (splitSuperFqn.length != 2) { // NOPMD - literal is intentional here
-      throw new IllegalArgumentException(
-          "Format of super class invalid:\n"
-              + "   Expected format: path/to/file/file.extension::class \n"
-              + "   Actual value: "
-              + String.join("::", splitSuperFqn));
-    }
-    final String superClassName = splitSuperFqn[1];
-    // splitSuperFqn[0] is already the full file path string (e.g. "src/main/java/Base.java").
-    // Using the composite (repoName, filePath) index avoids the O(N × depth) tree traversal.
-    final String filePath = splitSuperFqn[0];
-
-    return Optional.ofNullable(
-        session.queryForObject(
-            Clazz.class,
-            """
-            MATCH (file:FileRevision {repoName: $repoName, filePath: $filePath})
-            MATCH (file)-[:CONTAINS]->(cl:Clazz {name: $clazzName})
-            WITH cl, file
-            ORDER BY file.hasFileData DESC, id(file) DESC
-            LIMIT 1
-            RETURN cl;
-            """,
-            Map.of(
-                "repoName", repoName,
-                "filePath", filePath,
-                "clazzName", superClassName)));
-  }
-
-  public Optional<Clazz> findClassFromInheritingClass(
-      final Session session, final String tokenId, final String repoName, final String clazzName) {
-    return Optional.ofNullable(
-        session.queryForObject(
-            Clazz.class,
-            """
-            MATCH (:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(:Repository {name: $repoName})
-              -[:CONTAINS]->(:Commit)
-              -[:CONTAINS]->(:FileRevision)
-              -[:CONTAINS]->(:Clazz)
-              -[:INHERITS]->(cl:Clazz {name: $clazzName})
-            RETURN cl
-            LIMIT 1;
-            """,
-            Map.of("tokenId", tokenId, "repoName", repoName, "clazzName", clazzName)));
   }
 
   /**

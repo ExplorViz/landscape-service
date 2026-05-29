@@ -25,8 +25,11 @@ public class Clazz implements Comparable<Clazz> {
 
   private ClassType type;
 
-  @Relationship(type = "INHERITS", direction = Relationship.Direction.OUTGOING)
-  private final SortedSet<Clazz> superclasses = new TreeSet<>();
+  /**
+   * FQNs of superclasses in the form {@code path/to/File.ext::ClassName}. Stored as a node property
+   * (string array) rather than graph relationships to avoid per-file DB lookups during ingestion.
+   */
+  private final Set<String> superclassFqns = new HashSet<>();
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final SortedSet<Clazz> innerClasses = new TreeSet<>();
@@ -71,12 +74,13 @@ public class Clazz implements Comparable<Clazz> {
     this.type = type;
   }
 
-  public SortedSet<Clazz> getSuperclasses() {
-    return new TreeSet<>(superclasses);
+  public Set<String> getSuperclassFqns() {
+    return Set.copyOf(superclassFqns);
   }
 
-  public void addSuperclass(final Clazz superclass) {
-    superclasses.add(superclass);
+  public void setSuperclassFqns(final Collection<String> fqns) {
+    superclassFqns.clear();
+    superclassFqns.addAll(fqns);
   }
 
   public SortedSet<Clazz> getInnerClasses() {

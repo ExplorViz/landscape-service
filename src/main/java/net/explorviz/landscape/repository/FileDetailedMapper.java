@@ -1,6 +1,7 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import java.util.List;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto.ClazzDto;
@@ -34,7 +35,8 @@ public class FileDetailedMapper {
         clazz.getMetrics(),
         clazz.getFunctions().stream().map(this::mapFunction).collect(Collectors.toList()),
         clazz.getFields().stream().map(this::mapField).collect(Collectors.toList()),
-        clazz.getInnerClasses().stream().map(this::mapClazz).collect(Collectors.toList()));
+        clazz.getInnerClasses().stream().map(this::mapClazz).collect(Collectors.toList()),
+        List.copyOf(clazz.getSuperclassFqns()));
   }
 
   private FunctionDto mapFunction(final Function function) {

@@ -405,6 +405,7 @@ class FileDataServiceTest {
     params.put("fieldNameClass", fieldNameClass);
     params.put("innerClassName", innerclassName);
 
+    params.put("superclassFqn", superclassFqn);
     Boolean databaseIsCorrect =
         session.queryForObject(
             Boolean.class,
@@ -423,13 +424,11 @@ class FileDataServiceTest {
             MATCH (c)-[:CONTAINS]->(fc:FileRevision {name: $fileNameClass, hash: $fileHashClass})
               -[:CONTAINS]->(cc:Clazz {name: $classNameClass, type: $classType})
             MATCH (cc)-[:CONTAINS]->(:Field {name: $fieldNameClass, type: $fieldType})
-            MATCH (cc)-[:INHERITS]->(cs)
-
-            WHERE NOT EXISTS { MATCH (fs)-[:CONTAINS]->(fun) }
+            WHERE $superclassFqn IN cc.superclassFqns
+              AND NOT EXISTS { MATCH (fs)-[:CONTAINS]->(fun) }
               AND NOT EXISTS { MATCH (fs)-[:CONTAINS]->(ci) }
               AND NOT EXISTS { MATCH (cc)-[:CONTAINS]->(fun) }
               AND NOT EXISTS { MATCH (cc)-[:CONTAINS]->(ci) }
-              AND NOT EXISTS { MATCH (cc)-[:INHERITS]->(ci) }
             } AS exists
             """,
             params);
@@ -612,6 +611,7 @@ class FileDataServiceTest {
     params.put("classNameClass", className);
     params.put("innerClassName", innerclassName);
 
+    params.put("superclassFqn", superclassFqn);
     Boolean databaseIsCorrect =
         session.queryForObject(
             Boolean.class,
@@ -629,7 +629,7 @@ class FileDataServiceTest {
 
             MATCH (c)-[:CONTAINS]->(fc:FileRevision {name: $fileNameClass, hash: $fileHashClass})
               -[:CONTAINS]->(cc:Clazz {name: $classNameClass, type: $classType})
-            MATCH (cc)-[:INHERITS]->(cs)
+            WHERE $superclassFqn IN cc.superclassFqns
             } AS exists
             """,
             params);
@@ -936,18 +936,18 @@ class FileDataServiceTest {
   }
 
   @Test
-  void testPersistFileThrowsWithInvalidSuperclassNameFormat() {
+  void testPersistFileSuperclassFqnStoredVerbatimOnClazz() {
     String commitHash = "commit1";
     String superclassName = "Class1";
     String fileNameSuper = superclassName + ".java";
-    String superclassFqn = "src." + fileNameSuper + "." + superclassName;
-    String superclassFqnTwo = "src::" + fileNameSuper + "::" + superclassName;
     String filePathSuper = "src/" + fileNameSuper;
     String fileHashSuper = "1";
     String className = "Class2";
     String fileNameClass = className + ".java";
     String filePathClass = "src/" + fileNameClass;
     String fileHashClass = "2";
+    // FQN using a dot-separated path instead of the conventional "/" separator; stored verbatim.
+    String arbitraryFqn = "src.some.pkg." + superclassName;
 
     CommitData commitDataOne =
         CommitData.newBuilder()
@@ -973,66 +973,11 @@ class FileDataServiceTest {
         .await()
         .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
 
-    Map<String, Object> params = new HashMap<>();
-    params.put("landscapeToken", landscapeToken);
-    params.put("repoName", repoName);
-    params.put("branchName", branchName);
-    params.put("commitHash", commitHash);
-    params.put("fileNameSuper", fileNameSuper);
-    params.put("fileHashSuper", fileHashSuper);
-    params.put("fileNameClass", fileNameClass);
-    params.put("fileHashClass", fileHashClass);
-    params.put("srcDir", "src");
-
-    String dbQuery =
-        """
-        RETURN EXISTS {
-        MATCH (:Landscape {tokenId: $landscapeToken})
-          -[:CONTAINS]->(r:Repository {name: $repoName})
-          -[:CONTAINS]->(c:Commit {hash: $commitHash})
-          -[:CONTAINS]->(:FileRevision {hash: $fileHashSuper, name: $fileNameSuper})
-          <-[:CONTAINS]-(src:Directory {name: $srcDir})
-          <-[:CONTAINS]-(:Directory {name: $repoName})
-
-        MATCH (c)
-          -[:CONTAINS]->(:FileRevision {hash: $fileHashClass, name: $fileNameClass})
-          <-[:CONTAINS]-(src)
-
-        MATCH (r)
-          -[:CONTAINS]->(:Branch {name: $branchName})
-          <-[:BELONGS_TO]-(c)
-        } AS exists
-        """;
-
-    Boolean databaseCorrectBeforePersistFile =
-        session.queryForObject(Boolean.class, dbQuery, params);
-
     ClassData classData =
         ClassData.newBuilder()
             .setName(className)
             .setType(ClassType.CLASS)
-            .addAllModifiers(List.of())
-            .addAllImplementedInterfaces(List.of())
-            .addAllSuperclasses(List.of(superclassFqn))
-            .addAllAnnotations(List.of())
-            .addAllFields(List.of())
-            .addAllInnerClasses(List.of())
-            .addAllFunctions(List.of())
-            .addAllEnumValues(List.of())
-            .build();
-
-    ClassData classDataTwo =
-        ClassData.newBuilder()
-            .setName(className)
-            .setType(ClassType.CLASS)
-            .addAllModifiers(List.of())
-            .addAllImplementedInterfaces(List.of())
-            .addAllSuperclasses(List.of(superclassFqnTwo))
-            .addAllAnnotations(List.of())
-            .addAllFields(List.of())
-            .addAllInnerClasses(List.of())
-            .addAllFunctions(List.of())
-            .addAllEnumValues(List.of())
+            .addAllSuperclasses(List.of(arbitraryFqn))
             .build();
 
     FileData fileDataClass =
@@ -1042,93 +987,28 @@ class FileDataServiceTest {
             .setFileHash(fileHashClass)
             .setFilePath(filePathClass)
             .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Superclass"))
             .addAllClasses(List.of(classData))
-            .addAllFunctions(List.of())
             .setLastEditor("Testi")
             .setAddedLines(1)
             .setModifiedLines(1)
             .setDeletedLines(0)
             .build();
 
-    FileData fileDataClassTwo =
-        FileData.newBuilder()
-            .setLandscapeToken(landscapeToken)
-            .setRepositoryName(repoName)
-            .setFileHash(fileHashClass)
-            .setFilePath(filePathClass)
-            .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Superclass"))
-            .addAllClasses(List.of(classDataTwo))
-            .addAllFunctions(List.of())
-            .setLastEditor("Testi")
-            .setAddedLines(1)
-            .setModifiedLines(1)
-            .setDeletedLines(0)
-            .build();
+    fileDataService
+        .persistFile(fileDataClass)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
 
-    StatusRuntimeException ex =
-        assertThrows(
-            StatusRuntimeException.class,
-            () ->
-                fileDataService
-                    .persistFile(fileDataClass)
-                    .await()
-                    .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS)));
-
-    Boolean databaseCorrectAfterPersistFileOne =
-        session.queryForObject(Boolean.class, dbQuery, params);
-
-    Boolean fileOneHasFileData =
+    Boolean fqnStoredVerbatim =
         session.queryForObject(
             Boolean.class,
             """
-              MATCH (f:FileRevision {hash: $fileHashSuper, name: $fileNameSuper})
-              RETURN f.hasFileData;
+            MATCH (cl:Clazz {name: $className})
+            RETURN $arbitraryFqn IN cl.superclassFqns;
             """,
-            params);
+            Map.of("className", className, "arbitraryFqn", arbitraryFqn));
 
-    StatusRuntimeException exTwo =
-        assertThrows(
-            StatusRuntimeException.class,
-            () ->
-                fileDataService
-                    .persistFile(fileDataClassTwo)
-                    .await()
-                    .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS)));
-
-    Boolean databaseCorrectAfterPersistFileTwo =
-        session.queryForObject(Boolean.class, dbQuery, params);
-
-    Boolean fileTwoHasFileData =
-        session.queryForObject(
-            Boolean.class,
-            """
-              MATCH (f:FileRevision {hash: $fileHashClass, name: $fileNameClass})
-              RETURN f.hasFileData;
-            """,
-            params);
-
-    assertTrue(databaseCorrectBeforePersistFile);
-    assertEquals(Status.INVALID_ARGUMENT.getCode(), ex.getStatus().getCode());
-    assertEquals(
-        "Format of super class invalid:\n"
-            + "   Expected format: path/to/file/file.extension::class \n"
-            + "   Actual value: "
-            + superclassFqn,
-        ex.getStatus().getDescription());
-    assertTrue(databaseCorrectAfterPersistFileOne);
-    assertFalse(fileOneHasFileData);
-
-    assertEquals(Status.INVALID_ARGUMENT.getCode(), exTwo.getStatus().getCode());
-    assertEquals(
-        "Format of super class invalid:\n"
-            + "   Expected format: path/to/file/file.extension::class \n"
-            + "   Actual value: "
-            + superclassFqnTwo,
-        exTwo.getStatus().getDescription());
-    assertTrue(databaseCorrectAfterPersistFileTwo);
-    assertFalse(fileTwoHasFileData);
+    assertTrue(fqnStoredVerbatim);
 
     assertNodeCounts(
         session,
@@ -1139,6 +1019,7 @@ class FileDataServiceTest {
             .directories(2)
             .commits(1)
             .files(2)
+            .classes(1)
             .build());
   }
 
@@ -1227,16 +1108,143 @@ class FileDataServiceTest {
         .await()
         .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
 
-    Boolean inheritsFromAnalyzedParent =
+    Boolean superclassFqnStored =
         session.queryForObject(
             Boolean.class,
             """
-            MATCH (:FileRevision {hash: $childHash})-[:CONTAINS]->(:Clazz {name: $childName})
-              -[:INHERITS]->(:Clazz {name: $parentName})
-            RETURN true;
+            MATCH (:FileRevision {hash: $childHash})-[:CONTAINS]->(cl:Clazz {name: $childName})
+            RETURN $parentFqn IN cl.superclassFqns;
             """,
-            Map.of("childHash", childHash, "childName", childName, "parentName", parentName));
+            Map.of("childHash", childHash, "childName", childName, "parentFqn", parentFqn));
 
-    assertTrue(inheritsFromAnalyzedParent);
+    assertTrue(superclassFqnStored);
+  }
+
+  @Test
+  void testPersistFilesInBatch() {
+    final String commitHash = "batchcommit1";
+    final String filePath1 = "src/Alpha.java";
+    final String fileHash1 = "alpha1";
+    final String filePath2 = "src/sub/Beta.java";
+    final String fileHash2 = "beta1";
+
+    final CommitData commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash(fileHash1).setFilePath(filePath1).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash(fileHash2).setFilePath(filePath2).build())
+            .build();
+
+    commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final FileData fileData1 =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHash1)
+            .setFilePath(filePath1)
+            .setLanguage(Language.JAVA)
+            .setLastEditor("alice")
+            .setAddedLines(10)
+            .addClasses(
+                ClassData.newBuilder()
+                    .setName("Alpha")
+                    .setType(ClassType.CLASS)
+                    .addFields(FieldData.newBuilder().setName("count").setType("int").build())
+                    .addFunctions(
+                        FunctionData.newBuilder()
+                            .setName("getCount")
+                            .setReturnType("int")
+                            .addParameters(
+                                ParameterData.newBuilder().setName("x").setType("int").build())
+                            .build())
+                    .build())
+            .build();
+
+    final FileData fileData2 =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHash2)
+            .setFilePath(filePath2)
+            .setLanguage(Language.KOTLIN)
+            .setLastEditor("bob")
+            .addClasses(
+                ClassData.newBuilder()
+                    .setName("Beta")
+                    .setType(ClassType.INTERFACE)
+                    .addInnerClasses(
+                        ClassData.newBuilder()
+                            .setName("BetaInner")
+                            .setType(ClassType.CLASS)
+                            .build())
+                    .build())
+            .build();
+
+    fileDataService
+        .persistFiles(io.smallrye.mutiny.Multi.createFrom().items(fileData1, fileData2))
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    // Both FileRevisions should have hasFileData = true
+    final Iterable<Map<String, Object>> rawResults =
+        session
+            .query(
+                """
+                MATCH (f:FileRevision)
+                WHERE f.hash IN $hashes
+                RETURN f.hash AS hash, f.hasFileData AS hasFileData, f.lastEditor AS editor
+                """,
+                Map.of("hashes", List.of(fileHash1, fileHash2)))
+            .queryResults();
+    final List<Map<String, Object>> results = new ArrayList<>();
+    rawResults.forEach(results::add);
+
+    assertEquals(2, results.size());
+    results.forEach(row -> assertTrue((Boolean) row.get("hasFileData")));
+
+    // Clazz nodes created for both files (including inner classes at any depth)
+    final Long clazzCount =
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (f:FileRevision)-[:CONTAINS*1..]->(cl:Clazz)
+            WHERE f.hash IN $hashes
+            RETURN count(cl)
+            """,
+            Map.of("hashes", List.of(fileHash1, fileHash2)));
+    // Alpha has 1, Beta has 1 top-level + 1 inner = 3 total
+    assertEquals(3L, clazzCount);
+
+    // Field created under Alpha
+    final Long fieldCount =
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (:FileRevision {hash: $hash})-[:CONTAINS]->(cl:Clazz {name: 'Alpha'})
+                  -[:CONTAINS]->(fi:Field {name: 'count'})
+            RETURN count(fi)
+            """,
+            Map.of("hash", fileHash1));
+    assertEquals(1L, fieldCount);
+
+    // Function and its parameter created under Alpha
+    final Long paramCount =
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (:FileRevision {hash: $hash})-[:CONTAINS]->(cl:Clazz {name: 'Alpha'})
+                  -[:CONTAINS]->(func:Function {name: 'getCount'})
+                  -[:CONTAINS]->(p:Parameter {name: 'x'})
+            RETURN count(p)
+            """,
+            Map.of("hash", fileHash1));
+    assertEquals(1L, paramCount);
   }
 }

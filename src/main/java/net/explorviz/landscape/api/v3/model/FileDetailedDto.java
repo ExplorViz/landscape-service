@@ -22,7 +22,8 @@ public record FileDetailedDto(
       Map<String, Double> metrics,
       List<FunctionDto> functions,
       List<FieldDto> fields,
-      List<ClazzDto> innerClasses) {}
+      List<ClazzDto> innerClasses,
+      List<String> superclassFqns) {}
 
   @RegisterForReflection
   public record FunctionDto(String name, String returnType, Map<String, Double> metrics) {}

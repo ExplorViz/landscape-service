@@ -213,10 +213,6 @@ UNWIND [{start: {_id:268}, end: {_id:265}, properties:{}}, {start: {_id:268}, en
 MATCH (start:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.start._id})
 MATCH (end:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.end._id})
 CREATE (start)-[r:CONTAINS]->(end) SET r += row.properties;
-UNWIND [{start: {_id:324}, end: {_id:297}, properties:{}}, {start: {_id:325}, end: {_id:298}, properties:{}}, {start: {_id:297}, end: {_id:296}, properties:{}}, {start: {_id:298}, end: {_id:296}, properties:{}}, {start: {_id:299}, end: {_id:298}, properties:{}}, {start: {_id:302}, end: {_id:297}, properties:{}}, {start: {_id:315}, end: {_id:297}, properties:{}}, {start: {_id:319}, end: {_id:296}, properties:{}}] AS row
-MATCH (start:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.start._id})
-MATCH (end:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.end._id})
-CREATE (start)-[r:INHERITS]->(end) SET r += row.properties;
 UNWIND [{start: {_id:33}, end: {_id:363}, properties:{}}, {start: {_id:37}, end: {_id:364}, properties:{}}, {start: {_id:42}, end: {_id:369}, properties:{}}, {start: {_id:45}, end: {_id:371}, properties:{}}, {start: {_id:45}, end: {_id:373}, properties:{}}, {start: {_id:45}, end: {_id:365}, properties:{}}, {start: {_id:41}, end: {_id:368}, properties:{}}, {start: {_id:44}, end: {_id:370}, properties:{}}, {start: {_id:44}, end: {_id:372}, properties:{}}, {start: {_id:47}, end: {_id:374}, properties:{}}, {start: {_id:52}, end: {_id:375}, properties:{}}, {start: {_id:54}, end: {_id:376}, properties:{}}, {start: {_id:57}, end: {_id:377}, properties:{}}, {start: {_id:62}, end: {_id:378}, properties:{}}, {start: {_id:116}, end: {_id:379}, properties:{}}, {start: {_id:116}, end: {_id:380}, properties:{}}, {start: {_id:116}, end: {_id:381}, properties:{}}, {start: {_id:130}, end: {_id:382}, properties:{}}, {start: {_id:132}, end: {_id:383}, properties:{}}, {start: {_id:133}, end: {_id:384}, properties:{}}] AS row
 MATCH (start:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.start._id})
 MATCH (end:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.end._id})
