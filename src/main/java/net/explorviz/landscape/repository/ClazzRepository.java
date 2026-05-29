@@ -205,17 +205,15 @@ public class ClazzRepository {
               + String.join("::", splitSuperFqn));
     }
     final String superClassName = splitSuperFqn[1];
-    final String[] pathSegments = splitSuperFqn[0].split("/");
+    // splitSuperFqn[0] is already the full file path string (e.g. "src/main/java/Base.java").
+    // Using the composite (repoName, filePath) index avoids the O(N × depth) tree traversal.
+    final String filePath = splitSuperFqn[0];
 
     return Optional.ofNullable(
         session.queryForObject(
             Clazz.class,
             """
-            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-              -[:HAS_ROOT]->(root:Directory)
-            MATCH p = (root)-[:CONTAINS]->*(file:FileRevision)
-            WHERE all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $pathSegments[j-1])
-              AND length(p) = size($pathSegments)
+            MATCH (file:FileRevision {repoName: $repoName, filePath: $filePath})
             MATCH (file)-[:CONTAINS]->(cl:Clazz {name: $clazzName})
             WITH cl, file
             ORDER BY file.hasFileData DESC, id(file) DESC
@@ -223,14 +221,9 @@ public class ClazzRepository {
             RETURN cl;
             """,
             Map.of(
-                "tokenId",
-                tokenId,
-                "repoName",
-                repoName,
-                "clazzName",
-                superClassName,
-                "pathSegments",
-                pathSegments)));
+                "repoName", repoName,
+                "filePath", filePath,
+                "clazzName", superClassName)));
   }
 
   public Optional<Clazz> findClassFromInheritingClass(

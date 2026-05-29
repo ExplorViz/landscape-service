@@ -1,5 +1,6 @@
 package net.explorviz.landscape;
 
+import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -44,7 +45,7 @@ public class TrackableResourceServiceTest {
   @BeforeEach
   void init() {
     session = sessionFactory.openSession();
-    session.purgeDatabase();
+    resetDatabase(session);
 
     landscapeToken = "mytokenvalue";
     repoName = "myrepo";

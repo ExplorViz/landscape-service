@@ -1,6 +1,7 @@
 package net.explorviz.landscape;
 
 import static net.explorviz.landscape.util.TestUtils.assertNodeCounts;
+import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -58,7 +59,7 @@ class FileDataServiceTest {
   @BeforeEach
   void init() {
     session = sessionFactory.openSession();
-    session.purgeDatabase();
+    resetDatabase(session);
 
     landscapeToken = "mytokenvalue";
     repoName = "myrepo";

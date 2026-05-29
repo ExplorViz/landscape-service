@@ -2,8 +2,6 @@ package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -11,7 +9,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Directory;
@@ -58,6 +55,7 @@ public class FileRevisionRepository {
   @Inject ApplicationRepository applicationRepository;
   @Inject DirectoryRepository directoryRepository;
   @Inject LandscapeRepository landscapeRepository;
+  @Inject CommitFileStructureBatchWriter commitFileStructureBatchWriter;
 
   private FileRevision createRemainingFilePath(
       final Session session, final Directory startingDirectory, final String[] remainingPath) {
@@ -162,7 +160,7 @@ public class FileRevisionRepository {
     final Long rootDirectoryId =
         directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
     final Map<String, Long> directoryLeafCache = new HashMap<>();
-    createAndLinkFileStructureBatch(
+    commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
         session,
         List.of(fileIdentifier),
         repoName,
@@ -204,7 +202,7 @@ public class FileRevisionRepository {
     for (int offset = 0; offset < fileIdentifiers.size(); offset += COMMIT_FILE_BATCH_SIZE) {
       final int end = Math.min(offset + COMMIT_FILE_BATCH_SIZE, fileIdentifiers.size());
       final List<FileIdentifier> batch = fileIdentifiers.subList(offset, end);
-      createAndLinkFileStructureBatch(
+      commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
           session,
           batch,
           repoName,
@@ -262,115 +260,20 @@ public class FileRevisionRepository {
       return;
     }
 
+    // Use the stored f.filePath property for exclusion instead of reconstructing paths via a
+    // full directory-tree traversal and APOC string join. This reduces the work from O(N × depth)
+    // to O(N) and eliminates the dependency on APOC for the hot path.
     session.query(
         """
         MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
         MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(child:Commit {hash: $childHash})
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:HAS_ROOT]->(root:Directory)
-        MATCH p = (root)-[:CONTAINS*]->(f)
-        WITH child, f, apoc.text.join([node IN nodes(p)[1..] | node.name], '/') AS filePath
-        WHERE NOT filePath IN $modifiedPaths AND NOT filePath IN $deletedPaths
+        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+        WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
         MERGE (child)-[:CONTAINS]->(f)
         """,
         params);
-  }
-
-  private void createAndLinkFileStructureBatch(
-      final Session session,
-      final List<FileIdentifier> fileIdentifiers,
-      final String repoName,
-      final String landscapeTokenId,
-      final String commitHash,
-      final CommitFileLinkType linkType,
-      final Long rootDirectoryId,
-      final Map<String, Long> directoryLeafCache) {
-    if (fileIdentifiers.isEmpty()) {
-      return;
-    }
-
-    final List<Map<String, Object>> filesToLink = new ArrayList<>(fileIdentifiers.size());
-    for (final FileIdentifier fileIdentifier : fileIdentifiers) {
-      final String[] pathSegments = fileIdentifier.getFilePath().split("/");
-      final String[] directorySegments = buildDirectorySegments(repoName, pathSegments);
-      final String directoryKey = String.join("/", directorySegments);
-      final Long parentDirId =
-          directoryRepository.mergeDirectoryPathFromRoot(
-              session, rootDirectoryId, directorySegments, directoryKey, directoryLeafCache);
-
-      filesToLink.add(
-          Map.of(
-              "parentDirId",
-              parentDirId,
-              "fileName",
-              pathSegments[pathSegments.length - 1],
-              "hash",
-              fileIdentifier.getFileHash()));
-    }
-
-    final Map<String, Object> params =
-        Map.of(
-            "tokenId",
-            landscapeTokenId,
-            "repoName",
-            repoName,
-            "commitHash",
-            commitHash,
-            "files",
-            filesToLink);
-
-    switch (linkType) {
-      case CONTAINS ->
-          session.query(
-              """
-              UNWIND $files AS file
-              MATCH (parent:Directory) WHERE id(parent) = file.parentDirId
-              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-                -[:CONTAINS]->(commit:Commit {hash: $commitHash})
-              MERGE (parent)-[:CONTAINS]->(f:FileRevision {hash: file.hash, name: file.fileName})
-              ON CREATE SET f.hasFileData = false
-              MERGE (commit)-[:CONTAINS]->(f)
-              """,
-              params);
-      case ADDED ->
-          session.query(
-              """
-              UNWIND $files AS file
-              MATCH (parent:Directory) WHERE id(parent) = file.parentDirId
-              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-                -[:CONTAINS]->(commit:Commit {hash: $commitHash})
-              MERGE (parent)-[:CONTAINS]->(f:FileRevision {hash: file.hash, name: file.fileName})
-              ON CREATE SET f.hasFileData = false
-              MERGE (commit)-[:CONTAINS]->(f)
-              MERGE (commit)-[:ADDED]->(f)
-              """,
-              params);
-      case MODIFIED ->
-          session.query(
-              """
-              UNWIND $files AS file
-              MATCH (parent:Directory) WHERE id(parent) = file.parentDirId
-              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-                -[:CONTAINS]->(commit:Commit {hash: $commitHash})
-              MERGE (parent)-[:CONTAINS]->(f:FileRevision {hash: file.hash, name: file.fileName})
-              ON CREATE SET f.hasFileData = false
-              MERGE (commit)-[:CONTAINS]->(f)
-              MERGE (commit)-[:MODIFIED]->(f)
-              """,
-              params);
-    }
-  }
-
-  private String[] buildDirectorySegments(final String repoName, final String[] pathSegments) {
-    if (pathSegments.length <= 1) {
-      return new String[] {repoName};
-    }
-    final String[] directorySegments = Arrays.copyOfRange(pathSegments, 0, pathSegments.length - 1);
-    return Stream.concat(Stream.of(repoName), Arrays.stream(directorySegments))
-        .toArray(String[]::new);
   }
 
   public Optional<FileRevision> getFileRevisionFromHashAndPath(

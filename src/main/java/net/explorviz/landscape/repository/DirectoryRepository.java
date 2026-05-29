@@ -1,15 +1,20 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import net.explorviz.landscape.ogm.Directory;
+import org.jboss.logging.Logger;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
 public class DirectoryRepository {
+  private static final Logger LOGGER = Logger.getLogger(DirectoryRepository.class);
   private static final String FIND_LONGEST_PATH_MATCH_STATIC_DATA =
       """
       WITH $pathSegments AS pathSegments
@@ -123,6 +128,81 @@ public class DirectoryRepository {
     }
 
     return lastDir;
+  }
+
+  /**
+   * Merges all directory nodes for a batch of file paths in a single pass per depth level.
+   *
+   * <p>Instead of issuing one Cypher round-trip per path segment (as {@link
+   * #mergeDirectoryPathFromRoot} does), this method groups all unique directory paths by depth and
+   * issues a single {@code UNWIND} query per depth level. For a maximum tree depth of D, only D-1
+   * round-trips are needed regardless of how many distinct paths are in the batch.
+   *
+   * <p>On completion, every entry in {@code uniqueDirPaths} has its leaf directory ID stored in
+   * {@code directoryLeafCache} using the joined path string as key (same key format as {@link
+   * #mergeDirectoryPathFromRoot}).
+   *
+   * @param session OGM session
+   * @param rootDirectoryId Neo4j internal ID of the repository root directory
+   * @param rootKey Cache key for the root directory (typically the repository name)
+   * @param uniqueDirPaths Map from joined path string to its path-segment array; must include all
+   *     ancestor paths for every leaf directory that needs to be created
+   * @param directoryLeafCache Shared cache populated with (path → node ID) entries
+   */
+  public void batchMergeDirectoryPaths(
+      final Session session,
+      final Long rootDirectoryId,
+      final String rootKey,
+      final Map<String, String[]> uniqueDirPaths,
+      final Map<String, Long> directoryLeafCache) {
+
+    directoryLeafCache.putIfAbsent(rootKey, rootDirectoryId);
+
+    final int maxDepth =
+        uniqueDirPaths.values().stream().mapToInt(segs -> segs.length).max().orElse(0);
+
+    for (int targetLen = 2; targetLen <= maxDepth; targetLen++) {
+      final List<Map<String, Object>> dirsAtDepth = new ArrayList<>();
+
+      for (final Map.Entry<String, String[]> entry : uniqueDirPaths.entrySet()) {
+        final String[] segs = entry.getValue();
+        if (segs.length != targetLen || directoryLeafCache.containsKey(entry.getKey())) {
+          continue;
+        }
+        final String parentKey = String.join("/", Arrays.copyOfRange(segs, 0, segs.length - 1));
+        final Long parentId = directoryLeafCache.get(parentKey);
+        if (parentId == null) {
+          LOGGER.warnf(
+              "Parent directory '%s' not found in cache while creating '%s'; skipping",
+              parentKey, entry.getKey());
+          continue;
+        }
+        dirsAtDepth.add(
+            Map.of(
+                "parentId", parentId, "name", segs[segs.length - 1], "fullPath", entry.getKey()));
+      }
+
+      if (dirsAtDepth.isEmpty()) {
+        continue;
+      }
+
+      final Result result =
+          session.query(
+              """
+              UNWIND $dirs AS dir
+              MATCH (parent:Directory) WHERE id(parent) = dir.parentId
+              MERGE (parent)-[:CONTAINS]->(child:Directory {name: dir.name})
+              ON CREATE SET child.fullPath = dir.fullPath
+              RETURN dir.fullPath AS fullPath, id(child) AS childId
+              """,
+              Map.of("dirs", dirsAtDepth));
+
+      result
+          .queryResults()
+          .forEach(
+              row ->
+                  directoryLeafCache.put((String) row.get("fullPath"), (Long) row.get("childId")));
+    }
   }
 
   /**

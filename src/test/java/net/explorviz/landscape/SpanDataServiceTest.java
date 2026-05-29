@@ -1,6 +1,7 @@
 package net.explorviz.landscape;
 
 import static net.explorviz.landscape.util.TestUtils.assertNodeCounts;
+import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -59,7 +60,7 @@ class SpanDataServiceTest {
   @BeforeEach
   void cleanup() {
     session = sessionFactory.openSession();
-    session.purgeDatabase();
+    resetDatabase(session);
 
     landscapeToken = "mytokenvalue";
     baseTraceId = "myTrace";
