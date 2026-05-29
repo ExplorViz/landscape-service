@@ -469,6 +469,9 @@ public class StructureRepository {
     if (dto instanceof BuildingDto d) {
       return d.flatBaseModel().fqn();
     }
+    if (dto instanceof ChimneyPlatformDto d) {
+      return d.flatBaseModel().fqn();
+    }
     if (dto instanceof ChimneyDto d) {
       return d.flatBaseModel().fqn();
     }
