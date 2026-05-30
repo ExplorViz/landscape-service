@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,6 +27,7 @@ import net.explorviz.persistence.ogm.Landscape;
 import net.explorviz.persistence.ogm.Repository;
 import net.explorviz.persistence.ogm.Span;
 import net.explorviz.persistence.ogm.Trace;
+import net.explorviz.persistence.ogm.Variable;
 import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
@@ -259,6 +261,51 @@ public class ExampleDataResource {
         MERGE (var33)-[:MARKED_IN]->(file1)
         """,
         Map.of("repoName", repoName));
+    final Result variableResult =
+        session.query(
+            """
+            MATCH (:Landscape {tokenId: "mytokenvalue"})
+              -[:CONTAINS]->(:Repository {name: $repositoryName})
+              -[:HAS_DEBUG_RUN]->(debugRun:DebugRun)
+              -[:CONTAINS]->(snapshot:DebugSnapshot)
+              -[:CAPTURES]->(variable:Variable)
+            RETURN
+              debugRun.debugRunKey AS debugRunKey,
+              snapshot.debugSnapshotKey AS debugSnapshotKey,
+              snapshot.timestamp AS snapshotTimestamp,
+              collect(variable) AS variables
+            ORDER BY debugRun.debugRunKey, snapshot.timestamp
+            """,
+            Map.of("repositoryName", repoName));
+    final Map<String, Map<String, Double>> mutationCountsByDebugRun = new HashMap<>();
+
+    variableResult
+        .queryResults()
+        .forEach(
+            row -> {
+              final String debugRunKey = (String) row.get("debugRunKey");
+              final List<Variable> variables = (List<Variable>) row.get("variables");
+
+              final Map<String, Double> mutationCounts =
+                  mutationCountsByDebugRun.computeIfAbsent(debugRunKey, ignored -> new HashMap<>());
+
+              variables.forEach(
+                  variable -> {
+                    final String variableIdentity =
+                        variable.getInstanceId() + "::" + variable.getName();
+
+                    final double previousMutationCount =
+                        mutationCounts.getOrDefault(variableIdentity, 0.0);
+
+                    final double nextMutationCount =
+                        previousMutationCount + (int) Math.floor(Math.random() * 10);
+
+                    addVariableMutationCountMetric(variable, nextMutationCount);
+                    mutationCounts.put(variableIdentity, nextMutationCount);
+
+                    session.save(variable);
+                  });
+            });
     return "Successfully created example \"debug\"";
   }
 
@@ -619,6 +666,10 @@ public class ExampleDataResource {
             Map.entry("loc", Math.floor(Math.random() * 250)),
             Map.entry("cyclomatic_complexity", Math.floor(Math.random() * 10)),
             Map.entry("cycolomatic_complexity_weighted", Math.floor(Math.random() * 10))));
+  }
+
+  private void addVariableMutationCountMetric(final Variable variable, final double mutationCount) {
+    variable.setMetrics(Map.ofEntries(Map.entry("mutationCount", mutationCount)));
   }
 
   /**
