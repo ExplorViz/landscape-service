@@ -1,17 +1,26 @@
 @namespace("net.explorviz.landscape.avro")
 protocol SpanDataProtocol {
   record SpanData {
-    string spanId;
-    string parentId;
-    string traceId;
     string landscapeTokenId;
+    string landscapeTokenSecret;
+
+    string traceId;
+    string spanId;
+    string? parentId = null;
+
     long startTime;
     long endTime;
+
     string applicationName;
+
+    union{CodeDescriptor} entityDescriptor;
+  }
+
+  record CodeDescriptor {
     string filePath;
     string functionName;
-    string language;
-    union { null, string } className = null;
-    union { null, string } commitHash = null;
+    string? className = null;
+    string? language = null;
+    string? commitHash = null;
   }
 }

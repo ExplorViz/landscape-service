@@ -5,6 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Locale;
+import net.explorviz.landscape.avro.CodeDescriptor;
 import net.explorviz.landscape.avro.SpanData;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Clazz;
@@ -51,7 +52,7 @@ public class SpanPersistenceService {
     span.setStartTime(spanData.getStartTime());
     span.setEndTime(spanData.getEndTime());
 
-    if (!spanData.getParentId().isEmpty()) {
+    if (spanData.getParentId() != null && !spanData.getParentId().isEmpty()) {
       final Span parentSpan = spanRepository.getOrCreateSpan(session, spanData.getParentId());
       span.setParentSpan(parentSpan);
     }
@@ -63,39 +64,54 @@ public class SpanPersistenceService {
         landscapeRepository.getOrCreateLandscape(session, spanData.getLandscapeTokenId());
     landscape.addTrace(trace);
 
-    final Function function;
-    if (spanData.getCommitHash() != null) {
-      function = resolveFunctionFqn(session, spanData, spanData.getCommitHash(), landscape);
+    final Object entityDescriptor = spanData.getEntityDescriptor();
+
+    if (entityDescriptor instanceof CodeDescriptor codeDescriptor) {
+      final Function function;
+      if (codeDescriptor.getCommitHash() != null) {
+        function =
+            resolveFunctionFqn(
+                session, spanData, codeDescriptor, codeDescriptor.getCommitHash(), landscape);
+      } else {
+        function = resolveFunctionFqn(session, spanData, codeDescriptor, landscape);
+      }
+
+      span.setFunction(function);
+      session.save(List.of(span, trace, landscape, function));
     } else {
-      function = resolveFunctionFqn(session, spanData, landscape);
+      throw new IllegalStateException(
+          "Unknown entity descriptor type: " + entityDescriptor.getClass());
     }
-
-    span.setFunction(function);
-
-    session.save(List.of(span, trace, landscape, function));
   }
 
   private Function resolveFunctionFqn(
-      final Session session, final SpanData spanData, final Landscape landscape) {
-    final String[] splitFilePath = spanData.getFilePath().split("/");
-    final String functionName = spanData.getFunctionName();
+      final Session session,
+      final SpanData spanData,
+      final CodeDescriptor codeDescriptor,
+      final Landscape landscape) {
+    final String[] splitFilePath = codeDescriptor.getFilePath().split("/");
+    final String functionName = codeDescriptor.getFunctionName();
 
     final FileRevision fileRevision =
         resolveFileRevision(session, spanData, splitFilePath, landscape);
-    fileRevision.setLanguage(spanData.getLanguage().toUpperCase(Locale.ENGLISH));
+    if (codeDescriptor.getLanguage() != null) {
+      fileRevision.setLanguage(codeDescriptor.getLanguage().toUpperCase(Locale.ENGLISH));
+    }
     session.save(fileRevision);
 
     final Function function;
 
-    if (spanData.getClassName() != null) {
+    if (codeDescriptor.getClassName() != null) {
       final Clazz clazz =
           clazzRepository
               .findClassByClassPathAndFileRevisionId(
-                  session, spanData.getClassName().split("\\."), fileRevision.getId())
+                  session, codeDescriptor.getClassName().split("\\."), fileRevision.getId())
               .orElseGet(
                   () ->
                       clazzRepository.createClazzPathAndReturnLastClazz(
-                          session, spanData.getClassName().split("\\."), fileRevision.getId()));
+                          session,
+                          codeDescriptor.getClassName().split("\\."),
+                          fileRevision.getId()));
 
       function =
           functionRepository
@@ -119,12 +135,13 @@ public class SpanPersistenceService {
   private Function resolveFunctionFqn(
       final Session session,
       final SpanData spanData,
+      final CodeDescriptor codeDescriptor,
       final String commitHash,
       final Landscape landscape) {
-    final String[] splitFilePath = spanData.getFilePath().split("/");
-    final String functionName = spanData.getFunctionName();
+    final String[] splitFilePath = codeDescriptor.getFilePath().split("/");
+    final String functionName = codeDescriptor.getFunctionName();
 
-    if (spanData.getClassName() != null) {
+    if (codeDescriptor.getClassName() != null) {
       return functionRepository
           .findFunction(
               session,
@@ -132,8 +149,8 @@ public class SpanPersistenceService {
               ObjectArrays.concat(splitFilePath, functionName),
               spanData.getLandscapeTokenId(),
               commitHash,
-              spanData.getClassName().split("\\."))
-          .orElseGet(() -> resolveFunctionFqn(session, spanData, landscape));
+              codeDescriptor.getClassName().split("\\."))
+          .orElseGet(() -> resolveFunctionFqn(session, spanData, codeDescriptor, landscape));
     } else {
       return functionRepository
           .findFunction(
@@ -142,7 +159,7 @@ public class SpanPersistenceService {
               ObjectArrays.concat(splitFilePath, functionName),
               commitHash,
               spanData.getLandscapeTokenId())
-          .orElseGet(() -> resolveFunctionFqn(session, spanData, landscape));
+          .orElseGet(() -> resolveFunctionFqn(session, spanData, codeDescriptor, landscape));
     }
   }
 
