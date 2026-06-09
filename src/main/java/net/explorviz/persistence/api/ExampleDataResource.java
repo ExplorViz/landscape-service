@@ -846,7 +846,8 @@ public class ExampleDataResource {
    * semicolon. Lines starting with // and empty lines are ignored.
    */
   @SuppressWarnings("PMD.CloseResource") // This is handled by the BufferedReader
-  private void executeCypherFile(final String resourceFilePath) {
+  private void executeCypherFile(
+      final String resourceFilePath, final Map<String, Object> parameters) {
     final InputStream fileInputStream =
         Thread.currentThread().getContextClassLoader().getResourceAsStream(resourceFilePath);
     if (fileInputStream == null) {
@@ -864,11 +865,18 @@ public class ExampleDataResource {
       reader.close();
       final Session session = sessionFactory.openSession();
       session.purgeDatabase();
-      Arrays.stream(cypherStatements).forEach(s -> session.query(s, Map.of()));
+      Arrays.stream(cypherStatements)
+          .map(String::trim)
+          .filter(s -> !s.isBlank())
+          .forEach(s -> session.query(s, parameters));
     } catch (final IOException e) {
       throw new InternalServerErrorException(
           "Failed to load example cypher file: " + e.getMessage(), e);
     }
+  }
+
+  private void executeCypherFile(final String resourceFilePath) {
+    executeCypherFile(resourceFilePath, Map.of());
   }
 
   private void addRandomSpan(final Trace trace, final String name) {
