@@ -1,5 +1,3 @@
-// example-data/debug.cypher
-
 MERGE (l:Landscape {tokenId: "mytokenvalue"})
 MERGE (l)-[:CONTAINS]->(r1:Repository {name: $repoName})
 MERGE (l)-[:CONTAINS]->(app:Application {name: $repoName})
@@ -18,18 +16,13 @@ UNWIND [
   {path: "src/main/java/net/explorviz/debugsample", parent: "src/main/java/net/explorviz", name: "debugsample"},
   {path: "src/main/java/net/explorviz/debugsample/api", parent: "src/main/java/net/explorviz/debugsample", name: "api"},
   {path: "src/main/java/net/explorviz/debugsample/service", parent: "src/main/java/net/explorviz/debugsample", name: "service"},
-  {path: "src/main/java/net/explorviz/debugsample/service/impl", parent: "src/main/java/net/explorviz/debugsample/service", name: "impl"},
-  {path: "src/main/java/net/explorviz/debugsample/model", parent: "src/main/java/net/explorviz/debugsample", name: "model"},
   {path: "src/main/java/net/explorviz/debugsample/repository", parent: "src/main/java/net/explorviz/debugsample", name: "repository"},
-  {path: "src/main/java/net/explorviz/debugsample/util", parent: "src/main/java/net/explorviz/debugsample", name: "util"},
   {path: "src/main/java/net/explorviz/debugsample/config", parent: "src/main/java/net/explorviz/debugsample", name: "config"},
   {path: "src/test", parent: "src", name: "test"},
   {path: "src/test/java", parent: "src/test", name: "java"},
   {path: "src/test/java/net", parent: "src/test/java", name: "net"},
   {path: "src/test/java/net/explorviz", parent: "src/test/java/net", name: "explorviz"},
-  {path: "src/test/java/net/explorviz/debugsample", parent: "src/test/java/net/explorviz", name: "debugsample"},
-  {path: "docs", parent: "", name: "docs"},
-  {path: "scripts", parent: "", name: "scripts"}
+  {path: "src/test/java/net/explorviz/debugsample", parent: "src/test/java/net/explorviz", name: "debugsample"}
 ] AS dirSpec
 MERGE (dir:Directory {debugPath: $repoName + "/" + dirSpec.path})
 SET dir.name = dirSpec.name
@@ -43,27 +36,13 @@ FOREACH (_ IN CASE WHEN dirSpec.parent <> "" THEN [1] ELSE [] END |
 );
 
 UNWIND [
-  {path: "src/main/java/net/explorviz/debugsample/api/DebugController.java", parent: "src/main/java/net/explorviz/debugsample/api", name: "DebugController.java", functions: ["getSnapshot", "listRuns", "compareSnapshots"]},
-  {path: "src/main/java/net/explorviz/debugsample/api/HealthController.java", parent: "src/main/java/net/explorviz/debugsample/api", name: "HealthController.java", functions: ["health", "readVersion"]},
-  {path: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "DebugSessionService.java", functions: ["startSession", "stopSession", "loadSession"]},
-  {path: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "SnapshotService.java", functions: ["capture", "diff", "normalize"]},
-  {path: "src/main/java/net/explorviz/debugsample/service/VariableService.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "VariableService.java", functions: ["resolveVariables", "filterVariables", "groupByInstance"]},
-  {path: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java", parent: "src/main/java/net/explorviz/debugsample/service/impl", name: "DefaultDebugSessionService.java", functions: ["createRun", "attachCommit", "closeRun"]},
-  {path: "src/main/java/net/explorviz/debugsample/service/impl/DefaultSnapshotService.java", parent: "src/main/java/net/explorviz/debugsample/service/impl", name: "DefaultSnapshotService.java", functions: ["createSnapshot", "storeSnapshot", "dropExpired"]},
-  {path: "src/main/java/net/explorviz/debugsample/model/DebugRunDto.java", parent: "src/main/java/net/explorviz/debugsample/model", name: "DebugRunDto.java", functions: ["fromEntity", "toString"]},
-  {path: "src/main/java/net/explorviz/debugsample/model/SnapshotDto.java", parent: "src/main/java/net/explorviz/debugsample/model", name: "SnapshotDto.java", functions: ["fromEntity", "withVariables"]},
-  {path: "src/main/java/net/explorviz/debugsample/model/VariableDto.java", parent: "src/main/java/net/explorviz/debugsample/model", name: "VariableDto.java", functions: ["fromEntity", "isPrimitive"]},
-  {path: "src/main/java/net/explorviz/debugsample/model/UserContext.java", parent: "src/main/java/net/explorviz/debugsample/model", name: "UserContext.java", functions: ["isAdmin", "hasFeature"]},
-  {path: "src/main/java/net/explorviz/debugsample/repository/DebugRunRepository.java", parent: "src/main/java/net/explorviz/debugsample/repository", name: "DebugRunRepository.java", functions: ["findByKey", "saveRun"]},
-  {path: "src/main/java/net/explorviz/debugsample/repository/SnapshotRepository.java", parent: "src/main/java/net/explorviz/debugsample/repository", name: "SnapshotRepository.java", functions: ["findByRun", "saveSnapshot"]},
-  {path: "src/main/java/net/explorviz/debugsample/repository/VariableRepository.java", parent: "src/main/java/net/explorviz/debugsample/repository", name: "VariableRepository.java", functions: ["findBySnapshot", "saveVariable"]},
-  {path: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java", parent: "src/main/java/net/explorviz/debugsample/util", name: "VariableComparator.java", functions: ["hasChanged", "sameIdentity", "sameValue"]},
-  {path: "src/main/java/net/explorviz/debugsample/util/SnapshotFormatter.java", parent: "src/main/java/net/explorviz/debugsample/util", name: "SnapshotFormatter.java", functions: ["format", "formatValue"]},
-  {path: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java", parent: "src/main/java/net/explorviz/debugsample/config", name: "DebugConfig.java", functions: ["enabled", "maxSnapshots"]},
-  {path: "src/test/java/net/explorviz/debugsample/DebugSessionServiceTest.java", parent: "src/test/java/net/explorviz/debugsample", name: "DebugSessionServiceTest.java", functions: ["createsRun", "stopsRun"]},
-  {path: "src/test/java/net/explorviz/debugsample/SnapshotDiffTest.java", parent: "src/test/java/net/explorviz/debugsample", name: "SnapshotDiffTest.java", functions: ["detectsValueChange", "detectsRemovedVariable"]},
-  {path: "docs/debug-flow.md", parent: "docs", name: "debug-flow.md", functions: ["describeDebugFlow"]},
-  {path: "scripts/seed-debug-data.sh", parent: "scripts", name: "seed-debug-data.sh", functions: ["seedDebugData"]}
+  {path: "src/main/java/net/explorviz/debugsample/api/DebugController.java", parent: "src/main/java/net/explorviz/debugsample/api", name: "DebugController.java", functions: ["listRuns", "getSnapshot"]},
+  {path: "src/main/java/net/explorviz/debugsample/service/SessionService.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "SessionService.java", functions: ["openSession", "closeSession"]},
+  {path: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "WorkerPool.java", functions: ["schedule", "rebalance"]},
+  {path: "src/main/java/net/explorviz/debugsample/service/CacheService.java", parent: "src/main/java/net/explorviz/debugsample/service", name: "CacheService.java", functions: ["get", "put"]},
+  {path: "src/main/java/net/explorviz/debugsample/repository/AuditRepository.java", parent: "src/main/java/net/explorviz/debugsample/repository", name: "AuditRepository.java", functions: ["saveEvent", "findLatest"]},
+  {path: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java", parent: "src/main/java/net/explorviz/debugsample/config", name: "DebugConfig.java", functions: ["enabled", "threshold"]},
+  {path: "src/test/java/net/explorviz/debugsample/SnapshotDiffTest.java", parent: "src/test/java/net/explorviz/debugsample", name: "SnapshotDiffTest.java", functions: ["detectsAllCases"]}
 ] AS fileSpec
 MATCH (parent:Directory {debugPath: $repoName + "/" + fileSpec.parent})
 MERGE (file:FileRevision {debugPath: $repoName + "/" + fileSpec.path})
@@ -76,177 +55,94 @@ SET func.name = functionName
 MERGE (file)-[:CONTAINS]->(func);
 
 MATCH (r1:Repository {name: $repoName})
-MERGE (c1:Commit {hash: $repoName + "-commit-1"})
-SET c1.authorDate = 1000
-MERGE (c2:Commit {hash: $repoName + "-commit-2"})
-SET c2.authorDate = 2000
-MERGE (c3:Commit {hash: $repoName + "-commit-3"})
-SET c3.authorDate = 3000
-MERGE (r1)-[:CONTAINS]->(c1)
-MERGE (r1)-[:CONTAINS]->(c2)
-MERGE (r1)-[:CONTAINS]->(c3)
-MERGE (c2)-[:HAS_PARENT]->(c1)
-MERGE (c3)-[:HAS_PARENT]->(c2);
+MERGE (commit1:Commit {hash: $repoName + "-debug-commit-1"})
+SET commit1.authorDate = 1000
+MERGE (r1)-[:CONTAINS]->(commit1);
 
 MATCH (r1:Repository {name: $repoName})
-MATCH (c1:Commit {hash: $repoName + "-commit-1"})
-MATCH (c2:Commit {hash: $repoName + "-commit-2"})
-MATCH (c3:Commit {hash: $repoName + "-commit-3"})
-UNWIND [
-  {run: 1, snap: 1, timestamp: 1000000000, line: 41, commit: 1},
-  {run: 1, snap: 2, timestamp: 2000000000, line: 41, commit: 1},
-  {run: 1, snap: 3, timestamp: 3000000000, line: 87, commit: 1},
-  {run: 1, snap: 4, timestamp: 4000000000, line: 87, commit: 2},
-  {run: 1, snap: 5, timestamp: 5000000000, line: 132, commit: 2},
-
-  {run: 2, snap: 1, timestamp: 1100000000, line: 55, commit: 2},
-  {run: 2, snap: 2, timestamp: 2100000000, line: 55, commit: 2},
-  {run: 2, snap: 3, timestamp: 3100000000, line: 144, commit: 2},
-  {run: 2, snap: 4, timestamp: 4100000000, line: 144, commit: 3},
-
-  {run: 3, snap: 1, timestamp: 1200000000, line: 21, commit: 3},
-  {run: 3, snap: 2, timestamp: 2200000000, line: 21, commit: 3},
-  {run: 3, snap: 3, timestamp: 3200000000, line: 76, commit: 3},
-  {run: 3, snap: 4, timestamp: 4200000000, line: 76, commit: 3},
-  {run: 3, snap: 5, timestamp: 5200000000, line: 201, commit: 3}
-] AS snapshotSpec
-MERGE (debugRun:DebugRun {debugRunKey: $repoName + "-debug-run-" + snapshotSpec.run})
+MATCH (commit1:Commit {hash: $repoName + "-debug-commit-1"})
+MERGE (debugRun:DebugRun {debugRunKey: $repoName + "-debug-run-1"})
 MERGE (r1)-[:HAS_DEBUG_RUN]->(debugRun)
-MERGE (snapshot:DebugSnapshot {
-  debugSnapshotKey: $repoName + "-debug-run-" + snapshotSpec.run + "-snapshot-" + snapshotSpec.snap
-})
-SET snapshot.timestamp = snapshotSpec.timestamp,
-    snapshot.lineOfBreakpoint = snapshotSpec.line
-MERGE (debugRun)-[:CONTAINS]->(snapshot)
-FOREACH (_ IN CASE WHEN snapshotSpec.commit = 1 THEN [1] ELSE [] END |
-  MERGE (debugRun)-[:RUNS_ON]->(c1)
-)
-FOREACH (_ IN CASE WHEN snapshotSpec.commit = 2 THEN [1] ELSE [] END |
-  MERGE (debugRun)-[:RUNS_ON]->(c2)
-)
-FOREACH (_ IN CASE WHEN snapshotSpec.commit = 3 THEN [1] ELSE [] END |
-  MERGE (debugRun)-[:RUNS_ON]->(c3)
-);
+MERGE (debugRun)-[:RUNS_ON]->(commit1)
+MERGE (snapshotX:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-1-snapshot-1"})
+SET snapshotX.timestamp = 1000000000,
+    snapshotX.lineOfBreakpoint = 42
+MERGE (snapshotY:DebugSnapshot {debugSnapshotKey: $repoName + "-debug-run-1-snapshot-2"})
+SET snapshotY.timestamp = 2000000000,
+    snapshotY.lineOfBreakpoint = 84
+MERGE (debugRun)-[:CONTAINS]->(snapshotX)
+MERGE (debugRun)-[:CONTAINS]->(snapshotY);
 
 UNWIND [
-  // run 1, snapshot 1: baseline
-  {run: 1, snap: 1, name: "requestId", instance: "request-1", value: "REQ-1001", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 1, name: "status", instance: "request-1", value: "OPEN", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 1, name: "retryCount", instance: "request-1", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java"},
-  {run: 1, snap: 1, name: "duration", instance: "timer-1", value: "12.5", type: "float", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 1, name: "precision", instance: "timer-1", value: "12.500001", type: "double", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 1, name: "enabled", instance: "config-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
-  {run: 1, snap: 1, name: "count", instance: "batch-1", value: "4", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 1, name: "count", instance: "batch-2", value: "4", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 1, name: "label", instance: "user-1", value: "admin", type: "string", file: "src/main/java/net/explorviz/debugsample/model/UserContext.java"},
+  {snap: 1, name: "workerLoad", instance: "worker-only-in-x-1", value: "0.10", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerMaxLoad", instance: "worker-only-in-x-1", value: "0.900000001", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerHealthy", instance: "worker-only-in-x-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerState", instance: "worker-only-in-x-1", value: "IDLE", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  // run 1, snapshot 2: unchanged snapshot
-  {run: 1, snap: 2, name: "requestId", instance: "request-1", value: "REQ-1001", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 2, name: "status", instance: "request-1", value: "OPEN", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 2, name: "retryCount", instance: "request-1", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java"},
-  {run: 1, snap: 2, name: "duration", instance: "timer-1", value: "12.5", type: "float", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 2, name: "precision", instance: "timer-1", value: "12.500001", type: "double", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 2, name: "enabled", instance: "config-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
-  {run: 1, snap: 2, name: "count", instance: "batch-1", value: "4", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 2, name: "count", instance: "batch-2", value: "4", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 2, name: "label", instance: "user-1", value: "admin", type: "string", file: "src/main/java/net/explorviz/debugsample/model/UserContext.java"},
+  {snap: 1, name: "workerLoad", instance: "worker-shared-unchanged", value: "0.25", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerMaxLoad", instance: "worker-shared-unchanged", value: "0.900000002", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerHealthy", instance: "worker-shared-unchanged", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerState", instance: "worker-shared-unchanged", value: "RUNNING", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  // run 1, snapshot 3: value changes + new variables
-  {run: 1, snap: 3, name: "requestId", instance: "request-1", value: "REQ-1001", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 3, name: "status", instance: "request-1", value: "PROCESSING", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 3, name: "retryCount", instance: "request-1", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java"},
-  {run: 1, snap: 3, name: "duration", instance: "timer-1", value: "18.75", type: "float", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 3, name: "precision", instance: "timer-1", value: "18.750009", type: "double", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 3, name: "enabled", instance: "config-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
-  {run: 1, snap: 3, name: "count", instance: "batch-1", value: "6", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 3, name: "count", instance: "batch-2", value: "4", type: "int", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 1, snap: 3, name: "label", instance: "user-1", value: "admin", type: "string", file: "src/main/java/net/explorviz/debugsample/model/UserContext.java"},
-  {run: 1, snap: 3, name: "cacheHit", instance: "cache-1", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultSnapshotService.java"},
-  {run: 1, snap: 3, name: "threshold", instance: "config-1", value: "0.85", type: "double", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
+  {snap: 1, name: "workerLoad", instance: "worker-shared-changed", value: "0.40", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerMaxLoad", instance: "worker-shared-changed", value: "0.900000003", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerHealthy", instance: "worker-shared-changed", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerState", instance: "worker-shared-changed", value: "RUNNING", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  // run 1, snapshot 4: several previous variables no longer captured
-  {run: 1, snap: 4, name: "requestId", instance: "request-1", value: "REQ-1001", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 4, name: "status", instance: "request-1", value: "DONE", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 4, name: "retryCount", instance: "request-1", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java"},
-  {run: 1, snap: 4, name: "duration", instance: "timer-1", value: "24.0", type: "float", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 4, name: "precision", instance: "timer-1", value: "24.000001", type: "double", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 4, name: "cacheHit", instance: "cache-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultSnapshotService.java"},
+  {snap: 1, name: "workerLoad", instance: "worker-only-in-x-2", value: "0.70", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerMaxLoad", instance: "worker-only-in-x-2", value: "0.900000004", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerHealthy", instance: "worker-only-in-x-2", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 1, name: "workerState", instance: "worker-only-in-x-2", value: "FAILED", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  // run 1, snapshot 5: new request instance, same names
-  {run: 1, snap: 5, name: "requestId", instance: "request-2", value: "REQ-1002", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 5, name: "status", instance: "request-2", value: "OPEN", type: "string", file: "src/main/java/net/explorviz/debugsample/api/DebugController.java"},
-  {run: 1, snap: 5, name: "retryCount", instance: "request-2", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/service/DebugSessionService.java"},
-  {run: 1, snap: 5, name: "duration", instance: "timer-2", value: "3.5", type: "float", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 5, name: "precision", instance: "timer-2", value: "3.500004", type: "double", file: "src/main/java/net/explorviz/debugsample/service/SnapshotService.java"},
-  {run: 1, snap: 5, name: "enabled", instance: "config-1", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
+  {snap: 2, name: "workerLoad", instance: "worker-shared-unchanged", value: "0.25", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerMaxLoad", instance: "worker-shared-unchanged", value: "0.950000002", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerHealthy", instance: "worker-shared-unchanged", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerState", instance: "worker-shared-unchanged", value: "THROTTLED", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  // run 2
-  {run: 2, snap: 1, name: "sessionId", instance: "session-7", value: "S-700", type: "string", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 1, name: "active", instance: "session-7", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 1, name: "openSnapshots", instance: "session-7", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/repository/SnapshotRepository.java"},
-  {run: 2, snap: 1, name: "load", instance: "worker-1", value: "0.25", type: "float", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 2, snap: 1, name: "load", instance: "worker-2", value: "0.25", type: "float", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
+  {snap: 2, name: "workerLoad", instance: "worker-shared-changed", value: "0.95", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerMaxLoad", instance: "worker-shared-changed", value: "0.990000003", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerHealthy", instance: "worker-shared-changed", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerState", instance: "worker-shared-changed", value: "OVERLOADED", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  {run: 2, snap: 2, name: "sessionId", instance: "session-7", value: "S-700", type: "string", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 2, name: "active", instance: "session-7", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 2, name: "openSnapshots", instance: "session-7", value: "2", type: "int", file: "src/main/java/net/explorviz/debugsample/repository/SnapshotRepository.java"},
-  {run: 2, snap: 2, name: "load", instance: "worker-1", value: "0.50", type: "float", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 2, snap: 2, name: "load", instance: "worker-2", value: "0.25", type: "float", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
-  {run: 2, snap: 2, name: "mode", instance: "session-7", value: "TRACE", type: "string", file: "src/main/java/net/explorviz/debugsample/model/DebugRunDto.java"},
+  {snap: 2, name: "workerLoad", instance: "worker-only-in-y-1", value: "0.15", type: "float", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerMaxLoad", instance: "worker-only-in-y-1", value: "0.900000005", type: "double", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerHealthy", instance: "worker-only-in-y-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
+  {snap: 2, name: "workerState", instance: "worker-only-in-y-1", value: "STARTING", type: "string", file: "src/main/java/net/explorviz/debugsample/service/WorkerPool.java"},
 
-  {run: 2, snap: 3, name: "sessionId", instance: "session-7", value: "S-700", type: "string", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 3, name: "active", instance: "session-7", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 3, name: "openSnapshots", instance: "session-7", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/repository/SnapshotRepository.java"},
-  {run: 2, snap: 3, name: "mode", instance: "session-7", value: "TRACE", type: "string", file: "src/main/java/net/explorviz/debugsample/model/DebugRunDto.java"},
+  {snap: 1, name: "cacheKey", instance: "cache-shared", value: "debug-run-1", type: "string", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
+  {snap: 1, name: "cacheTtlOnlyInX", instance: "cache-shared", value: "30", type: "int", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
+  {snap: 1, name: "cachePrecisionOnlyInX", instance: "cache-shared", value: "30.000000001", type: "double", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
 
-  {run: 2, snap: 4, name: "sessionId", instance: "session-8", value: "S-701", type: "string", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 4, name: "active", instance: "session-8", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/impl/DefaultDebugSessionService.java"},
-  {run: 2, snap: 4, name: "openSnapshots", instance: "session-8", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/repository/SnapshotRepository.java"},
-  {run: 2, snap: 4, name: "load", instance: "worker-3", value: "0.10", type: "float", file: "src/main/java/net/explorviz/debugsample/service/VariableService.java"},
+  {snap: 2, name: "cacheKey", instance: "cache-shared", value: "debug-run-1", type: "string", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
+  {snap: 2, name: "cacheHitOnlyInY", instance: "cache-shared", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
+  {snap: 2, name: "cacheSizeOnlyInY", instance: "cache-shared", value: "128", type: "int", file: "src/main/java/net/explorviz/debugsample/service/CacheService.java"},
 
-  // run 3
-  {run: 3, snap: 1, name: "leftValue", instance: "comparison-1", value: "alpha", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 1, name: "rightValue", instance: "comparison-1", value: "alpha", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 1, name: "changed", instance: "comparison-1", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 1, name: "score", instance: "comparison-1", value: "1.0", type: "double", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 1, name: "index", instance: "comparison-1", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
+  {snap: 1, name: "sessionStateOnlyInX", instance: "session-only-in-x-1", value: "OPEN", type: "string", file: "src/main/java/net/explorviz/debugsample/service/SessionService.java"},
+  {snap: 1, name: "sessionRetryOnlyInX", instance: "session-only-in-x-1", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/service/SessionService.java"},
+  {snap: 1, name: "sessionActiveOnlyInX", instance: "session-only-in-x-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/service/SessionService.java"},
 
-  {run: 3, snap: 2, name: "leftValue", instance: "comparison-1", value: "alpha", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 2, name: "rightValue", instance: "comparison-1", value: "alpha", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 2, name: "changed", instance: "comparison-1", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 2, name: "score", instance: "comparison-1", value: "1.0", type: "double", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 2, name: "index", instance: "comparison-1", value: "0", type: "int", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
+  {snap: 2, name: "auditEventOnlyInY", instance: "audit-only-in-y-1", value: "AUD-2001", type: "string", file: "src/main/java/net/explorviz/debugsample/repository/AuditRepository.java"},
+  {snap: 2, name: "auditSequenceOnlyInY", instance: "audit-only-in-y-1", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/repository/AuditRepository.java"},
 
-  {run: 3, snap: 3, name: "leftValue", instance: "comparison-1", value: "alpha", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 3, name: "rightValue", instance: "comparison-1", value: "beta", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 3, name: "changed", instance: "comparison-1", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 3, name: "score", instance: "comparison-1", value: "0.42", type: "double", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 3, name: "index", instance: "comparison-1", value: "1", type: "int", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 3, name: "message", instance: "comparison-1", value: "mismatch", type: "string", file: "src/main/java/net/explorviz/debugsample/util/SnapshotFormatter.java"},
+  {snap: 1, name: "configEnabledChanges", instance: "config-shared", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
+  {snap: 1, name: "configThresholdChanges", instance: "config-shared", value: "0.75", type: "float", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
+  {snap: 2, name: "configEnabledChanges", instance: "config-shared", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
+  {snap: 2, name: "configThresholdChanges", instance: "config-shared", value: "0.90", type: "float", file: "src/main/java/net/explorviz/debugsample/config/DebugConfig.java"},
 
-  {run: 3, snap: 4, name: "leftValue", instance: "comparison-2", value: "gamma", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 4, name: "rightValue", instance: "comparison-2", value: "gamma", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 4, name: "changed", instance: "comparison-2", value: "false", type: "boolean", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 4, name: "score", instance: "comparison-2", value: "1.0", type: "double", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 4, name: "index", instance: "comparison-2", value: "2", type: "int", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-
-  {run: 3, snap: 5, name: "leftValue", instance: "comparison-2", value: "gamma", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 5, name: "rightValue", instance: "comparison-2", value: "delta", type: "string", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 5, name: "changed", instance: "comparison-2", value: "true", type: "boolean", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 5, name: "score", instance: "comparison-2", value: "0.15", type: "double", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 5, name: "index", instance: "comparison-2", value: "3", type: "int", file: "src/main/java/net/explorviz/debugsample/util/VariableComparator.java"},
-  {run: 3, snap: 5, name: "message", instance: "comparison-2", value: "changed-after-format", type: "string", file: "src/main/java/net/explorviz/debugsample/util/SnapshotFormatter.java"}
+  {snap: 1, name: "assertionCountChanges", instance: "test-shared", value: "5", type: "int", file: "src/test/java/net/explorviz/debugsample/SnapshotDiffTest.java"},
+  {snap: 2, name: "assertionCountChanges", instance: "test-shared", value: "7", type: "int", file: "src/test/java/net/explorviz/debugsample/SnapshotDiffTest.java"}
 ] AS variableSpec
 MATCH (snapshot:DebugSnapshot {
-  debugSnapshotKey: $repoName + "-debug-run-" + variableSpec.run + "-snapshot-" + variableSpec.snap
+  debugSnapshotKey: $repoName + "-debug-run-1-snapshot-" + variableSpec.snap
 })
 MATCH (file:FileRevision {debugPath: $repoName + "/" + variableSpec.file})
 MERGE (variable:Variable {
   variableKey: $repoName
-    + "-debug-run-" + variableSpec.run
+    + "-debug-run-1"
     + "-snapshot-" + variableSpec.snap
+    + "-file-" + variableSpec.file
+    + "-instance-" + variableSpec.instance
     + "-var-" + variableSpec.name
-    + "-" + variableSpec.instance
 })
 SET variable.name = variableSpec.name,
     variable.value = variableSpec.value,
