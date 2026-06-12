@@ -75,7 +75,7 @@ public class DebugSnapshotServiceImpl implements DebugSnapshotService {
         SET variable.name = variableData.name,
             variable.value = variableData.value,
             variable.type = variableData.type,
-            variable.ownerInstance = variableData.objectReference
+            variable.instanceId = variableData.objectReference
         MERGE (debugSnapshot)-[:CAPTURES]->(variable)
 
         WITH variable, variableData, commit

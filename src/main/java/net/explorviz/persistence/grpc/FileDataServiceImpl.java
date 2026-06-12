@@ -4,6 +4,7 @@ import com.google.protobuf.Empty;
 import io.grpc.Status;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.common.annotation.Blocking;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import net.explorviz.persistence.ogm.Clazz;
@@ -47,6 +48,35 @@ public class FileDataServiceImpl implements FileDataService {
     } catch (Exception e) { // NOPMD - intentional: Handling in GGrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
+  }
+
+  @Blocking
+  @Override
+  public Uni<Empty> persistFiles(final Multi<FileData> requests) {
+    LOG.info("persistFiles called");
+
+    return requests
+        .collect()
+        .asList()
+        .onItem()
+        .transform(
+            fileDataList -> {
+              LOG.infof("persistFiles received %d files", fileDataList.size());
+
+              final Session session = sessionFactory.openSession();
+
+              try (Transaction tx = session.beginTransaction()) {
+                fileDataList.forEach(fileData -> saveFileData(session, fileData));
+                tx.commit();
+                return Empty.getDefaultInstance();
+              } catch (Exception e) { // NOPMD
+                if (fileDataList.isEmpty()) {
+                  throw GrpcExceptionMapper.mapToGrpcException(e, "empty PersistFiles request");
+                }
+
+                throw GrpcExceptionMapper.mapToGrpcException(e, fileDataList.get(0));
+              }
+            });
   }
 
   private void saveFileData(final Session session, final FileData fileData) {
