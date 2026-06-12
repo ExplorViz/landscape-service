@@ -302,13 +302,14 @@ The tests are also run as part of the git pre-commit hook.
 
 ### Variable
 
-|  Field  |           Type            |
-|---------|---------------------------|
-| **id**  | **Long**                  |
-| name    | String                    |
-| type    | String                    |
-| value   | String                    |
-| metrics | Map&lt;String, Double&gt; |
+|     Field     |           Type            |
+|---------------|---------------------------|
+| **id**        | **Long**                  |
+| ownerInstance | String                    |
+| name          | String                    |
+| type          | String                    |
+| value         | String                    |
+| metrics       | Map&lt;String, Double&gt; |
 
 ## Updating the Database Model
 

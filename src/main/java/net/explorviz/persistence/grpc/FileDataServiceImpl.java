@@ -17,12 +17,15 @@ import net.explorviz.persistence.repository.ClazzRepository;
 import net.explorviz.persistence.repository.FileRevisionRepository;
 import net.explorviz.persistence.repository.FunctionRepository;
 import net.explorviz.persistence.util.GrpcExceptionMapper;
+import org.jboss.logging.Logger;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 import org.neo4j.ogm.transaction.Transaction;
 
 @GrpcService
 public class FileDataServiceImpl implements FileDataService {
+
+  private static final Logger LOG = Logger.getLogger(FileDataServiceImpl.class);
 
   @Inject ClazzRepository clazzRepository;
 
@@ -62,6 +65,7 @@ public class FileDataServiceImpl implements FileDataService {
                         .asRuntimeException());
 
     file.setLanguage(fileData.getLanguage().toString());
+    LOG.info("PACKAGE NAME: " + fileData.getPackageName());
     file.setPackageName(fileData.getPackageName());
     file.setImportNames(fileData.getImportNamesList());
     file.setMetrics(fileData.getMetricsMap());

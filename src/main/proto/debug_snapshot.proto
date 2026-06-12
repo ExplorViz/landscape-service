@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "net.explorviz.persistence.proto";
+option java_outer_classname = "DebugSnapshotProto";
+
+import "google/protobuf/empty.proto";
+
+service DebugSnapshotService {
+  rpc SaveCurrentState (DebugSnapshotData) returns (google.protobuf.Empty) {}
+}
+
+message DebugSnapshotData {
+  string landscape_token = 1;
+  string debug_run_id = 2;
+  string repository_name = 3;
+  string commit_hash = 4;
+  int64 epoch_nano = 5;
+  repeated VariableSnapshotEntry variables = 6;
+}
+
+message VariableSnapshotEntry {
+  string id = 1;
+  string name = 2;
+  string definition_uri = 3;
+  RuntimeOwnerGroup owner_group = 4;
+
+  string source_path = 5;
+  string file_name = 6;
+  string package_name = 7;
+  string class_name = 8;
+  int32 line = 9;
+  int32 column = 10;
+}
+
+message RuntimeOwnerGroup {
+  string owner_type = 1;
+  repeated RuntimeVariableValue values = 2;
+}
+
+message RuntimeVariableValue {
+  string value = 1;
+  string type = 2;
+
+  // Runtime-local owner object identity, e.g. "DebugClass@41".
+  // Only meaningful within the same debug session.
+  string object_reference = 3;
+
+  string match_confidence = 4;
+  string runtime_path = 5;
+}
