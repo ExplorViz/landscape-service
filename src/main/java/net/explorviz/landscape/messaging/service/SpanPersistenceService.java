@@ -5,7 +5,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Locale;
-import net.explorviz.landscape.avro.SpanData;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Clazz;
 import net.explorviz.landscape.ogm.FileRevision;
@@ -21,6 +20,7 @@ import net.explorviz.landscape.repository.FunctionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
 import net.explorviz.landscape.repository.SpanRepository;
 import net.explorviz.landscape.repository.TraceRepository;
+import net.explorviz.persistence.avro.SpanData;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
