@@ -162,4 +162,81 @@ public class StructureRepository {
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
   }
+  /**
+   * Builds an ordered sequence of flat landscape for every consecutive commit pair
+   * in the given repository, used for commit-based animation.
+   * Each entry represents the structural diff between one commit and its predesessor,
+   * with values set relative to later commit.
+   *
+   *
+   */
+
+  public List<FlatLandscapeDto> fetchFlatLandscapeForAnimation(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName) {
+
+    final List<String> commitHashes =
+        fetchOrderedCommitHashesForRepository(session, landscapeToken, repositoryName);
+    //Test
+    System.out.println("Animation: found " + commitHashes.size() + " commits");
+    commitHashes.forEach(h -> System.out.println("  - " + h));
+
+    if (commitHashes.isEmpty()) {
+      return List.of();
+    }
+
+    final List<FlatLandscapeDto> frames = new ArrayList<>();
+
+    //First commit
+    frames.add(
+          fetchFlatLandscapeForStaticData(
+              session,
+              new StaticDataRequest(landscapeToken, repositoryName, commitHashes.get(0))));
+
+    //Test
+    System.out.println("Frame 0 buildings: " + frames.get(0).buildings().size());
+    //Divs between commits
+    for (int i = 1; i < commitHashes.size();i++){
+      frames.add(
+          fetchCombinedFlatLandscape(
+              session,
+              new CombinedStaticDataRequest(
+                  landscapeToken,
+                  repositoryName,
+                  commitHashes.get(i-1),
+                  commitHashes.get(i))));
+      // DEBUG
+      System.out.println("Frame " + i + " buildings: " + frames.get(i).buildings().size());
+    }
+
+    return frames;
+  }
+
+  private List<String> fetchOrderedCommitHashesForRepository(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName) {
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c:Commit)
+        RETURN c.hash AS hash
+        ORDER BY c.authorDate ASC
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of("tokenId",landscapeToken, "repoName", repositoryName));
+
+    final List<String> hashes = new ArrayList<>();
+    result.forEach(row -> hashes.add((String) row.get("hash")));
+    return hashes;
+
+
+  }
+
+
 }

@@ -123,4 +123,26 @@ public class StructureResource {
         .map(fileDetailedMapper::map)
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }
+
+  /**
+   * Retrieve structure data gathered from static analysis for a particular application and commit.
+   *
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @param commitHash Identifier of the git commit for which to retrieve structure
+   * @return The flat landscape containing the applications of the repository at the given commit,
+   *     where each application represents a city
+   */
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation")
+  public List <FlatLandscapeDto> getEvolutionAnimation(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName){
+    final Session session = sessionFactory.openSession();
+
+    return structureRepository.fetchFlatLandscapeForAnimation(
+        session, landscapeToken, repositoryName);}
+
 }
