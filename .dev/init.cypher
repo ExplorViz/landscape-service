@@ -6,3 +6,5 @@ CREATE INDEX FOR (f:FileRevision) ON (f.hash, f.name);
 CREATE INDEX FOR (f:FileRevision) ON (f.repoName, f.filePath, f.hash);
 CREATE INDEX FOR (f:Function) ON (f.name);
 CREATE INDEX FOR (c:Commit) ON (c.hash);
+CREATE INDEX FOR (c:Commit) ON (c.commitDate);
+CREATE INDEX FOR (f:FileRevision) ON (f.hasFileData);

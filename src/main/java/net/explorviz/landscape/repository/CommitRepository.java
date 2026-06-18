@@ -32,19 +32,23 @@ public class CommitRepository {
             Commit.class,
             """
             MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (repo:Repository {name: $repoName})<-[:CONTAINS]-(l)
-            MATCH (repo)-[:CONTAINS]->(c:Commit)-[:BELONGS_TO]->(:Branch {name: $branchName})
-            WHERE all(appName IN $applicationNames WHERE EXISTS {
-              MATCH (l)-[:CONTAINS]->(a:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
-              MATCH (root)-[:CONTAINS*1..]->(f:FileRevision)<-[:CONTAINS]-(c)
-            })
-            WITH c, [(c)-[:CONTAINS]->(f:FileRevision) | f] AS filesInCommit
-            WHERE
-              all(file IN filesInCommit WHERE file.hasFileData) AND
-              NOT isEmpty(filesInCommit)
-            RETURN c
-            ORDER BY c.commitDate DESC
-            LIMIT 1;
+            MATCH (l)-[:CONTAINS]->(repo:Repository {name: $repoName})
+            CALL (l, repo) {
+              MATCH (repo)-[:CONTAINS]->(c:Commit)-[:BELONGS_TO]->(:Branch {name: $branchName})
+              WHERE EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
+                AND NOT EXISTS {
+                  MATCH (c)-[:CONTAINS]->(f:FileRevision)
+                  WHERE coalesce(f.hasFileData, false) = false
+                }
+                AND all(appName IN $applicationNames WHERE EXISTS {
+                  MATCH (l)-[:CONTAINS]->(:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
+                  MATCH (root)-[:CONTAINS*1..]->(:FileRevision)<-[:CONTAINS]-(c)
+                })
+              RETURN c
+              ORDER BY c.commitDate DESC
+              LIMIT 1
+            }
+            RETURN c;
             """,
             Map.of(
                 "tokenId",

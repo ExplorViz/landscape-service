@@ -53,17 +53,19 @@ public class StateDataServiceImpl implements StateDataService {
       tx.commit();
 
       final StateData.Builder stateDataBuilder = StateData.newBuilder();
-      final String commitId =
-          commitRepository
-              .findLatestFullyPersistedCommit(
-                  session,
-                  request.getRepositoryName(),
-                  request.getLandscapeToken(),
-                  request.getBranchName(),
-                  new ArrayList<>(request.getApplicationPathsMap().keySet()))
-              .map(Commit::getHash)
-              .orElse("");
-      stateDataBuilder.setCommitId(commitId);
+      if (!request.getSkipLatestCommitLookup()) {
+        final String commitId =
+            commitRepository
+                .findLatestFullyPersistedCommit(
+                    session,
+                    request.getRepositoryName(),
+                    request.getLandscapeToken(),
+                    request.getBranchName(),
+                    new ArrayList<>(request.getApplicationPathsMap().keySet()))
+                .map(Commit::getHash)
+                .orElse("");
+        stateDataBuilder.setCommitId(commitId);
+      }
 
       return Uni.createFrom().item(stateDataBuilder.build());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper

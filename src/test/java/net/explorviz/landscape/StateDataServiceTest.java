@@ -510,4 +510,81 @@ class StateDataServiceTest {
             .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
     assertEquals("", stateBoth.getCommitId());
   }
+
+  @Test
+  void testGetStateDataSkipsLatestCommitLookupWhenRequested() {
+    String appName = "testApp";
+    String commitHash = "commit1";
+    String fileHash = "1";
+    String filePath = "src/File1.java";
+
+    StateDataRequest stateDataPreparationRequest =
+        StateDataRequest.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .putAllApplicationPaths(Map.of(appName, ""))
+            .build();
+
+    stateDataService
+        .getStateData(stateDataPreparationRequest)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    CommitData commitDataOne =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAllAddedFiles(
+                List.of(
+                    FileIdentifier.newBuilder()
+                        .setFileHash(fileHash)
+                        .setFilePath(filePath)
+                        .build()))
+            .build();
+
+    commitService
+        .persistCommit(commitDataOne)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    FileData fileDataOne =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHash)
+            .setFilePath(filePath)
+            .setLanguage(Language.JAVA)
+            .addAllImportNames(List.of("Test"))
+            .addAllClasses(List.of())
+            .addAllFunctions(List.of())
+            .putAllMetrics(Map.of("count", 1d, "lines", 2d))
+            .setLastEditor("Testi")
+            .setAddedLines(1)
+            .setModifiedLines(1)
+            .setDeletedLines(0)
+            .build();
+
+    fileDataService.persistFile(fileDataOne).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    StateDataRequest skipLookupRequest =
+        StateDataRequest.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .putAllApplicationPaths(Map.of(appName, ""))
+            .setSkipLatestCommitLookup(true)
+            .build();
+
+    StateData stateData =
+        stateDataService
+            .getStateData(skipLookupRequest)
+            .await()
+            .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    assertEquals("", stateData.getCommitId());
+  }
 }
