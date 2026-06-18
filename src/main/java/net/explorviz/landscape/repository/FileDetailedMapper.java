@@ -11,11 +11,18 @@ import net.explorviz.landscape.ogm.Clazz;
 import net.explorviz.landscape.ogm.Field;
 import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Function;
+import net.explorviz.landscape.util.RepositoryFileUrlBuilder;
 
 @ApplicationScoped
 public class FileDetailedMapper {
 
-  public FileDetailedDto map(final FileRevision fileRevision) {
+  public FileDetailedDto map(final FileDetailedContext context) {
+    final FileRevision fileRevision = context.fileRevision();
+    final String fileUrl =
+        RepositoryFileUrlBuilder.buildFileUrl(
+                context.remoteUrl(), context.commitHash(), context.fqn(), context.repositoryName())
+            .orElse(null);
+
     return new FileDetailedDto(
         fileRevision.getName(),
         fileRevision.getLanguage(),
@@ -26,7 +33,8 @@ public class FileDetailedMapper {
         fileRevision.getDeletedLines(),
         fileRevision.getMetrics(),
         fileRevision.getClasses().stream().map(this::mapClazz).collect(Collectors.toList()),
-        fileRevision.getFunctions().stream().map(this::mapFunction).collect(Collectors.toList()));
+        fileRevision.getFunctions().stream().map(this::mapFunction).collect(Collectors.toList()),
+        fileUrl);
   }
 
   private ClazzDto mapClazz(final Clazz clazz) {

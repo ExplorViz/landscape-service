@@ -42,6 +42,23 @@ public class FileRevisionRepository {
       ORDER BY length(p) DESC
       LIMIT 1;
       """;
+  private static final String FIND_FILE_DETAILED_CONTEXT =
+      """
+      MATCH (f:FileRevision) WHERE id(f) = $fileRevId
+      MATCH (l:Landscape {tokenId: $landscapeToken})-[:CONTAINS]->(repo:Repository)
+      MATCH (repo)-[:CONTAINS]->(c:Commit)-[:CONTAINS]->(f)
+      MATCH (l)-[:CONTAINS]->(:Application)-[:HAS_ROOT]->(appRoot:Directory)
+      MATCH p = (appRoot)-[:CONTAINS]->*(f)
+      WITH f, repo, c, [node IN nodes(p)[1..] | node.name] AS nodeNames
+      RETURN
+        id(f) AS fileRevisionId,
+        repo.remoteUrl AS remoteUrl,
+        repo.name AS repositoryName,
+        c.hash AS commitHash,
+        apoc.text.join(nodeNames, "/") AS fqn
+      ORDER BY c.commitDate DESC
+      LIMIT 1
+      """;
   private static final Logger LOGGER = Logger.getLogger(FileRevisionRepository.class);
   public static final int COMMIT_FILE_BATCH_SIZE = 2000;
 
@@ -488,6 +505,30 @@ public class FileRevisionRepository {
                     (String) queryResult.get("filePath"), (FileRevision) queryResult.get("file")));
 
     return filePathToFileRevisionMap;
+  }
+
+  public Optional<FileDetailedContext> findFileDetailedContext(
+      final Session session, final String landscapeToken, final Long fileRevisionId) {
+    final Result result =
+        session.query(
+            FIND_FILE_DETAILED_CONTEXT,
+            Map.of("landscapeToken", landscapeToken, "fileRevId", fileRevisionId));
+
+    final Iterator<Map<String, Object>> resultIterator = result.queryResults().iterator();
+    if (!resultIterator.hasNext()) {
+      return Optional.empty();
+    }
+
+    final Map<String, Object> row = resultIterator.next();
+    final Long loadedFileRevisionId = (Long) row.get("fileRevisionId");
+    final FileRevision fileRevision = session.load(FileRevision.class, loadedFileRevisionId, 3);
+    return Optional.of(
+        new FileDetailedContext(
+            fileRevision,
+            (String) row.get("remoteUrl"),
+            (String) row.get("repositoryName"),
+            (String) row.get("commitHash"),
+            (String) row.get("fqn")));
   }
 
   private void validateFqn(final String[] splitFqn) {

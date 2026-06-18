@@ -8,14 +8,13 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
-import java.util.Optional;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.repository.FileDetailedMapper;
+import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.StructureRepository;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
@@ -29,6 +28,7 @@ public class StructureResource {
 
   @Inject StructureRepository structureRepository;
   @Inject FileDetailedMapper fileDetailedMapper;
+  @Inject FileRevisionRepository fileRevisionRepository;
 
   /** Retrieve all structure data gathered from runtime analysis. */
   @GET
@@ -119,7 +119,8 @@ public class StructureResource {
       @RestPath final String landscapeToken, @RestPath final Long id) {
     final Session session = sessionFactory.openSession();
 
-    return Optional.ofNullable(session.load(FileRevision.class, id, 3))
+    return fileRevisionRepository
+        .findFileDetailedContext(session, landscapeToken, id)
         .map(fileDetailedMapper::map)
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }

@@ -91,6 +91,10 @@ public class StateDataServiceImpl implements StateDataService {
 
     repository.addBranch(branch);
 
+    if (!stateData.getRepositoryUrl().isBlank()) {
+      repository.setRemoteUrl(stateData.getRepositoryUrl());
+    }
+
     if (repository.getRootDirectory() == null) {
       final Directory repoRootDirectory = new Directory(stateData.getRepositoryName());
       repository.setRootDirectory(repoRootDirectory);
