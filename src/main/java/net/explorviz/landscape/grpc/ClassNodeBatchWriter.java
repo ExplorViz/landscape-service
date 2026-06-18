@@ -40,32 +40,49 @@ public class ClassNodeBatchWriter {
     final Map<String, Long> clazzIds = new LinkedHashMap<>();
 
     for (int depth = 0; depth <= maxDepth; depth++) {
-      final int currentDepth = depth;
-      final List<Map<String, Object>> rows = new ArrayList<>();
-
-      for (final PendingClass pc : allPending) {
-        if (pc.depth() != currentDepth) {
-          continue;
-        }
-        final long parentId = depth == 0 ? pc.parentFileRevId() : clazzIds.get(pc.parentBatchKey());
-        final Map<String, Object> row = new LinkedHashMap<>();
-        row.put("batchKey", pc.batchKey());
-        row.put("parentId", parentId);
-        row.put("name", pc.data().getName());
-        row.put("props", buildClazzProps(pc.data()));
-        rows.add(row);
+      final List<Map<String, Object>> rows = buildRowsForDepth(allPending, depth, clazzIds);
+      if (!rows.isEmpty()) {
+        createClassesAtDepth(session, depth, rows, clazzIds);
       }
+    }
+    return clazzIds;
+  }
 
-      if (rows.isEmpty()) {
-        continue;
+  private static List<Map<String, Object>> buildRowsForDepth(
+      final List<PendingClass> allPending, final int depth, final Map<String, Long> clazzIds) {
+    final List<Map<String, Object>> rows = new ArrayList<>();
+    for (final PendingClass pc : allPending) {
+      if (pc.depth() == depth) {
+        rows.add(buildClassRow(pc, depth, clazzIds));
       }
-      final String query = depth == 0 ? CREATE_CLASSES_ON_FILE_REVISION : CREATE_CLASSES_ON_CLAZZ;
+    }
+    return rows;
+  }
+
+  private static Map<String, Object> buildClassRow(
+      final PendingClass pc, final int depth, final Map<String, Long> clazzIds) {
+    final long parentId = depth == 0 ? pc.parentFileRevId() : clazzIds.get(pc.parentBatchKey());
+    final Map<String, Object> row = new LinkedHashMap<>();
+    row.put("batchKey", pc.batchKey());
+    row.put("parentId", parentId);
+    row.put("name", pc.data().getName());
+    row.put("props", buildClazzProps(pc.data()));
+    return row;
+  }
+
+  private void createClassesAtDepth(
+      final Session session,
+      final int depth,
+      final List<Map<String, Object>> rows,
+      final Map<String, Long> clazzIds) {
+    final String query = depth == 0 ? CREATE_CLASSES_ON_FILE_REVISION : CREATE_CLASSES_ON_CLAZZ;
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
       session
-          .query(query, Map.of("rows", rows))
+          .query(query, Map.of("rows", chunk))
           .queryResults()
           .forEach(row -> clazzIds.put((String) row.get("batchKey"), (Long) row.get("clazzId")));
     }
-    return clazzIds;
   }
 
   /**

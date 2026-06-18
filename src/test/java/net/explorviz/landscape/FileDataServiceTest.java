@@ -920,7 +920,8 @@ class FileDataServiceTest {
     assertTrue(databaseCorrectBeforePersistFile);
     assertEquals(Status.FAILED_PRECONDITION.getCode(), ex.getStatus().getCode());
     assertEquals(
-        "No corresponding file was sent before in CommitData.", ex.getStatus().getDescription());
+        "No corresponding file was sent before in CommitData: src/File2.java",
+        ex.getStatus().getDescription());
     assertTrue(databaseCorrectAfterPersistFile);
     assertFalse(fileHasFileData);
     assertNodeCounts(

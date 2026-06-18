@@ -71,8 +71,9 @@ public class ChildNodeBatchWriter {
         rows.add(row);
       }
     }
-    if (!rows.isEmpty()) {
-      session.query(CREATE_FIELDS, Map.of("rows", rows));
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+      session.query(CREATE_FIELDS, Map.of("rows", chunk));
     }
   }
 
@@ -91,9 +92,10 @@ public class ChildNodeBatchWriter {
         rows.add(buildFuncRow(classFuncKey(pc.batchKey(), i, fn), parentId, fn));
       }
     }
-    if (!rows.isEmpty()) {
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
       session
-          .query(CREATE_FUNCTIONS_ON_CLAZZ, Map.of("rows", rows))
+          .query(CREATE_FUNCTIONS_ON_CLAZZ, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
@@ -115,9 +117,10 @@ public class ChildNodeBatchWriter {
                 fileRevFuncKey(FileDataBatchWriter.makeBatchKey(file), i, fn), parentId, fn));
       }
     }
-    if (!rows.isEmpty()) {
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
       session
-          .query(CREATE_FUNCTIONS_ON_FILE_REVISION, Map.of("rows", rows))
+          .query(CREATE_FUNCTIONS_ON_FILE_REVISION, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
@@ -134,8 +137,9 @@ public class ChildNodeBatchWriter {
     final List<Map<String, Object>> rows = new ArrayList<>();
     collectClassFuncParamRows(allPending, functionIds, rows);
     collectFileRevFuncParamRows(files, functionIds, rows);
-    if (!rows.isEmpty()) {
-      session.query(CREATE_PARAMETERS, Map.of("rows", rows));
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+      session.query(CREATE_PARAMETERS, Map.of("rows", chunk));
     }
   }
 

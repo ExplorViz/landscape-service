@@ -1,14 +1,8 @@
 CREATE CONSTRAINT FOR (l:Landscape) REQUIRE l.tokenId IS UNIQUE;
 CREATE INDEX FOR (t:Trace) ON t.traceId;
 CREATE INDEX FOR (s:Span) ON s.spanId;
-CREATE INDEX FOR (a:Application) ON a.name;
 CREATE INDEX FOR (d:Directory) ON (d.name);
-CREATE INDEX FOR (f:FileRevision) ON (f.name);
 CREATE INDEX FOR (f:FileRevision) ON (f.hash, f.name);
-CREATE INDEX FOR (f:FileRevision) ON (f.filePath);
-CREATE INDEX FOR (f:FileRevision) ON (f.repoName, f.filePath);
-CREATE INDEX FOR (c:Clazz) ON (c.name);
+CREATE INDEX FOR (f:FileRevision) ON (f.repoName, f.filePath, f.hash);
 CREATE INDEX FOR (f:Function) ON (f.name);
-CREATE INDEX FOR (r:Repository) ON (r.name);
 CREATE INDEX FOR (c:Commit) ON (c.hash);
-CREATE INDEX FOR (b:Branch) ON (b.name);

@@ -19,9 +19,19 @@ import org.neo4j.ogm.session.Session;
  * <p>For a batch of N files, this produces O(max_class_depth + 6) bolt round-trips regardless of N,
  * compared with the OGM approach's O(12 × N) round-trips. Orchestration is split across {@link
  * ClassNodeBatchWriter} and {@link ChildNodeBatchWriter} to keep each class focused.
+ *
+ * <p>Large row lists are split into sub-batches of at most {@link #UNWIND_CHUNK_SIZE} rows before
+ * being sent to Neo4j. This bounds the Bolt parameter payload per call and keeps Neo4j's query
+ * planning cost O(chunk) rather than O(N).
  */
 @ApplicationScoped
 public class FileDataBatchWriter {
+
+  /**
+   * Maximum number of rows sent in a single UNWIND query. Keeping each Bolt call below this
+   * threshold limits serialization overhead and Neo4j query-planning cost.
+   */
+  static final int UNWIND_CHUNK_SIZE = 50;
 
   private static final String MATCH_FILE_REVISIONS =
       """
@@ -80,10 +90,12 @@ public class FileDataBatchWriter {
             .collect(Collectors.toList());
 
     final Map<String, Long> result = new LinkedHashMap<>();
-    session
-        .query(MATCH_FILE_REVISIONS, Map.of("rows", rows))
-        .queryResults()
-        .forEach(row -> result.put((String) row.get("batchKey"), (Long) row.get("fileRevId")));
+    for (final List<Map<String, Object>> chunk : partition(rows, UNWIND_CHUNK_SIZE)) {
+      session
+          .query(MATCH_FILE_REVISIONS, Map.of("rows", chunk))
+          .queryResults()
+          .forEach(row -> result.put((String) row.get("batchKey"), (Long) row.get("fileRevId")));
+    }
     return result;
   }
 
@@ -111,7 +123,9 @@ public class FileDataBatchWriter {
                   return row;
                 })
             .collect(Collectors.toList());
-    session.query(UPDATE_FILE_REVISIONS, Map.of("rows", rows));
+    for (final List<Map<String, Object>> chunk : partition(rows, UNWIND_CHUNK_SIZE)) {
+      session.query(UPDATE_FILE_REVISIONS, Map.of("rows", chunk));
+    }
   }
 
   // ── Class tree collection ─────────────────────────────────────────────────
@@ -149,5 +163,19 @@ public class FileDataBatchWriter {
 
   static String makeBatchKey(final FileData f) {
     return f.getRepositoryName() + "/" + f.getFilePath() + "/" + f.getFileHash();
+  }
+
+  // ── Chunking utility ──────────────────────────────────────────────────────
+
+  /**
+   * Splits {@code list} into consecutive sub-lists of at most {@code size} elements. The last
+   * sub-list may be smaller. Returns a view; callers must not mutate the source list concurrently.
+   */
+  static <T> List<List<T>> partition(final List<T> list, final int size) {
+    final List<List<T>> chunks = new ArrayList<>();
+    for (int i = 0; i < list.size(); i += size) {
+      chunks.add(list.subList(i, Math.min(i + size, list.size())));
+    }
+    return chunks;
   }
 }
