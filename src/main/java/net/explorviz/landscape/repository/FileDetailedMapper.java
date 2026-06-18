@@ -20,6 +20,7 @@ public class FileDetailedMapper {
         fileRevision.getName(),
         fileRevision.getLanguage(),
         fileRevision.getPackageName(),
+        List.copyOf(fileRevision.getImportNames()),
         fileRevision.getAddedLines(),
         fileRevision.getModifiedLines(),
         fileRevision.getDeletedLines(),

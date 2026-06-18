@@ -9,6 +9,7 @@ public record FileDetailedDto(
     String name,
     String language,
     String packageName,
+    List<String> importNames,
     int addedLines,
     int modifiedLines,
     int deletedLines,
