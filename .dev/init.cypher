@@ -4,6 +4,7 @@ CREATE INDEX FOR (s:Span) ON s.spanId;
 CREATE INDEX FOR (d:Directory) ON (d.name);
 CREATE INDEX FOR (f:FileRevision) ON (f.hash, f.name);
 CREATE INDEX FOR (f:FileRevision) ON (f.repoName, f.filePath, f.hash);
+CREATE INDEX FOR (f:FileRevision) ON (f.lookupKey);
 CREATE INDEX FOR (f:Function) ON (f.name);
 CREATE INDEX FOR (c:Commit) ON (c.hash);
 CREATE INDEX FOR (c:Commit) ON (c.commitDate);

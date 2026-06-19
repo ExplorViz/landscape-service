@@ -2,8 +2,10 @@ package net.explorviz.landscape.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.quarkus.arc.Arc;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.repository.FileRevisionIdCache;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -20,6 +22,8 @@ public class TestUtils {
               + " f.name)",
           "CREATE INDEX file_revision_repo_file_path_hash IF NOT EXISTS FOR (f:FileRevision) ON"
               + " (f.repoName, f.filePath, f.hash)",
+          "CREATE INDEX file_revision_lookup_key IF NOT EXISTS FOR (f:FileRevision) ON"
+              + " (f.lookupKey)",
           "CREATE INDEX function_name IF NOT EXISTS FOR (f:Function) ON (f.name)",
           "CREATE INDEX commit_hash IF NOT EXISTS FOR (c:Commit) ON (c.hash)");
 
@@ -32,6 +36,17 @@ public class TestUtils {
   public static void resetDatabase(final Session session) {
     clearDatabase(session);
     ensureSchema(session);
+    clearFileRevisionIdCache();
+  }
+
+  private static void clearFileRevisionIdCache() {
+    final var container = Arc.container();
+    if (container != null && container.isRunning()) {
+      final var cache = container.instance(FileRevisionIdCache.class);
+      if (cache.isAvailable()) {
+        cache.get().clear();
+      }
+    }
   }
 
   public static void clearDatabase(final Session session) {

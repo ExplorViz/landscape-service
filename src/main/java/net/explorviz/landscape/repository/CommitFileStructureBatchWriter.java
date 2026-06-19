@@ -24,11 +24,19 @@ class CommitFileStructureBatchWriter {
       UNWIND $files AS file
       MATCH (parent:Directory) WHERE id(parent) = file.parentDirId
       MERGE (parent)-[:CONTAINS]->(f:FileRevision {hash: file.hash, name: file.fileName})
-      ON CREATE SET f.hasFileData = false, f.filePath = file.filePath, f.repoName = $repoName
+      ON CREATE SET f.hasFileData = false, f.filePath = file.filePath, f.repoName = $repoName,
+        f.lookupKey = file.lookupKey
+      ON MATCH SET f.filePath = file.filePath, f.repoName = $repoName, f.lookupKey = file.lookupKey
       MERGE (commit)-[:CONTAINS]->(f)
       """;
 
+  private static final String LINK_FILE_REVISIONS_RETURN =
+      """
+      RETURN file.lookupKey AS lookupKey, id(f) AS fileRevId
+      """;
+
   @Inject DirectoryRepository directoryRepository;
+  @Inject FileRevisionIdCache fileRevisionIdCache;
 
   void createAndLinkFileStructureBatch(
       final Session session,
@@ -49,7 +57,7 @@ class CommitFileStructureBatchWriter {
         session, rootDirectoryId, repoName, uniqueDirPaths, directoryLeafCache);
 
     final List<Map<String, Object>> filesToLink =
-        buildFilesToLinkPayload(fileIdentifiers, repoName, directoryLeafCache);
+        buildFilesToLinkPayload(fileIdentifiers, landscapeTokenId, repoName, directoryLeafCache);
     linkFileRevisionsBatch(
         session,
         Map.of(
@@ -76,6 +84,7 @@ class CommitFileStructureBatchWriter {
 
   private List<Map<String, Object>> buildFilesToLinkPayload(
       final List<FileIdentifier> fileIdentifiers,
+      final String landscapeTokenId,
       final String repoName,
       final Map<String, Long> directoryLeafCache) {
     final List<Map<String, Object>> filesToLink = new ArrayList<>(fileIdentifiers.size());
@@ -97,7 +106,14 @@ class CommitFileStructureBatchWriter {
               "hash",
               fileIdentifier.getFileHash(),
               "filePath",
-              fileIdentifier.getFilePath()));
+              fileIdentifier.getFilePath(),
+              "lookupKey",
+              new FileRevisionLookupKey(
+                      landscapeTokenId,
+                      repoName,
+                      fileIdentifier.getFilePath(),
+                      fileIdentifier.getFileHash())
+                  .cacheKey()));
     }
     return filesToLink;
   }
@@ -110,7 +126,13 @@ class CommitFileStructureBatchWriter {
           case MODIFIED -> "MERGE (commit)-[:MODIFIED]->(f)";
           case CONTAINS -> "";
         };
-    session.query(LINK_FILE_REVISIONS_BASE + commitLinkClause, params);
+    session
+        .query(LINK_FILE_REVISIONS_BASE + commitLinkClause + LINK_FILE_REVISIONS_RETURN, params)
+        .queryResults()
+        .forEach(
+            row ->
+                fileRevisionIdCache.put(
+                    (String) row.get("lookupKey"), (Long) row.get("fileRevId")));
   }
 
   private String[] buildDirectorySegments(final String repoName, final String[] pathSegments) {

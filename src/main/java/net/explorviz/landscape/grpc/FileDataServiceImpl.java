@@ -30,8 +30,7 @@ public class FileDataServiceImpl implements FileDataService {
   /**
    * Client-streaming variant: accepts a stream of {@link FileData} messages for an entire commit,
    * collects them, and persists the whole set in a single Neo4j transaction using batched UNWIND
-   * Cypher queries. This reduces bolt round-trips from O(12 × N) to O(max_class_depth + 6)
-   * regardless of N.
+   * Cypher queries.
    */
   @Override
   public Uni<Empty> persistFiles(final Multi<FileData> request) {

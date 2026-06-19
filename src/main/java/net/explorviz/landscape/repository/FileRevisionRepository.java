@@ -73,6 +73,7 @@ public class FileRevisionRepository {
   @Inject DirectoryRepository directoryRepository;
   @Inject LandscapeRepository landscapeRepository;
   @Inject CommitFileStructureBatchWriter commitFileStructureBatchWriter;
+  @Inject FileRevisionIdCache fileRevisionIdCache;
 
   private FileRevision createRemainingFilePath(
       final Session session, final Directory startingDirectory, final String[] remainingPath) {
@@ -264,33 +265,63 @@ public class FileRevisionRepository {
             request.deletedPaths());
 
     if (request.modifiedPaths().isEmpty() && request.deletedPaths().isEmpty()) {
-      session.query(
-          """
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-          MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(child:Commit {hash: $childHash})
-          MERGE (child)-[:CONTAINS]->(f)
-          """,
-          params);
+      populateFileRevisionIdCache(
+          request,
+          session.query(
+              """
+              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+                -[:CONTAINS]->(parent:Commit {hash: $parentHash})
+              MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+                -[:CONTAINS]->(child:Commit {hash: $childHash})
+              MERGE (child)-[:CONTAINS]->(f)
+              WITH f, $repoName AS repoName, $tokenId AS tokenId
+              SET f.repoName = repoName,
+                f.lookupKey = coalesce(
+                  f.lookupKey, tokenId + '/' + repoName + '/' + f.filePath + '/' + f.hash)
+              RETURN f.filePath AS filePath, f.hash AS hash, id(f) AS fileRevId
+              """,
+              params));
       return;
     }
 
     // Use the stored f.filePath property for exclusion instead of reconstructing paths via a
     // full directory-tree traversal and APOC string join. This reduces the work from O(N × depth)
     // to O(N) and eliminates the dependency on APOC for the hot path.
-    session.query(
-        """
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(child:Commit {hash: $childHash})
-        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-        WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
-        MERGE (child)-[:CONTAINS]->(f)
-        """,
-        params);
+    populateFileRevisionIdCache(
+        request,
+        session.query(
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(parent:Commit {hash: $parentHash})
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(child:Commit {hash: $childHash})
+            MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+            WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
+            MERGE (child)-[:CONTAINS]->(f)
+            WITH f, $repoName AS repoName, $tokenId AS tokenId
+            SET f.repoName = repoName,
+              f.lookupKey = coalesce(
+                f.lookupKey, tokenId + '/' + repoName + '/' + f.filePath + '/' + f.hash)
+            RETURN f.filePath AS filePath, f.hash AS hash, id(f) AS fileRevId
+            """,
+            params));
+  }
+
+  private void populateFileRevisionIdCache(
+      final CopyUnchangedFilesFromParentRequest request, final Result result) {
+    result
+        .queryResults()
+        .forEach(
+            row ->
+                fileRevisionIdCache.put(
+                    new FileRevisionLookupKey(
+                            request.landscapeTokenId(),
+                            request.repoName(),
+                            (String) row.get("filePath"),
+                            (String) row.get("hash"))
+                        .cacheKey(),
+                    (Long) row.get("fileRevId")));
   }
 
   public Optional<FileRevision> getFileRevisionFromHashAndPath(
