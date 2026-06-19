@@ -10,6 +10,7 @@ import jakarta.inject.Inject;
 import java.util.List;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.FileDataService;
+import net.explorviz.landscape.repository.CommitMetricsAccumulator;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -20,6 +21,7 @@ public class FileDataServiceImpl implements FileDataService {
 
   @Inject SessionFactory sessionFactory;
   @Inject FileDataBatchWriter fileDataBatchWriter;
+  @Inject CommitMetricsAccumulator commitMetricsAccumulator;
 
   @Blocking
   @Override
@@ -44,10 +46,15 @@ public class FileDataServiceImpl implements FileDataService {
 
   private Uni<Empty> persistBatch(final List<FileData> files) {
     final Session session = sessionFactory.openSession();
+    String landscapeToken = null;
+    String repoName = null;
     try (Transaction tx = session.beginTransaction()) {
       fileDataBatchWriter.persistBatch(session, files);
+      if (!files.isEmpty()) {
+        landscapeToken = files.get(0).getLandscapeToken();
+        repoName = files.get(0).getRepositoryName();
+      }
       tx.commit();
-      return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       final String context =
           files.isEmpty()
@@ -59,6 +66,22 @@ public class FileDataServiceImpl implements FileDataService {
                   + files.get(0).getLandscapeToken()
                   + "'";
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, context));
+    }
+
+    if (landscapeToken != null) {
+      updatePendingCommitMetrics(session, landscapeToken, repoName);
+    }
+
+    return Uni.createFrom().item(Empty.getDefaultInstance());
+  }
+
+  private void updatePendingCommitMetrics(
+      final Session session, final String landscapeToken, final String repoName) {
+    try (Transaction tx = session.beginTransaction()) {
+      commitMetricsAccumulator.updatePendingForRepository(session, landscapeToken, repoName);
+      tx.commit();
+    } finally {
+      session.clear();
     }
   }
 }

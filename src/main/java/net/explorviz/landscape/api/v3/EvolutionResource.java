@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v3.model.BranchDto;
 import net.explorviz.landscape.api.v3.model.BranchPointDto;
+import net.explorviz.landscape.api.v3.model.CommitNodeDto;
 import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.repository.CommitRepository;
@@ -65,7 +66,7 @@ public class EvolutionResource {
         commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
             session, landscapeToken, repositoryName);
 
-    final Map<String, List<String>> branchToCommitMap = new HashMap<>();
+    final Map<String, List<CommitNodeDto>> branchToCommitMap = new HashMap<>();
     final Map<String, BranchPointDto> branchToBranchPointMap = new HashMap<>();
 
     for (final Commit commit : commits) {
@@ -79,7 +80,11 @@ public class EvolutionResource {
 
       final String branchName = commit.getBranch().getName();
 
-      branchToCommitMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit.getHash());
+      branchToCommitMap
+          .computeIfAbsent(branchName, k -> new ArrayList<>())
+          .add(
+              new CommitNodeDto(
+                  commit.getHash(), commit.getMetrics(), commit.isHasAccumulatedMetrics()));
 
       final Set<Commit> parentCommits =
           commit.getParentCommits().stream()

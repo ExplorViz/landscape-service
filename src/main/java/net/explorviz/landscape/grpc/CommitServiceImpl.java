@@ -21,6 +21,7 @@ import net.explorviz.landscape.proto.CommitService;
 import net.explorviz.landscape.proto.FileIdentifier;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
+import net.explorviz.landscape.repository.CommitMetricsAccumulator;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
@@ -44,6 +45,7 @@ public class CommitServiceImpl implements CommitService {
   @Inject FileRevisionRepository fileRevisionRepository;
   @Inject TagRepository tagRepository;
   @Inject ContributorRepository contributorRepository;
+  @Inject CommitMetricsAccumulator commitMetricsAccumulator;
   @Inject SessionFactory sessionFactory;
 
   @Blocking
@@ -160,5 +162,11 @@ public class CommitServiceImpl implements CommitService {
       commit.addParentCommit(parentCommit);
       session.save(List.of(repo, branch, commit, parentCommit));
     }
+
+    commitMetricsAccumulator.updatePendingForCommit(
+        session,
+        commitData.getLandscapeToken(),
+        commitData.getRepositoryName(),
+        commitData.getCommitId());
   }
 }

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.proto.ClassData;
 import net.explorviz.landscape.proto.ClassType;
@@ -137,6 +138,96 @@ class FileDataServiceTest {
     for (String k : file.getMetrics().keySet()) {
       assertEquals(testMap.get(k), file.getMetrics().get(k));
     }
+
+    Commit commit =
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN c
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertTrue(commit.isHasAccumulatedMetrics());
+    assertEquals(1d, commit.getMetrics().get("count"));
+    assertEquals(2d, commit.getMetrics().get("lines"));
+  }
+
+  @Test
+  void testCommitMetricsNotAccumulatedUntilAllFilesPersisted() {
+    String commitHash = "commit-partial";
+    String filePathOne = "src/File1.java";
+    String filePathTwo = "src/File2.java";
+    String fileHashOne = "hash1";
+    String fileHashTwo = "hash2";
+
+    CommitData commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAllAddedFiles(
+                List.of(
+                    FileIdentifier.newBuilder()
+                        .setFileHash(fileHashOne)
+                        .setFilePath(filePathOne)
+                        .build(),
+                    FileIdentifier.newBuilder()
+                        .setFileHash(fileHashTwo)
+                        .setFilePath(filePathTwo)
+                        .build()))
+            .build();
+
+    commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    FileData fileDataOne =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHashOne)
+            .setFilePath(filePathOne)
+            .setLanguage(Language.JAVA)
+            .putAllMetrics(Map.of("lineCount", 10d))
+            .build();
+
+    fileDataService.persistFile(fileDataOne).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Boolean hasAccumulatedMetricsAfterFirstFile =
+        session.queryForObject(
+            Boolean.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN coalesce(c.hasAccumulatedMetrics, false)
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertFalse(hasAccumulatedMetricsAfterFirstFile);
+
+    FileData fileDataTwo =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHashTwo)
+            .setFilePath(filePathTwo)
+            .setLanguage(Language.JAVA)
+            .putAllMetrics(Map.of("lineCount", 25d))
+            .build();
+
+    fileDataService.persistFile(fileDataTwo).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Commit commit =
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN c
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertTrue(commit.isHasAccumulatedMetrics());
+    assertEquals(35d, commit.getMetrics().get("lineCount"));
   }
 
   @Test
@@ -1153,6 +1244,7 @@ class FileDataServiceTest {
             .setLanguage(Language.JAVA)
             .setLastEditor("alice")
             .setAddedLines(10)
+            .putAllMetrics(Map.of("lineCount", 100d))
             .addClasses(
                 ClassData.newBuilder()
                     .setName("Alpha")
@@ -1176,6 +1268,7 @@ class FileDataServiceTest {
             .setFilePath(filePath2)
             .setLanguage(Language.KOTLIN)
             .setLastEditor("bob")
+            .putAllMetrics(Map.of("lineCount", 40d))
             .addClasses(
                 ClassData.newBuilder()
                     .setName("Beta")
@@ -1247,5 +1340,75 @@ class FileDataServiceTest {
             """,
             Map.of("hash", fileHash1));
     assertEquals(1L, paramCount);
+
+    Commit commit =
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN c
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertTrue(commit.isHasAccumulatedMetrics());
+    assertEquals(140d, commit.getMetrics().get("lineCount"));
+  }
+
+  @Test
+  void testCommitMetricsAccumulatedForUnchangedOnlyChildCommit() {
+    final String parentHash = "parent-commit";
+    final String childHash = "child-commit";
+    final String filePath = "src/Unchanged.java";
+    final String fileHash = "unchanged1";
+
+    final CommitData parentCommitData =
+        CommitData.newBuilder()
+            .setCommitId(parentHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash(fileHash).setFilePath(filePath).build())
+            .build();
+
+    commitService
+        .persistCommit(parentCommitData)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    session.query(
+        """
+        MATCH (f:FileRevision {hash: $fileHash})
+        SET f.hasFileData = true, f.`metrics.lineCount` = 42.0
+        """,
+        Map.of("fileHash", fileHash));
+
+    final CommitData childCommitData =
+        CommitData.newBuilder()
+            .setCommitId(childHash)
+            .setParentCommitId(parentHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(2).setNanos(100).build())
+            .build();
+
+    commitService
+        .persistCommit(childCommitData)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Commit childCommit =
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN c
+            """,
+            Map.of("commitHash", childHash));
+
+    assertTrue(childCommit.isHasAccumulatedMetrics());
+    assertEquals(42d, childCommit.getMetrics().get("lineCount"));
   }
 }
