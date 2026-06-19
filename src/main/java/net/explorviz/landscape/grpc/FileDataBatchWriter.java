@@ -20,18 +20,12 @@ import org.neo4j.ogm.session.Session;
  * compared with the OGM approach's O(12 × N) round-trips. Orchestration is split across {@link
  * ClassNodeBatchWriter} and {@link ChildNodeBatchWriter} to keep each class focused.
  *
- * <p>Large row lists are split into sub-batches of at most {@link #UNWIND_CHUNK_SIZE} rows before
- * being sent to Neo4j. This bounds the Bolt parameter payload per call and keeps Neo4j's query
- * planning cost O(chunk) rather than O(N).
+ * <p>Large row lists are split into sub-batches of at most {@link
+ * FileDataInsertProperties#getChunkSize()} rows before being sent to Neo4j. This bounds the Bolt
+ * parameter payload per call and keeps Neo4j's query planning cost O(chunk) rather than O(N).
  */
 @ApplicationScoped
 public class FileDataBatchWriter {
-
-  /**
-   * Maximum number of rows sent in a single UNWIND query. Keeping each Bolt call below this
-   * threshold limits serialization overhead and Neo4j query-planning cost.
-   */
-  public static final int UNWIND_CHUNK_SIZE = 50;
 
   @Inject ClassNodeBatchWriter classNodeWriter;
   @Inject ChildNodeBatchWriter childNodeWriter;

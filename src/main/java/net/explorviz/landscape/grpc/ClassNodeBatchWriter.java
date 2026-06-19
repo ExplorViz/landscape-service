@@ -1,6 +1,7 @@
 package net.explorviz.landscape.grpc;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +12,8 @@ import org.neo4j.ogm.session.Session;
 /** Creates {@code Clazz} nodes for a batch of files, processing one class-depth level per query. */
 @ApplicationScoped
 public class ClassNodeBatchWriter {
+
+  @Inject FileDataInsertProperties fileDataInsertProperties;
 
   private static final String CREATE_CLASSES_ON_FILE_REVISION =
       """
@@ -77,7 +80,7 @@ public class ClassNodeBatchWriter {
       final Map<String, Long> clazzIds) {
     final String query = depth == 0 ? CREATE_CLASSES_ON_FILE_REVISION : CREATE_CLASSES_ON_CLAZZ;
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
           .query(query, Map.of("rows", chunk))
           .queryResults()

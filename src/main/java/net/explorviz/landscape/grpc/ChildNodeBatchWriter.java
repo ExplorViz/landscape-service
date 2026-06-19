@@ -1,6 +1,7 @@
 package net.explorviz.landscape.grpc;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,8 @@ import org.neo4j.ogm.session.Session;
 @ApplicationScoped
 @SuppressWarnings("PMD.AvoidDuplicateLiterals")
 public class ChildNodeBatchWriter {
+
+  @Inject FileDataInsertProperties fileDataInsertProperties;
 
   private static final String CREATE_FIELDS =
       """
@@ -72,7 +75,7 @@ public class ChildNodeBatchWriter {
       }
     }
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session.query(CREATE_FIELDS, Map.of("rows", chunk));
     }
   }
@@ -93,7 +96,7 @@ public class ChildNodeBatchWriter {
       }
     }
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
           .query(CREATE_FUNCTIONS_ON_CLAZZ, Map.of("rows", chunk))
           .queryResults()
@@ -118,7 +121,7 @@ public class ChildNodeBatchWriter {
       }
     }
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
           .query(CREATE_FUNCTIONS_ON_FILE_REVISION, Map.of("rows", chunk))
           .queryResults()
@@ -138,7 +141,7 @@ public class ChildNodeBatchWriter {
     collectClassFuncParamRows(allPending, functionIds, rows);
     collectFileRevFuncParamRows(files, functionIds, rows);
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session.query(CREATE_PARAMETERS, Map.of("rows", chunk));
     }
   }

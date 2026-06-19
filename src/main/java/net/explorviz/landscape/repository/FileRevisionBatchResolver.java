@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.grpc.FileDataBatchWriter;
+import net.explorviz.landscape.grpc.FileDataInsertProperties;
 import net.explorviz.landscape.proto.FileData;
 import org.neo4j.ogm.session.Session;
 
@@ -31,6 +32,7 @@ public class FileRevisionBatchResolver {
       """;
 
   @Inject FileRevisionIdCache fileRevisionIdCache;
+  @Inject FileDataInsertProperties fileDataInsertProperties;
 
   public Map<String, Long> lookupFileRevisions(final Session session, final List<FileData> files) {
     final Map<String, Long> result = new LinkedHashMap<>();
@@ -78,7 +80,7 @@ public class FileRevisionBatchResolver {
                 })
             .collect(Collectors.toList());
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session.query(UPDATE_FILE_REVISIONS, Map.of("rows", chunk));
     }
   }
@@ -97,7 +99,7 @@ public class FileRevisionBatchResolver {
             .collect(Collectors.toList());
 
     for (final List<Map<String, Object>> chunk :
-        FileDataBatchWriter.partition(rows, FileDataBatchWriter.UNWIND_CHUNK_SIZE)) {
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
           .query(MATCH_FILE_REVISIONS, Map.of("rows", chunk))
           .queryResults()
