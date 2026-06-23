@@ -47,7 +47,6 @@ spotless:
     paths:
       - build
 
-
 checkstyle:
   stage: code-analysis
   script: ./gradlew checkstyleMain
@@ -83,6 +82,7 @@ integration-test:
 
 push-dockerhub-native-mr:
   extends: .build-and-deploy-quarkus-native
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -90,6 +90,7 @@ push-dockerhub-native-mr:
 
 push-dockerhub-mr:
   extends: .build-and-deploy-quarkus-jvm
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
