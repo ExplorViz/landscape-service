@@ -504,4 +504,60 @@ class CommitServiceTest {
         session,
         ExpectedCounts.builder().landscapes(1).repositories(1).directories(1).branches(1).build());
   }
+
+  @Test
+  void testPersistBootstrapCommitWithExplicitUnchangedFiles() {
+    final String parentHash = "parent-not-in-landscape";
+    final String commitHash = "bootstrap-commit";
+    final String addedPath = "src/Added.java";
+    final String unchangedPath = "src/Unchanged.java";
+
+    final CommitData commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setParentCommitId(parentHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder()
+                    .setFileHash("added-hash")
+                    .setFilePath(addedPath)
+                    .build())
+            .addUnchangedFiles(
+                FileIdentifier.newBuilder()
+                    .setFileHash("unchanged-hash")
+                    .setFilePath(unchangedPath)
+                    .build())
+            .build();
+
+    commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final Boolean addedRelationshipExists =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $commitHash})-[:ADDED]->(:FileRevision {hash: 'added-hash'})
+            } AS exists
+            """,
+            Map.of("commitHash", commitHash));
+
+    final Boolean unchangedRelationshipExists =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $commitHash})-[:CONTAINS]->(:FileRevision {hash: 'unchanged-hash'})
+            } AND NOT EXISTS {
+              MATCH (:Commit {hash: $commitHash})-[:ADDED|MODIFIED]->(:FileRevision {hash: 'unchanged-hash'})
+            } AS exists
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertTrue(addedRelationshipExists);
+    assertTrue(unchangedRelationshipExists);
+  }
 }

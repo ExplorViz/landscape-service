@@ -117,6 +117,14 @@ public class CommitServiceImpl implements CommitService {
         commitData.getCommitId(),
         FileRevisionRepository.CommitFileLinkType.MODIFIED);
 
+    fileRevisionRepository.persistCommitFilesInBatches(
+        session,
+        commitData.getUnchangedFilesList(),
+        commitData.getRepositoryName(),
+        commitData.getLandscapeToken(),
+        commitData.getCommitId(),
+        FileRevisionRepository.CommitFileLinkType.CONTAINS);
+
     if (!commitData.getParentCommitId().isEmpty()
         && !NO_PARENT_ID.equals(commitData.getParentCommitId())) {
       final Set<String> modifiedPaths =

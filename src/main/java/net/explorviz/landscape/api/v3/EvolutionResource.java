@@ -84,7 +84,10 @@ public class EvolutionResource {
           .computeIfAbsent(branchName, k -> new ArrayList<>())
           .add(
               new CommitNodeDto(
-                  commit.getHash(), commit.getMetrics(), commit.isHasAccumulatedMetrics()));
+                  commit.getHash(),
+                  commit.getCommitDate(),
+                  commit.getMetrics(),
+                  commit.isHasAccumulatedMetrics()));
 
       final Set<Commit> parentCommits =
           commit.getParentCommits().stream()
