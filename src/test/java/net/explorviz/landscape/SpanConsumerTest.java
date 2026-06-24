@@ -16,7 +16,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.explorviz.landscape.messaging.SpanDataConsumer;
+import net.explorviz.landscape.messaging.SpanConsumer;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Clazz;
@@ -26,11 +26,12 @@ import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.ogm.Landscape;
 import net.explorviz.landscape.ogm.Repository;
+import net.explorviz.landscape.proto.CodeDescriptor;
+import net.explorviz.landscape.proto.ParsedSpan;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
 import net.explorviz.landscape.util.ExpectedCounts;
-import net.explorviz.persistence.avro.SpanData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -39,9 +40,9 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @QuarkusTest
-class SpanDataServiceTest {
+class SpanConsumerTest {
 
-  @Inject SpanDataConsumer spanDataConsumer;
+  @Inject SpanConsumer spanConsumer;
 
   @Inject CommitRepository commitRepository;
 
@@ -56,6 +57,7 @@ class SpanDataServiceTest {
   private String baseTraceId;
   private String baseSpanId;
   private String baseAppName;
+  private String baseEntityId;
 
   @BeforeEach
   void cleanup() {
@@ -66,6 +68,7 @@ class SpanDataServiceTest {
     baseTraceId = "myTrace";
     baseSpanId = "mySpan";
     baseAppName = "myApp";
+    baseEntityId = "testEntityId";
   }
 
   @Nested
@@ -83,23 +86,25 @@ class SpanDataServiceTest {
       baseFunctionName = "myMethod";
     }
 
+    ParsedSpan.Builder baseSpanBuilder() {
+      return ParsedSpan.newBuilder()
+          .setSpanId(baseSpanId)
+          .setTraceId(baseTraceId)
+          .setApplicationName(baseAppName)
+          .setLandscapeTokenId(landscapeToken)
+          .setCodeDescriptor(
+              CodeDescriptor.newBuilder()
+                  .setFilePath(String.join("/", baseFilePath))
+                  .setFunctionName(baseFunctionName))
+          .setStartTime(1)
+          .setEndTime(5);
+    }
+
     @Test
     void testPersistSpan() {
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -148,19 +153,7 @@ class SpanDataServiceTest {
     /** Persisting the same span twice should create no additional nodes. */
     @Test
     void testPersistSpanIdempotent() {
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
       String dbStructureQuery =
           """
@@ -195,14 +188,14 @@ class SpanDataServiceTest {
       params.put("fileName", baseFileName);
       params.put("funName", baseFunctionName);
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Boolean dbIsCorrectAfterFirstConsumeCall =
           session.queryForObject(Boolean.class, dbStructureQuery, params);
       Long nodeCountAfterFirstConsumeCall =
           session.queryForObject(Long.class, dbNodeCountQuery, Map.of());
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Boolean dbIsCorrectAfterSecondConsumeCall =
           session.queryForObject(Boolean.class, dbStructureQuery, params);
@@ -230,37 +223,13 @@ class SpanDataServiceTest {
       String traceIdTwo = "trace2";
       String spanIdTwo = "span2";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(spanIdTwo)
-              .setTraceId(traceIdTwo)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder().setSpanId(spanIdTwo).setTraceId(traceIdTwo).build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -326,37 +295,23 @@ class SpanDataServiceTest {
       List<String> filePathTwo =
           ImmutableList.<String>builder().addAll(baseDirNames).add(fileNameTwo).build();
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
               .setParentId(baseSpanId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", filePathTwo))
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", filePathTwo)))
               .setStartTime(2)
               .setEndTime(4)
-              .setLanguage("")
               .build();
 
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -418,38 +373,22 @@ class SpanDataServiceTest {
       String spanIdTwo = "span2";
       String functionNameTwo = "yourMethod";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
               .setParentId(baseSpanId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", baseFilePath))
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", baseFilePath)))
               .setStartTime(2)
               .setEndTime(4)
-              .setLanguage("")
               .build();
 
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -513,22 +452,16 @@ class SpanDataServiceTest {
     void testPersistSpanWithCommitWithoutStaticData() {
       String commitHash = "commit1";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setCommitHash(commitHash)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setFunctionName(baseFunctionName)
+                      .setGitCommitHash(commitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -597,37 +530,19 @@ class SpanDataServiceTest {
               .build();
       String spanIdTwo = "span2";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
-              .build();
+      ParsedSpan testSpan = baseSpanBuilder().build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", filePathTwo))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", filePathTwo)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -704,22 +619,16 @@ class SpanDataServiceTest {
     void testPersistSpanWithClassPathWithoutCommitHashWithNoClassesExisting() {
       String[] classPath = {"A", "B", "C"};
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -779,39 +688,27 @@ class SpanDataServiceTest {
       String spanIdTwo = "span2";
       String functionNameTwo = "function2";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath)))
               .build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -881,39 +778,27 @@ class SpanDataServiceTest {
       String spanIdTwo = "span2";
       String functionNameTwo = "function2";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath)))
               .build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPathTwo))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPathTwo)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -982,23 +867,17 @@ class SpanDataServiceTest {
       String[] classPath = {"A", "B", "C"};
       String commitHash = "commit1";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setCommitHash(commitHash)
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath))
+                      .setGitCommitHash(commitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1059,41 +938,29 @@ class SpanDataServiceTest {
       String functionNameTwo = "function2";
       String commitHash = "commit1";
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setCommitHash(commitHash)
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath))
+                      .setGitCommitHash(commitHash))
               .build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
               .setSpanId(spanIdTwo)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", baseFilePath))
-              .setClassName(String.join(".", classPath))
-              .setCommitHash(commitHash)
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", baseFilePath))
+                      .setClassName(String.join(".", classPath))
+                      .setGitCommitHash(commitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1164,6 +1031,7 @@ class SpanDataServiceTest {
     private String baseCommitHash;
     private List<String> baseDirNames;
     private String baseFileName;
+    private List<String> baseFilePath;
     private String baseFileHash;
     private String baseFunctionName;
 
@@ -1206,10 +1074,25 @@ class SpanDataServiceTest {
       baseCommitHash = "commit1";
       baseDirNames = List.of("net", "explorviz", baseAppName);
       baseFileName = "MyClass.java";
+      baseFilePath = ImmutableList.<String>builder().addAll(baseDirNames).add(baseFileName).build();
       baseFileHash = "1";
       baseFunctionName = "myMethod";
 
       buildDefaultStaticData(session);
+    }
+
+    ParsedSpan.Builder baseSpanBuilder() {
+      return ParsedSpan.newBuilder()
+          .setSpanId(baseSpanId)
+          .setTraceId(baseTraceId)
+          .setApplicationName(baseAppName)
+          .setLandscapeTokenId(landscapeToken)
+          .setCodeDescriptor(
+              CodeDescriptor.newBuilder()
+                  .setFilePath(String.join("/", baseFilePath))
+                  .setFunctionName(baseFunctionName))
+          .setStartTime(1)
+          .setEndTime(5);
     }
 
     @Test
@@ -1273,21 +1156,15 @@ class SpanDataServiceTest {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", filePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", filePath)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1355,22 +1232,16 @@ class SpanDataServiceTest {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", filePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setCommitHash(baseCommitHash)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", filePath))
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1427,21 +1298,15 @@ class SpanDataServiceTest {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", filePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", filePath)))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1513,39 +1378,26 @@ class SpanDataServiceTest {
       List<String> filePathTwo = new ArrayList<>(baseDirNames);
       Collections.addAll(filePathTwo, unknownFileName);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(unknownFunctionName)
-              .setFilePath(String.join("/", filePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setCommitHash(baseCommitHash)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(unknownFunctionName)
+                      .setFilePath(String.join("/", filePath))
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
-      SpanData testSpanDataTwo =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(baseFunctionName)
-              .setFilePath(String.join("/", filePathTwo))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setCommitHash(baseCommitHash)
-              .setLanguage("")
+      ParsedSpan testSpanTwo =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(baseFunctionName)
+                      .setFilePath(String.join("/", filePathTwo))
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
-
-      spanDataConsumer.consume(testSpanDataTwo);
+      spanConsumer.consume(testSpan.toByteArray());
+      spanConsumer.consume(testSpanTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
@@ -1623,19 +1475,13 @@ class SpanDataServiceTest {
       String innerFunctionName = "innerFun";
       Collections.addAll(filePath, innerDir, innerFileName);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(innerFunctionName)
-              .setFilePath(String.join("/", filePath))
-              .setStartTime(1)
-              .setEndTime(5)
-              .setCommitHash(baseCommitHash)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(innerFunctionName)
+                      .setFilePath(String.join("/", filePath))
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
       Map<String, Object> params = new HashMap<>();
@@ -1676,7 +1522,7 @@ class SpanDataServiceTest {
               """,
               params);
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(
@@ -1800,23 +1646,17 @@ class SpanDataServiceTest {
               """,
               params);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", filePath))
-              .setClassName(className)
-              .setCommitHash(baseCommitHash)
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", filePath))
+                      .setClassName(className)
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(
@@ -1877,23 +1717,17 @@ class SpanDataServiceTest {
       params.put("traceId", baseTraceId);
       params.put("spanId", baseSpanId);
 
-      SpanData testSpanData =
-          SpanData.newBuilder()
-              .setParentId("")
-              .setSpanId(baseSpanId)
-              .setTraceId(baseTraceId)
-              .setApplicationName(baseAppName)
-              .setLandscapeTokenId(landscapeToken)
-              .setFunctionName(functionNameTwo)
-              .setFilePath(String.join("/", filePath))
-              .setClassName(className)
-              .setCommitHash(baseCommitHash)
-              .setStartTime(1)
-              .setEndTime(5)
-              .setLanguage("")
+      ParsedSpan testSpan =
+          baseSpanBuilder()
+              .setCodeDescriptor(
+                  CodeDescriptor.newBuilder()
+                      .setFunctionName(functionNameTwo)
+                      .setFilePath(String.join("/", filePath))
+                      .setClassName(className)
+                      .setGitCommitHash(baseCommitHash))
               .build();
 
-      spanDataConsumer.consume(testSpanData);
+      spanConsumer.consume(testSpan.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(

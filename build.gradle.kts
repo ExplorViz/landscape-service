@@ -10,15 +10,11 @@ repositories {
     mavenCentral()
     mavenLocal()
     gradlePluginPortal()
-    maven {
-        url = uri("https://packages.confluent.io/maven/")
-    }
 }
 
 val quarkusPlatformGroupId: String by project
 val quarkusPlatformArtifactId: String by project
 val quarkusPlatformVersion: String by project
-val avroVersion = "1.11.3"
 
 dependencies {
     implementation(enforcedPlatform("${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
@@ -30,11 +26,6 @@ dependencies {
     implementation("org.neo4j:neo4j-ogm-quarkus:4.2.5")
 
     implementation("io.quarkus:quarkus-messaging-kafka")
-    implementation("io.confluent:kafka-avro-serializer:7.9.0")
-
-    // Confluent Avro Serializer
-    implementation("io.quarkus:quarkus-confluent-registry-avro")
-    implementation("org.apache.avro:avro:$avroVersion")
 
     testImplementation("io.quarkus:quarkus-junit5")
     testImplementation("io.rest-assured:rest-assured")
@@ -51,7 +42,6 @@ java {
 
 sourceSets["main"].java {
     srcDir("build/classes/java/quarkus-generated-sources/grpc")
-    srcDir("build/classes/java/quarkus-generated-sources/avdl")
 }
 
 tasks.withType<Test> {

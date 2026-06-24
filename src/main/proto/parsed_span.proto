@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "net.explorviz.landscape.proto";
+option java_outer_classname = "ParsedSpanProto";
+
+message ParsedSpan {
+  string landscape_token_id = 1;
+  string landscape_token_secret = 2;
+
+  string trace_id = 3;
+  string span_id = 4;
+  string span_name = 5;
+  optional string parent_id = 6;
+
+  uint64 start_time = 7;
+  uint64 end_time = 8;
+
+  string application_name = 9;
+
+  string entity_id = 10; // Identifier for the entity described by the span (e.g. function, database, ...)
+
+  oneof entity_descriptor {
+    CodeDescriptor code_descriptor = 11;
+  }
+}
+
+message CodeDescriptor {
+  string file_path = 1;
+  string function_name = 2;
+  optional string class_name = 3; // Inner classes may be separated by "."
+  optional string language = 4;
+  optional string git_commit_hash = 5;
+}
