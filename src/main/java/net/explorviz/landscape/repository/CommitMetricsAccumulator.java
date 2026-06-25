@@ -2,10 +2,12 @@ package net.explorviz.landscape.repository;
 
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.neo4j.ogm.session.Session;
 
 /**
@@ -15,12 +17,30 @@ import org.neo4j.ogm.session.Session;
 @ApplicationScoped
 public class CommitMetricsAccumulator {
 
-  private static final String FIND_PENDING_COMMITS =
+  @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
+  @Inject CommitRepository commitRepository;
+
+  private static final String FIND_PENDING_COMMITS_FOR_HASH =
+      """
+      MATCH (c:Commit {hash: $commitHash})
+      WHERE coalesce(c.hasAccumulatedMetrics, false) = false
+        AND EXISTS {
+          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+            -[:CONTAINS]->(c)
+        }
+        AND EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
+        AND NOT EXISTS {
+          MATCH (c)-[:CONTAINS]->(pending:FileRevision)
+          WHERE coalesce(pending.hasFileData, false) = false
+        }
+      RETURN id(c) AS commitId
+      """;
+
+  private static final String FIND_PENDING_COMMITS_FOR_REPO =
       """
       MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
         -[:CONTAINS]->(c:Commit)
       WHERE coalesce(c.hasAccumulatedMetrics, false) = false
-        AND ($commitHash IS NULL OR c.hash = $commitHash)
         AND EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
         AND NOT EXISTS {
           MATCH (c)-[:CONTAINS]->(pending:FileRevision)
@@ -81,7 +101,7 @@ public class CommitMetricsAccumulator {
       final String landscapeToken,
       final String repoName,
       final String commitHash) {
-    final List<Long> commitIds = findPendingCommits(session, landscapeToken, repoName, commitHash);
+    final List<Long> commitIds = findReadyCommits(session, landscapeToken, repoName, commitHash);
     if (commitIds.isEmpty()) {
       return;
     }
@@ -111,26 +131,53 @@ public class CommitMetricsAccumulator {
     }
 
     session.query(UPDATE_COMMIT_METRICS, Map.of("rows", rows));
-    Log.infof(
+    Log.debugf(
         "Updated accumulated metrics for %d fully persisted commit(s): %s",
         commitIds.size(), commitIds);
   }
 
-  private static List<Long> findPendingCommits(
+  private List<Long> findReadyCommits(
       final Session session,
       final String landscapeToken,
       final String repoName,
       final String commitHash) {
+    final Optional<PendingCommitContextRegistry.PendingCommit> pendingDeferredCommit =
+        pendingCommitContextRegistry.find(landscapeToken, repoName);
+
+    final List<Long> commitIds = new ArrayList<>();
+    final String query =
+        commitHash != null ? FIND_PENDING_COMMITS_FOR_HASH : FIND_PENDING_COMMITS_FOR_REPO;
     final Map<String, Object> params = new LinkedHashMap<>();
     params.put("tokenId", landscapeToken);
     params.put("repoName", repoName);
     params.put("commitHash", commitHash);
-
-    final List<Long> commitIds = new ArrayList<>();
     session
-        .query(FIND_PENDING_COMMITS, params)
+        .query(query, params)
         .queryResults()
         .forEach(row -> commitIds.add((Long) row.get("commitId")));
-    return commitIds;
+
+    return commitIds.stream()
+        .filter(
+            commitId ->
+                isReadyForMetricAccumulation(session, commitId, pendingDeferredCommit.orElse(null)))
+        .toList();
+  }
+
+  /**
+   * Commits with deferred file stubs link revisions incrementally as {@code FileData} batches
+   * arrive. Defer accumulation until every analyzed file is linked and has data, or until the
+   * pending commit is cleared when the next commit is persisted.
+   */
+  private boolean isReadyForMetricAccumulation(
+      final Session session,
+      final Long commitId,
+      final PendingCommitContextRegistry.PendingCommit pendingDeferredCommit) {
+    if (pendingDeferredCommit == null || pendingDeferredCommit.commitInternalId() != commitId) {
+      return true;
+    }
+
+    return pendingDeferredCommit.analysisFileCount() > 0
+        && commitRepository.countLinkedFileRevisions(session, commitId)
+            >= pendingDeferredCommit.analysisFileCount();
   }
 }

@@ -36,11 +36,14 @@ import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.ClazzRepository;
+import net.explorviz.landscape.repository.CommitDiffRepository;
+import net.explorviz.landscape.repository.CommitDiffRepository.CommitDiffQuery;
+import net.explorviz.landscape.repository.CommitDiffRepository.FileComparison;
 import net.explorviz.landscape.repository.CommitRepository;
-import net.explorviz.landscape.repository.CommitRepository.FileComparison;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.FunctionRepository;
 import net.explorviz.landscape.repository.TraceRepository;
+import net.explorviz.landscape.util.CommitBranchOrderer;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -61,6 +64,8 @@ public class CodeResource {
   @Inject ClazzRepository clazzRepository;
 
   @Inject CommitRepository commitRepository;
+
+  @Inject CommitDiffRepository commitDiffRepository;
 
   @Inject FileRevisionRepository fileRevisionRepository;
 
@@ -94,7 +99,7 @@ public class CodeResource {
         commitRepository.findCommitsWithBranchForApplicationAndLandscapeToken(
             session, landscapeToken, applicationName);
 
-    final Map<String, List<String>> branchToCommitsMap = new HashMap<>();
+    final Map<String, List<Commit>> branchToCommitsMap = new HashMap<>();
     final Map<String, BranchPointDto> branchToBranchPointMap = new HashMap<>();
 
     for (final Commit commit : commits) {
@@ -108,7 +113,7 @@ public class CodeResource {
 
       final String branchName = commit.getBranch().getName();
 
-      branchToCommitsMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit.getHash());
+      branchToCommitsMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit);
 
       final Set<Commit> parentCommits =
           commit.getParentCommits().stream()
@@ -151,7 +156,12 @@ public class CodeResource {
         branchToCommitsMap.entrySet().stream()
             .map(
                 e ->
-                    new BranchDto(e.getKey(), e.getValue(), branchToBranchPointMap.get(e.getKey())))
+                    new BranchDto(
+                        e.getKey(),
+                        CommitBranchOrderer.orderAlongBranch(e.getValue()).stream()
+                            .map(Commit::getHash)
+                            .toList(),
+                        branchToBranchPointMap.get(e.getKey())))
             .toList();
 
     return new CommitTreeDto(applicationName, branches);
@@ -241,30 +251,24 @@ public class CodeResource {
       @RestPath final String firstCommitHash,
       @RestPath final String secondCommitHash) {
     final Session session = sessionFactory.openSession();
+    final CommitDiffQuery diffQuery =
+        new CommitDiffQuery(landscapeToken, applicationName, firstCommitHash, secondCommitHash);
 
     final List<String> modifiedFiles =
-        commitRepository.findModifiedFileFqns(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+        commitDiffRepository.findModifiedFileFqns(session, diffQuery);
 
-    final List<String> addedFiles =
-        commitRepository.findAddedFileFqns(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+    final List<String> addedFiles = commitDiffRepository.findAddedFileFqns(session, diffQuery);
 
-    final List<String> deletedFiles =
-        commitRepository.findDeletedFileFqns(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+    final List<String> deletedFiles = commitDiffRepository.findDeletedFileFqns(session, diffQuery);
 
     final List<String> addedPackages =
-        commitRepository.findAddedDirectoryFqns(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+        commitDiffRepository.findAddedDirectoryFqns(session, diffQuery);
 
     final List<String> deletedPackages =
-        commitRepository.findDeletedDirectoryFqns(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+        commitDiffRepository.findDeletedDirectoryFqns(session, diffQuery);
 
     final List<FileComparison> metricResults =
-        commitRepository.findFilesWithCounterpart(
-            session, landscapeToken, applicationName, firstCommitHash, secondCommitHash);
+        commitDiffRepository.findFilesWithCounterpart(session, diffQuery);
 
     final List<EntityMetricsComparison> entityMetricsComparisons =
         metricResults.stream()

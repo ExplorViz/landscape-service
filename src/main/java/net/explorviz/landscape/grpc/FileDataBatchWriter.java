@@ -16,7 +16,7 @@ import org.neo4j.ogm.session.Session;
  * UNWIND} Cypher queries — one query per node type — rather than relying on OGM's per-entity
  * cascade save.
  *
- * <p>For a batch of N files, this produces O(max_class_depth + 6) bolt round-trips regardless of N,
+ * <p>For a batch of N files, this produces O(8) bolt round-trips regardless of N or nesting depth,
  * compared with the OGM approach's O(12 × N) round-trips. Orchestration is split across {@link
  * ClassNodeBatchWriter} and {@link ChildNodeBatchWriter} to keep each class focused.
  *
@@ -60,7 +60,7 @@ public class FileDataBatchWriter {
 
     stepStart = System.nanoTime();
     final Map<String, Long> clazzIds = classNodeWriter.createClassesByDepth(session, allPending);
-    final long createClassesByDepthMs = elapsedMillis(stepStart);
+    final long createClassesMs = elapsedMillis(stepStart);
 
     stepStart = System.nanoTime();
     childNodeWriter.createFields(session, allPending, clazzIds);
@@ -81,7 +81,7 @@ public class FileDataBatchWriter {
 
     Log.infof(
         "persistBatch(%d files): lookupFileRevisions=%dms, validateAllFilesFound=%dms, "
-            + "updateFileRevisions=%dms, collectAllClasses=%dms, createClassesByDepth=%dms, "
+            + "updateFileRevisions=%dms, collectAllClasses=%dms, createClasses=%dms, "
             + "createFields=%dms, createClassFunctions=%dms, createFileRevFunctions=%dms, "
             + "createAllParameters=%dms, total=%dms",
         files.size(),
@@ -89,7 +89,7 @@ public class FileDataBatchWriter {
         validateAllFilesFoundMs,
         updateFileRevisionsMs,
         collectAllClassesMs,
-        createClassesByDepthMs,
+        createClassesMs,
         createFieldsMs,
         createClassFunctionsMs,
         createFileRevFunctionsMs,

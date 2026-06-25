@@ -9,6 +9,7 @@ import net.explorviz.landscape.proto.ContributorData;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.TrackableResourceEvent;
+import net.explorviz.landscape.repository.IncompleteCommitFileCopyException;
 
 /** Utility class to map Java exceptions to gRPC exceptions. */
 public final class GrpcExceptionMapper {
@@ -33,6 +34,13 @@ public final class GrpcExceptionMapper {
 
     if (unwrapped instanceof IllegalArgumentException) {
       return Status.INVALID_ARGUMENT
+          .withCause(unwrapped)
+          .withDescription(unwrapped.getMessage())
+          .asRuntimeException();
+    }
+
+    if (unwrapped instanceof IncompleteCommitFileCopyException) {
+      return Status.FAILED_PRECONDITION
           .withCause(unwrapped)
           .withDescription(unwrapped.getMessage())
           .asRuntimeException();

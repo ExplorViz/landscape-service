@@ -11,6 +11,8 @@ import java.util.stream.Collectors;
 import net.explorviz.landscape.grpc.FileDataBatchWriter;
 import net.explorviz.landscape.grpc.FileDataInsertProperties;
 import net.explorviz.landscape.proto.FileData;
+import net.explorviz.landscape.proto.FileIdentifier;
+import net.explorviz.landscape.repository.FileRevisionRepository.CommitFileLinkType;
 import org.neo4j.ogm.session.Session;
 
 /** Resolves and updates {@code FileRevision} nodes for a batch of {@link FileData} messages. */
@@ -33,6 +35,8 @@ public class FileRevisionBatchResolver {
 
   @Inject FileRevisionIdCache fileRevisionIdCache;
   @Inject FileDataInsertProperties fileDataInsertProperties;
+  @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
+  @Inject FileRevisionRepository fileRevisionRepository;
 
   public Map<String, Long> lookupFileRevisions(final Session session, final List<FileData> files) {
     final Map<String, Long> result = new LinkedHashMap<>();
@@ -52,7 +56,64 @@ public class FileRevisionBatchResolver {
     if (!missingFromCache.isEmpty()) {
       lookupFileRevisionsFromDatabase(session, missingFromCache, result);
     }
+
+    final List<FileData> stillMissing = new ArrayList<>();
+    for (final FileData file : files) {
+      if (!result.containsKey(FileDataBatchWriter.makeBatchKey(file))) {
+        stillMissing.add(file);
+      }
+    }
+    if (!stillMissing.isEmpty()) {
+      ensureMissingFileRevisions(session, stillMissing, result);
+    }
     return result;
+  }
+
+  private void ensureMissingFileRevisions(
+      final Session session, final List<FileData> stillMissing, final Map<String, Long> result) {
+    final FileData first = stillMissing.get(0);
+    final PendingCommitContextRegistry.PendingCommit pendingCommit =
+        pendingCommitContextRegistry
+            .find(first.getLandscapeToken(), first.getRepositoryName())
+            .orElseThrow(
+                () ->
+                    Status.FAILED_PRECONDITION
+                        .withDescription(
+                            "No corresponding file was sent before in CommitData: "
+                                + first.getFilePath())
+                        .asRuntimeException());
+
+    final CommitFilePersistenceContext context =
+        fileRevisionRepository.createFilePersistenceContext(
+            session,
+            pendingCommit.landscapeTokenId(),
+            pendingCommit.repoName(),
+            pendingCommit.commitInternalId());
+
+    final List<FileIdentifier> fileIdentifiers =
+        stillMissing.stream()
+            .map(
+                file ->
+                    FileIdentifier.newBuilder()
+                        .setFilePath(file.getFilePath())
+                        .setFileHash(file.getFileHash())
+                        .build())
+            .toList();
+
+    for (final List<FileIdentifier> chunk :
+        FileDataBatchWriter.partition(fileIdentifiers, fileDataInsertProperties.getChunkSize())) {
+      fileRevisionRepository.persistCommitFileBatch(
+          session, context, chunk, CommitFileLinkType.CONTAINS);
+    }
+
+    for (final FileData file : stillMissing) {
+      final String batchKey = FileDataBatchWriter.makeBatchKey(file);
+      final String lookupKey = FileRevisionLookupKey.fromFileData(file).cacheKey();
+      final Long fileRevId = fileRevisionIdCache.get(lookupKey);
+      if (fileRevId != null) {
+        result.put(batchKey, fileRevId);
+      }
+    }
   }
 
   public void validateAllFilesFound(

@@ -3,16 +3,18 @@ package net.explorviz.landscape.repository;
 import com.google.common.collect.Lists;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.explorviz.landscape.ogm.Commit;
-import net.explorviz.landscape.ogm.FileRevision;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.UseObjectForClearerAPI"})
+@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 public class CommitRepository {
 
   @Inject SessionFactory sessionFactory;
@@ -88,8 +90,9 @@ public class CommitRepository {
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
             MATCH (repo)-[:CONTAINS]->(c:Commit)
             OPTIONAL MATCH (c)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->()
-            RETURN DISTINCT c, r, b, h
+            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
+            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            RETURN DISTINCT c, r, b, h, parent, pr, pb
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
@@ -110,275 +113,113 @@ public class CommitRepository {
             WHERE (repo)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(:Directory)<-[:HAS_ROOT]-(a)
             MATCH (repo)-[:CONTAINS]->(c:Commit)
             OPTIONAL MATCH (c)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->()
-            RETURN DISTINCT c, r, b, h
+            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
+            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            RETURN DISTINCT c, r, b, h, parent, pr, pb
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "appName", applicationName)));
   }
 
-  /**
-   * Returns the FQNs of all files within the provided application which are present in both the
-   * first commit and the second commit, but not under the same FileRevision node, indicating that
-   * there has been a change to the file.
-   */
-  public List<String> findModifiedFileFqns(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return Lists.newArrayList(
-        session.query(
-            String.class,
+  public Optional<Long> findCommitInternalId(
+      final Session session, final String commitHash, final String tokenId) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
             """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(repo:Repository)
-              -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-            MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-            MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-            WHERE
-              (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            MATCH p = (a)
-              -[:HAS_ROOT]->(:Directory)
-              -[:CONTAINS]->*(containingDir:Directory)
-              -[:CONTAINS]->(f:FileRevision)
-            WHERE
-              (c1)-[:CONTAINS]->(f) AND
-              NOT (c2)-[:CONTAINS]->(f) AND
-              EXISTS {
-                MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c2)
-                WHERE f.name = f2.name AND f <> f2
-              }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            MATCH (c:Commit {hash: $commitHash})
+            WHERE EXISTS {
+              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+            }
+            RETURN id(c) LIMIT 1
             """,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "appName",
-                applicationName,
-                "firstCommitHash",
-                firstCommitHash,
-                "secondCommitHash",
-                secondCommitHash)));
+            Map.of("tokenId", tokenId, "commitHash", commitHash)));
+  }
+
+  public int countLinkedFileRevisions(final Session session, final long commitInternalId) {
+    final Integer count =
+        session.queryForObject(
+            Integer.class,
+            """
+            MATCH (c:Commit) WHERE id(c) = $commitId
+            OPTIONAL MATCH (c)-[:CONTAINS]->(f:FileRevision)
+            RETURN count(f) AS fileCount
+            """,
+            Map.of("commitId", commitInternalId));
+    return count != null ? count : 0;
+  }
+
+  public Optional<Long> findParentCommitInternalId(
+      final Session session, final long commitInternalId) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (c:Commit) WHERE id(c) = $commitId
+            MATCH (c)-[:HAS_PARENT]->(parent:Commit)
+            RETURN id(parent) AS parentId
+            LIMIT 1
+            """,
+            Map.of("commitId", commitInternalId)));
+  }
+
+  public int countExplicitlyChangedFileLinks(final Session session, final long commitInternalId) {
+    final Integer count =
+        session.queryForObject(
+            Integer.class,
+            """
+            MATCH (c:Commit) WHERE id(c) = $commitId
+            OPTIONAL MATCH (c)-[:ADDED|MODIFIED]->(f:FileRevision)
+            RETURN count(DISTINCT f) AS changedCount
+            """,
+            Map.of("commitId", commitInternalId));
+    return count != null ? count : 0;
+  }
+
+  @SuppressWarnings("unchecked")
+  public Set<String> findExplicitlyChangedFilePaths(
+      final Session session, final long commitInternalId) {
+    final List<String> paths =
+        session.queryForObject(
+            List.class,
+            """
+            MATCH (c:Commit) WHERE id(c) = $commitId
+            MATCH (c)-[:ADDED|MODIFIED]->(f:FileRevision)
+            RETURN collect(DISTINCT coalesce(f.filePath, f.name)) AS paths
+            """,
+            Map.of("commitId", commitInternalId));
+    return paths != null ? new HashSet<>(paths) : Set.of();
   }
 
   /**
-   * Returns the FQNs of all files within the provided application which are present in the second
-   * commit, but not the first commit, indicating they are added in the second commit.
+   * Returns the most recent commit on a branch that already has file revisions linked, excluding
+   * {@code excludeCommitInternalId} when set to a positive internal id.
    */
-  public List<String> findAddedFileFqns(
+  public Optional<Long> findLatestCommitWithLinkedFilesInternalId(
       final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return Lists.newArrayList(
-        session.query(
-            String.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(repo:Repository)
-              -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-            MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-            MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-            WHERE
-              (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            MATCH p = (a)
-              -[:HAS_ROOT]->(:Directory)
-              -[:CONTAINS]->*(containingDir:Directory)
-              -[:CONTAINS]->(f:FileRevision)
-            WHERE
-              (c2)-[:CONTAINS]->(f) AND
-              NOT (c1)-[:CONTAINS]->(f) AND
-              NOT EXISTS {
-                MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c1)
-                WHERE f.name = f2.name AND f <> f2
-              }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
-            """,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "appName",
-                applicationName,
-                "firstCommitHash",
-                firstCommitHash,
-                "secondCommitHash",
-                secondCommitHash)));
-  }
+      final String landscapeTokenId,
+      final String repoName,
+      final String branchName,
+      final long excludeCommitInternalId) {
+    final Map<String, Object> params = new HashMap<>();
+    params.put("tokenId", landscapeTokenId);
+    params.put("repoName", repoName);
+    params.put("branchName", branchName);
+    params.put("excludeCommitId", excludeCommitInternalId);
 
-  /**
-   * Returns the FQNs of all files within the provided application which are present in the first
-   * commit, but not the second commit, indicating they are deleted in the second commit.
-   */
-  public List<String> findDeletedFileFqns(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return Lists.newArrayList(
-        session.query(
-            String.class,
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
             """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(repo:Repository)
-              -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-            MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-            MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-            WHERE
-              (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            MATCH p = (a)
-              -[:HAS_ROOT]->(:Directory)
-              -[:CONTAINS]->*(containingDir:Directory)
-              -[:CONTAINS]->(f:FileRevision)
-            WHERE
-              (c1)-[:CONTAINS]->(f) AND
-              NOT (c2)-[:CONTAINS]->(f) AND
-              NOT EXISTS {
-                MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c2)
-                WHERE f.name = f2.name AND f <> f2
-              }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(c:Commit)-[:BELONGS_TO]->(:Branch {name: $branchName})
+            WHERE EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
+              AND ($excludeCommitId <= 0 OR id(c) <> $excludeCommitId)
+            RETURN id(c) AS commitId
+            ORDER BY c.commitDate DESC
+            LIMIT 1
             """,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "appName",
-                applicationName,
-                "firstCommitHash",
-                firstCommitHash,
-                "secondCommitHash",
-                secondCommitHash)));
-  }
-
-  /**
-   * Returns the FQNs of all directories within the provided application which contain files that
-   * are present in the second commit, but no files present in the first commit, indicating these
-   * directories are added in the second commit.
-   */
-  public List<String> findAddedDirectoryFqns(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return Lists.newArrayList(
-        session.query(
-            String.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(repo:Repository)
-              -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-            MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-            MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-            WHERE
-              (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            MATCH p = (a)
-              -[:HAS_ROOT]->(:Directory)
-              -[:CONTAINS*0..]->(d:Directory)
-            WHERE
-              (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c2) AND
-              NOT (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
-            """,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "appName",
-                applicationName,
-                "firstCommitHash",
-                firstCommitHash,
-                "secondCommitHash",
-                secondCommitHash)));
-  }
-
-  /**
-   * Returns the FQNs of all directories within the provided application which contain files that
-   * are present in the first commit, but no files present in the second commit, indicating these
-   * directories are deleted in the second commit.
-   */
-  public List<String> findDeletedDirectoryFqns(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return Lists.newArrayList(
-        session.query(
-            String.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(repo:Repository)
-              -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-            MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-            MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-            WHERE
-              (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            MATCH p = (a)
-              -[:HAS_ROOT]->(:Directory)
-              -[:CONTAINS*0..]->(d:Directory)
-            WHERE
-              (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1) AND
-              NOT (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c2)
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
-            """,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "appName",
-                applicationName,
-                "firstCommitHash",
-                firstCommitHash,
-                "secondCommitHash",
-                secondCommitHash)));
-  }
-
-  /**
-   * Finds all file revisions which are part of the provided application and are contained in the
-   * first commit, along with the file's FQNs. Additionally, if a file revision with the same FQN is
-   * present in the second commit, it is also returned, allowing the comparison of file attributes.
-   * Note that if the exact same file revision is part of both commits, it is returned twice.
-   */
-  public List<FileComparison> findFilesWithCounterpart(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String firstCommitHash,
-      final String secondCommitHash) {
-    return session.queryDto(
-        """
-        MATCH (l:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(repo:Repository)
-          -[:CONTAINS]->(c1:Commit {hash: $firstCommitHash})
-        MATCH (repo)-[:CONTAINS]->(c2:Commit {hash: $secondCommitHash})
-        MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})
-        WHERE
-          (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-        MATCH p = (a)
-          -[:HAS_ROOT]->(:Directory)
-          -[:CONTAINS]->*(containingDir:Directory)
-          -[:CONTAINS]->(f:FileRevision)
-        WHERE
-          (c2)-[:CONTAINS]->(f)
-        OPTIONAL MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c1)
-        WHERE f.name = f2.name
-        RETURN
-          apoc.text.join([node IN nodes(p)[1..] | node.name], "/") AS fileFqn,
-          f AS fileFirstCommit,
-          f2 AS fileSecondCommit;
-        """,
-        Map.of(
-            "tokenId",
-            landscapeToken,
-            "appName",
-            applicationName,
-            "firstCommitHash",
-            firstCommitHash,
-            "secondCommitHash",
-            secondCommitHash),
-        FileComparison.class);
+            params));
   }
 
   public Commit getOrCreateCommit(
@@ -386,7 +227,4 @@ public class CommitRepository {
     return findCommitByHashAndLandscapeToken(session, commitHash, tokenId)
         .orElse(new Commit(commitHash));
   }
-
-  public record FileComparison(
-      String fileFqn, FileRevision fileFirstCommit, FileRevision fileSecondCommit) {}
 }

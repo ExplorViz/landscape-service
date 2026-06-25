@@ -231,6 +231,74 @@ class FileDataServiceTest {
   }
 
   @Test
+  void testDeferredFileStubMetricsAccumulatedAfterAllFileDataBatches() {
+    String commitHash = "deferred-commit";
+    String filePathOne = "src/File1.java";
+    String filePathTwo = "src/File2.java";
+    String fileHashOne = "hash1";
+    String fileHashTwo = "hash2";
+
+    CommitData commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAnalysisFileCount(2)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .build();
+
+    commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    FileData fileDataOne =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHashOne)
+            .setFilePath(filePathOne)
+            .setLanguage(Language.JAVA)
+            .putAllMetrics(Map.of("lineCount", 10d))
+            .build();
+
+    fileDataService.persistFile(fileDataOne).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Boolean hasAccumulatedMetricsAfterFirstFile =
+        session.queryForObject(
+            Boolean.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN coalesce(c.hasAccumulatedMetrics, false)
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertFalse(hasAccumulatedMetricsAfterFirstFile);
+
+    FileData fileDataTwo =
+        FileData.newBuilder()
+            .setLandscapeToken(landscapeToken)
+            .setRepositoryName(repoName)
+            .setFileHash(fileHashTwo)
+            .setFilePath(filePathTwo)
+            .setLanguage(Language.JAVA)
+            .putAllMetrics(Map.of("lineCount", 25d))
+            .build();
+
+    fileDataService.persistFile(fileDataTwo).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    Commit commit =
+        session.queryForObject(
+            Commit.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN c
+            """,
+            Map.of("commitHash", commitHash));
+
+    assertTrue(commit.isHasAccumulatedMetrics());
+    assertEquals(35d, commit.getMetrics().get("lineCount"));
+  }
+
+  @Test
   void testPersistFileDuplicateFileOnDifferentPaths() {
     String commitHash = "commit1";
     String filePathOne = "src/File1.java";

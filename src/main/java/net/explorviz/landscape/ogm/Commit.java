@@ -92,6 +92,10 @@ public class Commit {
     }
   }
 
+  public Long getId() {
+    return id;
+  }
+
   public String getHash() {
     return hash;
   }

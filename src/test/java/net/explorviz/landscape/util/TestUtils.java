@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import io.quarkus.arc.Arc;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.repository.CommitFileRevisionCache;
 import net.explorviz.landscape.repository.FileRevisionIdCache;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
@@ -45,6 +46,10 @@ public class TestUtils {
       final var cache = container.instance(FileRevisionIdCache.class);
       if (cache.isAvailable()) {
         cache.get().clear();
+      }
+      final var commitCache = container.instance(CommitFileRevisionCache.class);
+      if (commitCache.isAvailable()) {
+        commitCache.get().clear();
       }
     }
   }

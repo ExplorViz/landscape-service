@@ -21,6 +21,7 @@ import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
+import net.explorviz.landscape.util.CommitBranchOrderer;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -66,7 +67,7 @@ public class EvolutionResource {
         commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
             session, landscapeToken, repositoryName);
 
-    final Map<String, List<CommitNodeDto>> branchToCommitMap = new HashMap<>();
+    final Map<String, List<Commit>> branchToCommitMap = new HashMap<>();
     final Map<String, BranchPointDto> branchToBranchPointMap = new HashMap<>();
 
     for (final Commit commit : commits) {
@@ -80,14 +81,7 @@ public class EvolutionResource {
 
       final String branchName = commit.getBranch().getName();
 
-      branchToCommitMap
-          .computeIfAbsent(branchName, k -> new ArrayList<>())
-          .add(
-              new CommitNodeDto(
-                  commit.getHash(),
-                  commit.getCommitDate(),
-                  commit.getMetrics(),
-                  commit.isHasAccumulatedMetrics()));
+      branchToCommitMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit);
 
       final Set<Commit> parentCommits =
           commit.getParentCommits().stream()
@@ -130,7 +124,18 @@ public class EvolutionResource {
         branchToCommitMap.entrySet().stream()
             .map(
                 e ->
-                    new BranchDto(e.getKey(), e.getValue(), branchToBranchPointMap.get(e.getKey())))
+                    new BranchDto(
+                        e.getKey(),
+                        CommitBranchOrderer.orderAlongBranch(e.getValue()).stream()
+                            .map(
+                                commit ->
+                                    new CommitNodeDto(
+                                        commit.getHash(),
+                                        commit.getCommitDate(),
+                                        commit.getMetrics(),
+                                        commit.isHasAccumulatedMetrics()))
+                            .toList(),
+                        branchToBranchPointMap.get(e.getKey())))
             .toList();
 
     return new CommitTreeDto(repositoryName, branches);

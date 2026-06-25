@@ -18,8 +18,10 @@ import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.StateDataService;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
+import net.explorviz.landscape.repository.CommitFileRevisionCache;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.DirectoryRepository;
+import net.explorviz.landscape.repository.FileRevisionIdCache;
 import net.explorviz.landscape.repository.LandscapeRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
@@ -36,9 +38,13 @@ public class StateDataServiceImpl implements StateDataService {
 
   @Inject BranchRepository branchRepository;
 
+  @Inject CommitFileRevisionCache commitFileRevisionCache;
+
   @Inject CommitRepository commitRepository;
 
   @Inject DirectoryRepository directoryRepository;
+
+  @Inject FileRevisionIdCache fileRevisionIdCache;
 
   @Inject LandscapeRepository landscapeRepository;
 
@@ -51,6 +57,9 @@ public class StateDataServiceImpl implements StateDataService {
     try (Transaction tx = session.beginTransaction()) {
       saveStateData(session, request);
       tx.commit();
+
+      fileRevisionIdCache.clear();
+      commitFileRevisionCache.clear();
 
       final StateData.Builder stateDataBuilder = StateData.newBuilder();
       if (!request.getSkipLatestCommitLookup()) {

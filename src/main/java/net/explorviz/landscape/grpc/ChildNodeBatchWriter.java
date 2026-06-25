@@ -25,24 +25,15 @@ public class ChildNodeBatchWriter {
   private static final String CREATE_FIELDS =
       """
       UNWIND $rows AS row
-      MATCH (parent:Clazz) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(fi:Field {name: row.name, type: row.type})
       SET fi.modifiers = row.modifiers
       """;
 
-  private static final String CREATE_FUNCTIONS_ON_FILE_REVISION =
+  private static final String CREATE_FUNCTIONS =
       """
       UNWIND $rows AS row
-      MATCH (parent:FileRevision) WHERE id(parent) = row.parentId
-      CREATE (parent)-[:CONTAINS]->(func:Function {name: row.name})
-      SET func += row.props
-      RETURN row.batchKey AS batchKey, id(func) AS functionId
-      """;
-
-  private static final String CREATE_FUNCTIONS_ON_CLAZZ =
-      """
-      UNWIND $rows AS row
-      MATCH (parent:Clazz) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(func:Function {name: row.name})
       SET func += row.props
       RETURN row.batchKey AS batchKey, id(func) AS functionId
@@ -51,7 +42,7 @@ public class ChildNodeBatchWriter {
   private static final String CREATE_PARAMETERS =
       """
       UNWIND $rows AS row
-      MATCH (parent:Function) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(p:Parameter {name: row.name, type: row.type})
       SET p.modifiers = row.modifiers
       """;
@@ -98,7 +89,7 @@ public class ChildNodeBatchWriter {
     for (final List<Map<String, Object>> chunk :
         FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
-          .query(CREATE_FUNCTIONS_ON_CLAZZ, Map.of("rows", chunk))
+          .query(CREATE_FUNCTIONS, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
@@ -123,7 +114,7 @@ public class ChildNodeBatchWriter {
     for (final List<Map<String, Object>> chunk :
         FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
-          .query(CREATE_FUNCTIONS_ON_FILE_REVISION, Map.of("rows", chunk))
+          .query(CREATE_FUNCTIONS, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
