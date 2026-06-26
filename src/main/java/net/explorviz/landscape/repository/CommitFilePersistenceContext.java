@@ -12,6 +12,7 @@ import org.neo4j.ogm.session.Session;
 public record CommitFilePersistenceContext(
     String landscapeTokenId,
     String repoName,
+    String commitHash,
     long commitInternalId,
     long rootDirectoryId,
     Map<String, Long> directoryLeafCache) {
@@ -21,12 +22,18 @@ public record CommitFilePersistenceContext(
       final DirectoryRepository directoryRepository,
       final String landscapeTokenId,
       final String repoName,
+      final String commitHash,
       final long commitInternalId) {
     final long rootDirectoryId =
         directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
     final Map<String, Long> directoryLeafCache = new HashMap<>();
     directoryLeafCache.put(repoName, rootDirectoryId);
     return new CommitFilePersistenceContext(
-        landscapeTokenId, repoName, commitInternalId, rootDirectoryId, directoryLeafCache);
+        landscapeTokenId,
+        repoName,
+        commitHash,
+        commitInternalId,
+        rootDirectoryId,
+        directoryLeafCache);
   }
 }

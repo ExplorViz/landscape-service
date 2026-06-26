@@ -10,7 +10,6 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.ogm.Branch;
@@ -34,23 +33,15 @@ import net.explorviz.landscape.repository.LandscapeRepository;
 import net.explorviz.landscape.repository.PendingCommitContextRegistry;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TagRepository;
-import net.explorviz.landscape.repository.UnchangedCommitFileCopier;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 import org.neo4j.ogm.transaction.Transaction;
 
 @GrpcService
-@SuppressWarnings("PMD.CouplingBetweenObjects")
 public class CommitServiceImpl implements CommitService {
 
   private static final String NO_PARENT_ID = "NONE";
-
-  /**
-   * Parent commits with at most this many extra links beyond ADDED/MODIFIED are treated as
-   * incomplete.
-   */
-  private static final int INCOMPLETE_PARENT_TOLERANCE = 5;
 
   @Inject ApplicationRepository applicationRepository;
   @Inject BranchRepository branchRepository;
@@ -58,7 +49,6 @@ public class CommitServiceImpl implements CommitService {
   @Inject LandscapeRepository landscapeRepository;
   @Inject RepositoryRepository repositoryRepository;
   @Inject FileRevisionRepository fileRevisionRepository;
-  @Inject UnchangedCommitFileCopier unchangedCommitFileCopier;
   @Inject CommitDeletedFileUnlinker commitDeletedFileUnlinker;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
   @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
@@ -81,7 +71,7 @@ public class CommitServiceImpl implements CommitService {
     }
   }
 
-  @SuppressWarnings({"PMD.NcssCount", "PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
+  @SuppressWarnings({"PMD.NcssCount", "PMD.NPathComplexity", "PMD.CyclomaticComplexity"})
   public void saveCommitData(final Session session, final CommitData commitData) {
     final long commitStart = System.nanoTime();
     long stepStart = commitStart;
@@ -123,7 +113,7 @@ public class CommitServiceImpl implements CommitService {
         Instant.ofEpochSecond(
             commitData.getAuthorDate().getSeconds(), commitData.getAuthorDate().getNanos()));
     repo.addCommit(commit);
-    session.save(commit);
+    session.save(List.of(repo, branch, commit));
     final long setupCommitMs = elapsedMillis(stepStart);
 
     stepStart = System.nanoTime();
@@ -132,13 +122,18 @@ public class CommitServiceImpl implements CommitService {
             session,
             commitData.getLandscapeToken(),
             commitData.getRepositoryName(),
+            commitData.getCommitId(),
             commit.getId());
     final long createFileContextMs = elapsedMillis(stepStart);
 
+    final boolean hasParent =
+        !commitData.getParentCommitId().isEmpty()
+            && !NO_PARENT_ID.equals(commitData.getParentCommitId());
     final boolean deferFileStubs = CommitFileStubPolicy.defersFileStubCreation(commitData);
     long linkAddedFilesMs = 0;
     long linkModifiedFilesMs = 0;
     long linkUnchangedFilesMs = 0;
+    long copyUnchangedFromParentMs = 0;
 
     stepStart = System.nanoTime();
     if (deferFileStubs) {
@@ -149,9 +144,11 @@ public class CommitServiceImpl implements CommitService {
               commitData.getCommitId(),
               commit.getId(),
               commitData.getAnalysisFileCount()));
-      Log.infof(
-          "Commit %s for repository '%s': deferring file stub creation to FileData pipeline "
-              + "(%d files to analyze, %d deleted paths)",
+      Log.warnf(
+          "Commit %s for repository '%s': received metadata-only CommitData from an outdated "
+              + "analyzer (%d files expected, %d deleted paths). "
+              + "File stubs will not be pre-linked; "
+              + "upgrade the code-analyzer to send file identifiers in CommitData.",
           commitData.getCommitId(),
           commitData.getRepositoryName(),
           commitData.getAnalysisFileCount(),
@@ -178,13 +175,38 @@ public class CommitServiceImpl implements CommitService {
           FileRevisionRepository.CommitFileLinkType.MODIFIED);
       linkModifiedFilesMs = elapsedMillis(stepStart);
 
-      stepStart = System.nanoTime();
-      fileRevisionRepository.persistCommitFilesInBatches(
-          session,
-          fileContext,
-          commitData.getUnchangedFilesList(),
-          FileRevisionRepository.CommitFileLinkType.CONTAINS);
-      linkUnchangedFilesMs = elapsedMillis(stepStart);
+      if (!commitData.getUnchangedFilesList().isEmpty()) {
+        stepStart = System.nanoTime();
+        fileRevisionRepository.persistCommitFilesInBatches(
+            session,
+            fileContext,
+            commitData.getUnchangedFilesList(),
+            FileRevisionRepository.CommitFileLinkType.CONTAINS);
+        linkUnchangedFilesMs = elapsedMillis(stepStart);
+      }
+
+      if (hasParent) {
+        stepStart = System.nanoTime();
+        final Set<String> modifiedPaths =
+            commitData.getModifiedFilesList().stream()
+                .map(FileIdentifier::getFilePath)
+                .collect(Collectors.toCollection(HashSet::new));
+        final Set<String> deletedPaths =
+            commitData.getDeletedFilesList().stream()
+                .map(FileIdentifier::getFilePath)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        fileRevisionRepository.copyUnchangedFilesFromParentCommit(
+            session,
+            new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
+                commitData.getLandscapeToken(),
+                commitData.getRepositoryName(),
+                commitData.getParentCommitId(),
+                commitData.getCommitId(),
+                modifiedPaths,
+                deletedPaths));
+        copyUnchangedFromParentMs = elapsedMillis(stepStart);
+      }
     }
 
     final Set<String> deletedPaths =
@@ -193,25 +215,7 @@ public class CommitServiceImpl implements CommitService {
             .collect(Collectors.toCollection(HashSet::new));
 
     stepStart = System.nanoTime();
-    final boolean hasParent =
-        !commitData.getParentCommitId().isEmpty()
-            && !NO_PARENT_ID.equals(commitData.getParentCommitId());
-    if (!deferFileStubs && hasParent && commitData.getUnchangedFilesList().isEmpty()) {
-      final Set<String> addedPaths =
-          commitData.getAddedFilesList().stream()
-              .map(FileIdentifier::getFilePath)
-              .collect(Collectors.toCollection(HashSet::new));
-      final Set<String> modifiedPaths =
-          commitData.getModifiedFilesList().stream()
-              .map(FileIdentifier::getFilePath)
-              .collect(Collectors.toCollection(HashSet::new));
-
-      copyUnchangedFromParent(session, commitData, commit, addedPaths, modifiedPaths, deletedPaths);
-    }
-    final long copyUnchangedFromParentMs = elapsedMillis(stepStart);
-
-    stepStart = System.nanoTime();
-    if (!deletedPaths.isEmpty()) {
+    if (!deferFileStubs && !deletedPaths.isEmpty()) {
       commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(session, commit.getId(), deletedPaths);
     }
     final long unlinkDeletedFilesMs = elapsedMillis(stepStart);
@@ -240,6 +244,7 @@ public class CommitServiceImpl implements CommitService {
           commitRepository.getOrCreateCommit(
               session, commitData.getParentCommitId(), commitData.getLandscapeToken());
       commit.addParentCommit(parentCommit);
+      repo.addCommit(parentCommit);
       session.save(List.of(repo, branch, commit, parentCommit));
     }
     final long finalizeCommitMs = elapsedMillis(stepStart);
@@ -277,150 +282,6 @@ public class CommitServiceImpl implements CommitService {
         tagsMs,
         finalizeCommitMs,
         elapsedMillis(commitStart));
-  }
-
-  private void copyUnchangedFromParent(
-      final Session session,
-      final CommitData commitData,
-      final Commit commit,
-      final Set<String> addedPaths,
-      final Set<String> modifiedPaths,
-      final Set<String> deletedPaths) {
-    commitRepository
-        .findCommitInternalId(
-            session, commitData.getParentCommitId(), commitData.getLandscapeToken())
-        .ifPresent(
-            gitParentInternalId ->
-                repairIncompleteGitParentIfNeeded(session, commitData, gitParentInternalId));
-
-    final Optional<Long> parentCommitInternalId =
-        resolveCopySourceCommitInternalId(session, commitData, commit);
-
-    if (parentCommitInternalId.isEmpty()) {
-      Log.debugf(
-          "Skipping unchanged-file copy for commit %s in repository '%s': "
-              + "no parent commit with linked files (git parent=%s)",
-          commitData.getCommitId(), commitData.getRepositoryName(), commitData.getParentCommitId());
-      return;
-    }
-
-    final UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest copyRequest =
-        new UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest(
-            commitData.getLandscapeToken(),
-            commitData.getRepositoryName(),
-            parentCommitInternalId.get(),
-            commit.getId(),
-            addedPaths,
-            modifiedPaths,
-            deletedPaths);
-
-    final int parentFileCount =
-        commitRepository.countLinkedFileRevisions(session, parentCommitInternalId.get());
-    Log.debugf(
-        "Copying unchanged files from parent commit id %d (%d linked files) to commit %s "
-            + "in repository '%s'",
-        parentCommitInternalId.get(),
-        parentFileCount,
-        commitData.getCommitId(),
-        commitData.getRepositoryName());
-
-    unchangedCommitFileCopier.copyFromParentOrThrow(session, copyRequest);
-  }
-
-  /**
-   * Repairs a git parent that only has explicitly changed files linked (a state produced by earlier
-   * async copy bugs). Copies missing unchanged files from the grandparent before the child commit
-   * copies from the parent.
-   */
-  private void repairIncompleteGitParentIfNeeded(
-      final Session session, final CommitData commitData, final long gitParentInternalId) {
-    final int linkedCount = commitRepository.countLinkedFileRevisions(session, gitParentInternalId);
-    if (linkedCount == 0) {
-      return;
-    }
-
-    final int explicitlyChangedCount =
-        commitRepository.countExplicitlyChangedFileLinks(session, gitParentInternalId);
-    if (linkedCount > explicitlyChangedCount + INCOMPLETE_PARENT_TOLERANCE) {
-      return;
-    }
-
-    final Optional<Long> grandparentInternalId =
-        commitRepository.findParentCommitInternalId(session, gitParentInternalId);
-    if (grandparentInternalId.isEmpty()) {
-      return;
-    }
-
-    final int grandparentCount =
-        commitRepository.countLinkedFileRevisions(session, grandparentInternalId.get());
-    if (grandparentCount == 0) {
-      return;
-    }
-
-    Log.warnf(
-        "Git parent commit id %d has %d linked files (%d explicitly changed) for repository '%s'; "
-            + "repairing from grandparent id %d (%d files) before persisting commit %s",
-        gitParentInternalId,
-        linkedCount,
-        explicitlyChangedCount,
-        commitData.getRepositoryName(),
-        grandparentInternalId.get(),
-        grandparentCount,
-        commitData.getCommitId());
-
-    final Set<String> changedOnParent =
-        commitRepository.findExplicitlyChangedFilePaths(session, gitParentInternalId);
-
-    unchangedCommitFileCopier.copyFromParentOrThrow(
-        session,
-        new UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest(
-            commitData.getLandscapeToken(),
-            commitData.getRepositoryName(),
-            grandparentInternalId.get(),
-            gitParentInternalId,
-            Set.of(),
-            changedOnParent,
-            Set.of()));
-  }
-
-  /**
-   * Resolves which commit to copy unchanged files from. Prefer the git parent named in {@link
-   * CommitData#getParentCommitId()} when it already has file links, but fall back to the latest
-   * commit on the branch that has linked files when the git parent was never persisted or is still
-   * empty (e.g. metadata-only or async copy still in flight for a prior commit).
-   */
-  private Optional<Long> resolveCopySourceCommitInternalId(
-      final Session session, final CommitData commitData, final Commit commit) {
-    final Optional<Long> gitParentInternalId =
-        commitRepository.findCommitInternalId(
-            session, commitData.getParentCommitId(), commitData.getLandscapeToken());
-
-    if (gitParentInternalId.isPresent()) {
-      if (commitRepository.countLinkedFileRevisions(session, gitParentInternalId.get()) > 0) {
-        return gitParentInternalId;
-      }
-      Log.debugf(
-          "Git parent commit %s (id %d) has no linked files yet for repository '%s'",
-          commitData.getParentCommitId(),
-          gitParentInternalId.get(),
-          commitData.getRepositoryName());
-    }
-
-    final Optional<Long> latestWithFiles =
-        commitRepository.findLatestCommitWithLinkedFilesInternalId(
-            session,
-            commitData.getLandscapeToken(),
-            commitData.getRepositoryName(),
-            commitData.getBranchName(),
-            commit.getId());
-
-    if (latestWithFiles.isPresent()) {
-      Log.debugf(
-          "Copying unchanged files from latest linked commit %d instead of git parent %s "
-              + "for repository '%s'",
-          latestWithFiles.get(), commitData.getParentCommitId(), commitData.getRepositoryName());
-    }
-    return latestWithFiles;
   }
 
   private static long elapsedMillis(final long startNanos) {

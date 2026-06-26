@@ -40,6 +40,7 @@ public class UnchangedCommitFileCopier {
    */
   public int copyFromParent(
       final Session session, final CopyUnchangedFilesFromParentRequest request) {
+    final long copyStart = System.nanoTime();
     final int parentLinkedCount =
         commitRepository.countLinkedFileRevisions(session, request.parentCommitInternalId());
     if (parentLinkedCount == 0) {
@@ -59,6 +60,13 @@ public class UnchangedCommitFileCopier {
             : copyUnchangedFilesFromDb(session, request);
 
     validateCopyResult(request, parentLinkedCount, copied);
+    Log.infof(
+        "copyUnchangedFromParent(parent=%d, child=%d, repo='%s'): copied %d files in %dms",
+        request.parentCommitInternalId(),
+        request.childCommitInternalId(),
+        request.repoName(),
+        copied,
+        elapsedMillis(copyStart));
     return copied;
   }
 
@@ -259,5 +267,9 @@ public class UnchangedCommitFileCopier {
                     .cacheKey(),
                 entry.fileRevId()));
     commitFileRevisionCache.putAll(request.childCommitInternalId(), unchangedFiles);
+  }
+
+  private static long elapsedMillis(final long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
   }
 }

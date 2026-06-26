@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Directory;
@@ -171,9 +172,56 @@ public class FileRevisionRepository {
       final Session session,
       final String landscapeTokenId,
       final String repoName,
+      final String commitHash,
       final long commitInternalId) {
     return CommitFilePersistenceContext.create(
-        session, directoryRepository, landscapeTokenId, repoName, commitInternalId);
+        session, directoryRepository, landscapeTokenId, repoName, commitHash, commitInternalId);
+  }
+
+  public record CopyUnchangedFilesFromParentRequest(
+      String landscapeTokenId,
+      String repoName,
+      String parentCommitHash,
+      String childCommitHash,
+      Set<String> modifiedPaths,
+      Set<String> deletedPaths) {}
+
+  public void copyUnchangedFilesFromParentCommit(
+      final Session session, final CopyUnchangedFilesFromParentRequest request) {
+    final Map<String, Object> params =
+        Map.of(
+            "tokenId", request.landscapeTokenId(),
+            "repoName", request.repoName(),
+            "parentHash", request.parentCommitHash(),
+            "childHash", request.childCommitHash(),
+            "modifiedPaths", request.modifiedPaths(),
+            "deletedPaths", request.deletedPaths());
+
+    if (request.modifiedPaths().isEmpty() && request.deletedPaths().isEmpty()) {
+      session.query(
+          """
+          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+            -[:CONTAINS]->(parent:Commit {hash: $parentHash})
+          MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+            -[:CONTAINS]->(child:Commit {hash: $childHash})
+          MERGE (child)-[:CONTAINS]->(f)
+          """,
+          params);
+      return;
+    }
+
+    session.query(
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(parent:Commit {hash: $parentHash})
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(child:Commit {hash: $childHash})
+        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+        WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
+        MERGE (child)-[:CONTAINS]->(f)
+        """,
+        params);
   }
 
   public FileRevision createFileStructureFromStaticData(
@@ -184,7 +232,12 @@ public class FileRevisionRepository {
       final Commit commit) {
     final CommitFilePersistenceContext context =
         CommitFilePersistenceContext.create(
-            session, directoryRepository, landscapeTokenId, repoName, commit.getId());
+            session,
+            directoryRepository,
+            landscapeTokenId,
+            repoName,
+            commit.getHash(),
+            commit.getId());
     commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
         session, context, List.of(fileIdentifier), CommitFileLinkType.CONTAINS);
     return getFileRevisionFromHashAndPath(

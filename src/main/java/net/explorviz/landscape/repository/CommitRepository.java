@@ -14,7 +14,7 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class CommitRepository {
 
   @Inject SessionFactory sessionFactory;
@@ -136,6 +136,26 @@ public class CommitRepository {
             Map.of("tokenId", tokenId, "commitHash", commitHash)));
   }
 
+  /**
+   * Finds a commit hash scoped to a repository, including commits only reachable from the
+   * repository via {@code HAS_PARENT} (for example git parents created as stubs when linking a
+   * child commit).
+   */
+  public Optional<Long> findCommitInternalIdInRepository(
+      final Session session, final String commitHash, final String tokenId, final String repoName) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
+            MATCH (c:Commit {hash: $commitHash})
+            WHERE EXISTS { MATCH (repo)-[:CONTAINS]->(c) }
+              OR EXISTS { MATCH (repo)-[:CONTAINS]->(:Commit)-[:HAS_PARENT*1..10]->(c) }
+            RETURN id(c) LIMIT 1
+            """,
+            Map.of("tokenId", tokenId, "repoName", repoName, "commitHash", commitHash)));
+  }
+
   public int countLinkedFileRevisions(final Session session, final long commitInternalId) {
     final Integer count =
         session.queryForObject(
@@ -220,6 +240,33 @@ public class CommitRepository {
             LIMIT 1
             """,
             params));
+  }
+
+  /**
+   * Like {@link #findLatestCommitWithLinkedFilesInternalId} but without requiring a branch link.
+   * Used when branch metadata is missing on older commits.
+   */
+  public Optional<Long> findLatestCommitWithLinkedFilesInRepositoryInternalId(
+      final Session session,
+      final String landscapeTokenId,
+      final String repoName,
+      final long excludeCommitInternalId) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(c:Commit)
+            WHERE EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
+              AND ($excludeCommitId <= 0 OR id(c) <> $excludeCommitId)
+            RETURN id(c) AS commitId
+            ORDER BY c.commitDate DESC
+            LIMIT 1
+            """,
+            Map.of(
+                "tokenId", landscapeTokenId,
+                "repoName", repoName,
+                "excludeCommitId", excludeCommitInternalId)));
   }
 
   public Commit getOrCreateCommit(

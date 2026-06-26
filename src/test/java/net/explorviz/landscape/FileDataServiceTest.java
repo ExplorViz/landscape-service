@@ -246,6 +246,16 @@ class FileDataServiceTest {
             .setLandscapeToken(landscapeToken)
             .setAnalysisFileCount(2)
             .setAuthorDate(Timestamp.newBuilder().setSeconds(1).setNanos(100).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder()
+                    .setFilePath(filePathOne)
+                    .setFileHash(fileHashOne)
+                    .build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder()
+                    .setFilePath(filePathTwo)
+                    .setFileHash(fileHashTwo)
+                    .build())
             .build();
 
     commitService.persistCommit(commitData).await().atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));

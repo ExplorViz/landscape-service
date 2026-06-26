@@ -11,8 +11,6 @@ import java.util.stream.Collectors;
 import net.explorviz.landscape.grpc.FileDataBatchWriter;
 import net.explorviz.landscape.grpc.FileDataInsertProperties;
 import net.explorviz.landscape.proto.FileData;
-import net.explorviz.landscape.proto.FileIdentifier;
-import net.explorviz.landscape.repository.FileRevisionRepository.CommitFileLinkType;
 import org.neo4j.ogm.session.Session;
 
 /** Resolves and updates {@code FileRevision} nodes for a batch of {@link FileData} messages. */
@@ -22,8 +20,8 @@ public class FileRevisionBatchResolver {
   private static final String MATCH_FILE_REVISIONS =
       """
       UNWIND $rows AS row
-      MATCH (f:FileRevision {lookupKey: row.lookupKey})
-      RETURN row.batchKey AS batchKey, row.lookupKey AS lookupKey, id(f) AS fileRevId
+      MATCH (f:FileRevision {repoName: row.repoName, filePath: row.filePath, hash: row.hash})
+      RETURN row.batchKey AS batchKey, id(f) AS fileRevId
       """;
 
   private static final String UPDATE_FILE_REVISIONS =
@@ -35,8 +33,6 @@ public class FileRevisionBatchResolver {
 
   @Inject FileRevisionIdCache fileRevisionIdCache;
   @Inject FileDataInsertProperties fileDataInsertProperties;
-  @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
-  @Inject FileRevisionRepository fileRevisionRepository;
 
   public Map<String, Long> lookupFileRevisions(final Session session, final List<FileData> files) {
     final Map<String, Long> result = new LinkedHashMap<>();
@@ -44,8 +40,8 @@ public class FileRevisionBatchResolver {
 
     for (final FileData file : files) {
       final String batchKey = FileDataBatchWriter.makeBatchKey(file);
-      final String lookupKey = FileRevisionLookupKey.fromFileData(file).cacheKey();
-      final Long cachedId = fileRevisionIdCache.get(lookupKey);
+      final String cacheKey = FileRevisionLookupKey.fromFileData(file).cacheKey();
+      final Long cachedId = fileRevisionIdCache.get(cacheKey);
       if (cachedId != null) {
         result.put(batchKey, cachedId);
       } else {
@@ -57,63 +53,7 @@ public class FileRevisionBatchResolver {
       lookupFileRevisionsFromDatabase(session, missingFromCache, result);
     }
 
-    final List<FileData> stillMissing = new ArrayList<>();
-    for (final FileData file : files) {
-      if (!result.containsKey(FileDataBatchWriter.makeBatchKey(file))) {
-        stillMissing.add(file);
-      }
-    }
-    if (!stillMissing.isEmpty()) {
-      ensureMissingFileRevisions(session, stillMissing, result);
-    }
     return result;
-  }
-
-  private void ensureMissingFileRevisions(
-      final Session session, final List<FileData> stillMissing, final Map<String, Long> result) {
-    final FileData first = stillMissing.get(0);
-    final PendingCommitContextRegistry.PendingCommit pendingCommit =
-        pendingCommitContextRegistry
-            .find(first.getLandscapeToken(), first.getRepositoryName())
-            .orElseThrow(
-                () ->
-                    Status.FAILED_PRECONDITION
-                        .withDescription(
-                            "No corresponding file was sent before in CommitData: "
-                                + first.getFilePath())
-                        .asRuntimeException());
-
-    final CommitFilePersistenceContext context =
-        fileRevisionRepository.createFilePersistenceContext(
-            session,
-            pendingCommit.landscapeTokenId(),
-            pendingCommit.repoName(),
-            pendingCommit.commitInternalId());
-
-    final List<FileIdentifier> fileIdentifiers =
-        stillMissing.stream()
-            .map(
-                file ->
-                    FileIdentifier.newBuilder()
-                        .setFilePath(file.getFilePath())
-                        .setFileHash(file.getFileHash())
-                        .build())
-            .toList();
-
-    for (final List<FileIdentifier> chunk :
-        FileDataBatchWriter.partition(fileIdentifiers, fileDataInsertProperties.getChunkSize())) {
-      fileRevisionRepository.persistCommitFileBatch(
-          session, context, chunk, CommitFileLinkType.CONTAINS);
-    }
-
-    for (final FileData file : stillMissing) {
-      final String batchKey = FileDataBatchWriter.makeBatchKey(file);
-      final String lookupKey = FileRevisionLookupKey.fromFileData(file).cacheKey();
-      final Long fileRevId = fileRevisionIdCache.get(lookupKey);
-      if (fileRevId != null) {
-        result.put(batchKey, fileRevId);
-      }
-    }
   }
 
   public void validateAllFilesFound(
@@ -148,13 +88,20 @@ public class FileRevisionBatchResolver {
 
   private void lookupFileRevisionsFromDatabase(
       final Session session, final List<FileData> files, final Map<String, Long> result) {
+    final Map<String, FileData> filesByBatchKey = new LinkedHashMap<>();
+    for (final FileData file : files) {
+      filesByBatchKey.put(FileDataBatchWriter.makeBatchKey(file), file);
+    }
+
     final List<Map<String, Object>> rows =
         files.stream()
             .map(
                 f -> {
                   final Map<String, Object> row = new LinkedHashMap<>();
                   row.put("batchKey", FileDataBatchWriter.makeBatchKey(f));
-                  row.put("lookupKey", FileRevisionLookupKey.fromFileData(f).cacheKey());
+                  row.put("repoName", f.getRepositoryName());
+                  row.put("filePath", f.getFilePath());
+                  row.put("hash", f.getFileHash());
                   return row;
                 })
             .collect(Collectors.toList());
@@ -166,10 +113,14 @@ public class FileRevisionBatchResolver {
           .queryResults()
           .forEach(
               row -> {
-                final String lookupKey = (String) row.get("lookupKey");
+                final String batchKey = (String) row.get("batchKey");
                 final Long fileRevId = (Long) row.get("fileRevId");
-                result.put((String) row.get("batchKey"), fileRevId);
-                fileRevisionIdCache.put(lookupKey, fileRevId);
+                result.put(batchKey, fileRevId);
+                final FileData file = filesByBatchKey.get(batchKey);
+                if (file != null) {
+                  fileRevisionIdCache.put(
+                      FileRevisionLookupKey.fromFileData(file).cacheKey(), fileRevId);
+                }
               });
     }
   }

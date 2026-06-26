@@ -19,21 +19,19 @@ class CommitFileStructureBatchWriter {
 
   private static final String LINK_FILE_REVISIONS_BASE =
       """
-      MATCH (commit) WHERE id(commit) = $commitId
+      MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+        -[:CONTAINS]->(commit:Commit {hash: $commitHash})
       WITH commit
       UNWIND $files AS file
       MATCH (parent:Directory) WHERE id(parent) = file.parentDirId
-      MERGE (f:FileRevision {lookupKey: file.lookupKey})
-      ON CREATE SET f.hasFileData = false, f.hash = file.hash, f.name = file.fileName,
-        f.filePath = file.filePath, f.repoName = $repoName
-      ON MATCH SET f.filePath = file.filePath, f.repoName = $repoName
-      MERGE (parent)-[:CONTAINS]->(f)
+      MERGE (parent)-[:CONTAINS]->(f:FileRevision {hash: file.hash, name: file.fileName})
+      ON CREATE SET f.hasFileData = false, f.filePath = file.filePath, f.repoName = $repoName
       MERGE (commit)-[:CONTAINS]->(f)
       """;
 
   private static final String LINK_FILE_REVISIONS_RETURN =
       """
-      RETURN file.lookupKey AS lookupKey, id(f) AS fileRevId
+      RETURN file.filePath AS filePath, file.hash AS hash, id(f) AS fileRevId
       """;
 
   @Inject DirectoryRepository directoryRepository;
@@ -64,18 +62,16 @@ class CommitFileStructureBatchWriter {
 
     stepStart = System.nanoTime();
     final List<Map<String, Object>> filesToLink =
-        buildFilesToLinkPayload(
-            fileIdentifiers,
-            context.landscapeTokenId(),
-            context.repoName(),
-            context.directoryLeafCache());
+        buildFilesToLinkPayload(fileIdentifiers, context.repoName(), context.directoryLeafCache());
     linkFileRevisionsBatch(
         session,
         Map.of(
-            "commitId", context.commitInternalId(),
+            "tokenId", context.landscapeTokenId(),
             "repoName", context.repoName(),
+            "commitHash", context.commitHash(),
             "files", filesToLink),
-        linkType);
+        linkType,
+        context);
     final long linkFileRevisionsMs = elapsedMillis(stepStart);
 
     populateCommitFileRevisionCache(context, fileIdentifiers);
@@ -106,7 +102,6 @@ class CommitFileStructureBatchWriter {
 
   private List<Map<String, Object>> buildFilesToLinkPayload(
       final List<FileIdentifier> fileIdentifiers,
-      final String landscapeTokenId,
       final String repoName,
       final Map<String, Long> directoryLeafCache) {
     final List<Map<String, Object>> filesToLink = new ArrayList<>(fileIdentifiers.size());
@@ -128,33 +123,37 @@ class CommitFileStructureBatchWriter {
               "hash",
               fileIdentifier.getFileHash(),
               "filePath",
-              fileIdentifier.getFilePath(),
-              "lookupKey",
-              new FileRevisionLookupKey(
-                      landscapeTokenId,
-                      repoName,
-                      fileIdentifier.getFilePath(),
-                      fileIdentifier.getFileHash())
-                  .cacheKey()));
+              fileIdentifier.getFilePath()));
     }
     return filesToLink;
   }
 
   private void linkFileRevisionsBatch(
-      final Session session, final Map<String, Object> params, final CommitFileLinkType linkType) {
-    final String commitLinkClause =
+      final Session session,
+      final Map<String, Object> params,
+      final CommitFileLinkType linkType,
+      final CommitFilePersistenceContext context) {
+    final String typedCommitLinkClause =
         switch (linkType) {
           case ADDED -> "MERGE (commit)-[:ADDED]->(f)";
           case MODIFIED -> "MERGE (commit)-[:MODIFIED]->(f)";
           case CONTAINS -> "";
         };
     session
-        .query(LINK_FILE_REVISIONS_BASE + commitLinkClause + LINK_FILE_REVISIONS_RETURN, params)
+        .query(
+            LINK_FILE_REVISIONS_BASE + typedCommitLinkClause + LINK_FILE_REVISIONS_RETURN, params)
         .queryResults()
         .forEach(
-            row ->
-                fileRevisionIdCache.put(
-                    (String) row.get("lookupKey"), (Long) row.get("fileRevId")));
+            row -> {
+              final String filePath = (String) row.get("filePath");
+              final String hash = (String) row.get("hash");
+              final Long fileRevId = (Long) row.get("fileRevId");
+              final String lookupKey =
+                  new FileRevisionLookupKey(
+                          context.landscapeTokenId(), context.repoName(), filePath, hash)
+                      .cacheKey();
+              fileRevisionIdCache.put(lookupKey, fileRevId);
+            });
   }
 
   private void populateCommitFileRevisionCache(
