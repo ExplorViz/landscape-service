@@ -17,10 +17,18 @@ import net.explorviz.landscape.util.RepositoryFileUrlBuilder;
 public class FileDetailedMapper {
 
   public FileDetailedDto map(final FileDetailedContext context) {
+    return map(context, null);
+  }
+
+  public FileDetailedDto map(final FileDetailedContext context, final String requestedCommitHash) {
     final FileRevision fileRevision = context.fileRevision();
+    final String commitHashForUrl =
+        requestedCommitHash != null && !requestedCommitHash.isBlank()
+            ? requestedCommitHash
+            : context.commitHash();
     final String fileUrl =
         RepositoryFileUrlBuilder.buildFileUrl(
-                context.remoteUrl(), context.commitHash(), context.fqn(), context.repositoryName())
+                context.remoteUrl(), commitHashForUrl, context.fqn(), context.repositoryName())
             .orElse(null);
 
     return new FileDetailedDto(

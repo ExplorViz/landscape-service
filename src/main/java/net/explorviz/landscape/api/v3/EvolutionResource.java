@@ -19,6 +19,7 @@ import net.explorviz.landscape.api.v3.model.BranchPointDto;
 import net.explorviz.landscape.api.v3.model.CommitNodeDto;
 import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
+import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.util.CommitBranchOrderer;
@@ -56,12 +57,14 @@ public class EvolutionResource {
       @RestPath final String landscapeToken, @RestPath final String repositoryName) {
     final Session session = sessionFactory.openSession();
 
-    if (repositoryRepository
-        .findRepositoryByNameAndLandscapeToken(session, repositoryName, landscapeToken)
-        .isEmpty()) {
-      throw new NotFoundException(
-          "The requested repository does not exist in the database for the given landscape token.");
-    }
+    final Repository repository =
+        repositoryRepository
+            .findRepositoryByNameAndLandscapeToken(session, repositoryName, landscapeToken)
+            .orElseThrow(
+                () ->
+                    new NotFoundException(
+                        "The requested repository does not exist in the database for the given"
+                            + " landscape token."));
 
     final List<Commit> commits =
         commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
@@ -138,6 +141,6 @@ public class EvolutionResource {
                         branchToBranchPointMap.get(e.getKey())))
             .toList();
 
-    return new CommitTreeDto(repositoryName, branches);
+    return new CommitTreeDto(repositoryName, branches, repository.getRemoteUrl());
   }
 }

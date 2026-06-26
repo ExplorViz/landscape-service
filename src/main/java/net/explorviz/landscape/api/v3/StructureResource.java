@@ -6,6 +6,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
@@ -116,12 +117,14 @@ public class StructureResource {
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/file-revision/{id}")
   public FileDetailedDto getFileDetailsById(
-      @RestPath final String landscapeToken, @RestPath final Long id) {
+      @RestPath final String landscapeToken,
+      @RestPath final Long id,
+      @QueryParam("commitHash") final String commitHash) {
     final Session session = sessionFactory.openSession();
 
     return fileRevisionRepository
         .findFileDetailedContext(session, landscapeToken, id)
-        .map(fileDetailedMapper::map)
+        .map(context -> fileDetailedMapper.map(context, commitHash))
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }
 }

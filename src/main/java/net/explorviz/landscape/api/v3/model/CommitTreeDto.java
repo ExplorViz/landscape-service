@@ -8,5 +8,6 @@ import java.util.List;
  *
  * @param name Repository name
  * @param branches Branches of this repository
+ * @param remoteUrl Remote URL of the repository (e.g. GitHub HTTPS clone URL)
  */
-public record CommitTreeDto(String name, List<BranchDto> branches) {}
+public record CommitTreeDto(String name, List<BranchDto> branches, String remoteUrl) {}
