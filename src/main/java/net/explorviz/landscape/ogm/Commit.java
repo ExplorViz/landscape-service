@@ -53,8 +53,9 @@ public class Commit {
   private Contributor author;
 
   /**
-   * Sum of {@code metrics.*} values across all {@link FileRevision} nodes contained in this commit,
-   * computed once every linked file revision has {@code hasFileData = true}.
+   * Accumulated commit metrics, computed once every linked file revision has {@code hasFileData =
+   * true}. Includes {@code fileCount} (number of linked {@link FileRevision} nodes) and sums of
+   * each {@code metrics.*} property across those file revisions.
    */
   @Properties private final Map<String, Double> metrics = new HashMap<>();
 

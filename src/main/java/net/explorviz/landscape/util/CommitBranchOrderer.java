@@ -6,18 +6,26 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.Set;
 import net.explorviz.landscape.ogm.Commit;
 
-/** Orders commits along a single branch by parent-child relationships (root to tip). */
+/** Orders commits along a single branch in git-compatible topological order (root to tip). */
 public final class CommitBranchOrderer {
+
+  private static final Comparator<Commit> COMMIT_ORDER =
+      Comparator.comparing(Commit::getCommitDate, Comparator.nullsLast(Comparator.naturalOrder()))
+          .thenComparing(Commit::getAuthorDate, Comparator.nullsLast(Comparator.naturalOrder()))
+          .thenComparing(Commit::getHash);
 
   private CommitBranchOrderer() {}
 
   /**
-   * Returns the given commits in branch order: each commit appears after its parent on the same
-   * branch. Commits without a parent in the set are treated as branch roots.
+   * Returns commits in branch order: every parent appears before its children, matching {@code git
+   * rev-list --reverse} when parent links are complete.
    */
+  @SuppressWarnings({"PMD.CognitiveComplexity", "PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
   public static List<Commit> orderAlongBranch(final List<Commit> branchCommits) {
     if (branchCommits.size() <= 1) {
       return List.copyOf(branchCommits);
@@ -29,72 +37,54 @@ public final class CommitBranchOrderer {
     }
 
     final Map<String, List<Commit>> childrenByParentHash = new HashMap<>();
-    final List<Commit> roots = new ArrayList<>();
+    final Map<String, Integer> inDegreeByHash = HashMap.newHashMap(branchCommits.size());
 
     for (final Commit commit : branchCommits) {
-      final Commit parentOnBranch = findParentOnBranch(commit, commitsByHash);
-      if (parentOnBranch == null) {
-        roots.add(commit);
-      } else {
-        childrenByParentHash
-            .computeIfAbsent(parentOnBranch.getHash(), ignored -> new ArrayList<>())
-            .add(commit);
-      }
+      inDegreeByHash.put(commit.getHash(), 0);
     }
 
-    roots.sort(
-        Comparator.comparing(
-            Commit::getAuthorDate, Comparator.nullsLast(Comparator.naturalOrder())));
-    for (final List<Commit> children : childrenByParentHash.values()) {
-      children.sort(
-          Comparator.comparing(
-              Commit::getAuthorDate, Comparator.nullsLast(Comparator.naturalOrder())));
+    for (final Commit commit : branchCommits) {
+      int parentsOnBranch = 0;
+      for (final Commit parent : commit.getParentCommits()) {
+        if (!commitsByHash.containsKey(parent.getHash())) {
+          continue;
+        }
+        parentsOnBranch++;
+        childrenByParentHash
+            .computeIfAbsent(parent.getHash(), ignored -> new ArrayList<>())
+            .add(commit);
+      }
+      inDegreeByHash.put(commit.getHash(), parentsOnBranch);
+    }
+
+    final Queue<Commit> ready = new PriorityQueue<>(COMMIT_ORDER);
+    for (final Commit commit : branchCommits) {
+      if (inDegreeByHash.get(commit.getHash()) == 0) {
+        ready.add(commit);
+      }
     }
 
     final List<Commit> ordered = new ArrayList<>(branchCommits.size());
-    final Set<String> visited = new HashSet<>();
-    for (final Commit root : roots) {
-      appendDepthFirst(root, childrenByParentHash, visited, ordered);
+    while (!ready.isEmpty()) {
+      final Commit commit = ready.poll();
+      ordered.add(commit);
+      for (final Commit child : childrenByParentHash.getOrDefault(commit.getHash(), List.of())) {
+        final int nextInDegree = inDegreeByHash.merge(child.getHash(), -1, Integer::sum);
+        if (nextInDegree == 0) {
+          ready.add(child);
+        }
+      }
     }
 
-    for (final Commit commit : branchCommits) {
-      if (!visited.contains(commit.getHash())) {
-        ordered.add(commit);
-      }
+    if (ordered.size() < branchCommits.size()) {
+      final Set<String> orderedHashes = new HashSet<>();
+      ordered.forEach(commit -> orderedHashes.add(commit.getHash()));
+      branchCommits.stream()
+          .filter(commit -> !orderedHashes.contains(commit.getHash()))
+          .sorted(COMMIT_ORDER)
+          .forEach(ordered::add);
     }
 
     return ordered;
-  }
-
-  private static Commit findParentOnBranch(
-      final Commit commit, final Map<String, Commit> commitsByHash) {
-    Commit parentOnBranch = null;
-    for (final Commit parent : commit.getParentCommits()) {
-      if (commitsByHash.containsKey(parent.getHash())
-          && (parentOnBranch == null || isAfter(parent, parentOnBranch))) {
-        parentOnBranch = parent;
-      }
-    }
-    return parentOnBranch;
-  }
-
-  private static boolean isAfter(final Commit later, final Commit earlier) {
-    return later.getAuthorDate() != null
-        && (earlier.getAuthorDate() == null
-            || later.getAuthorDate().isAfter(earlier.getAuthorDate()));
-  }
-
-  private static void appendDepthFirst(
-      final Commit commit,
-      final Map<String, List<Commit>> childrenByParentHash,
-      final Set<String> visited,
-      final List<Commit> ordered) {
-    if (!visited.add(commit.getHash())) {
-      return;
-    }
-    ordered.add(commit);
-    for (final Commit child : childrenByParentHash.getOrDefault(commit.getHash(), List.of())) {
-      appendDepthFirst(child, childrenByParentHash, visited, ordered);
-    }
   }
 }

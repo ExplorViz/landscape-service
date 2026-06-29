@@ -896,6 +896,127 @@ class CommitServiceTest {
     assertEquals(8, childFileCount);
   }
 
+  @Test
+  void testIncrementalCommitCopiesUnchangedFilesWithMissingFilePath() {
+    final String parentHash = "null-path-parent";
+    final String childHash = "null-path-child";
+    final String unchangedPath = "src/LegacyUnchanged.java";
+    final String modifiedPath = "src/Modified.java";
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(parentHash)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(1).build())
+                .setCommitDate(Timestamp.newBuilder().setSeconds(1).build())
+                .addAllAddedFiles(
+                    List.of(
+                        fileId("legacy-unchanged-hash", unchangedPath),
+                        fileId("old-modified-hash", modifiedPath)))
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    session.query(
+        """
+        MATCH (f:FileRevision {hash: 'legacy-unchanged-hash'})
+        REMOVE f.filePath
+        """,
+        Map.of());
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(childHash)
+                .setParentCommitId(parentHash)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(2).build())
+                .setCommitDate(Timestamp.newBuilder().setSeconds(2).build())
+                .addModifiedFiles(fileId("new-modified-hash", modifiedPath))
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final Boolean unchangedCopied =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $childHash})-[:CONTAINS]->(:FileRevision {
+                hash: 'legacy-unchanged-hash'
+              })
+            } AS exists
+            """,
+            Map.of("childHash", childHash));
+
+    assertTrue(unchangedCopied);
+  }
+
+  @Test
+  void testModifiedCommitLinksOnlyNewRevisionAtPath() {
+    final String parentHash = "parent-single-mod";
+    final String childHash = "child-single-mod";
+    final String modifiedPath = "src/OnlyModified.java";
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(parentHash)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(1).build())
+                .setCommitDate(Timestamp.newBuilder().setSeconds(1).build())
+                .addAddedFiles(fileId("old-hash", modifiedPath))
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    commitService
+        .persistCommit(
+            CommitData.newBuilder()
+                .setCommitId(childHash)
+                .setParentCommitId(parentHash)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .setLandscapeToken(landscapeToken)
+                .setAuthorDate(Timestamp.newBuilder().setSeconds(2).build())
+                .setCommitDate(Timestamp.newBuilder().setSeconds(2).build())
+                .addModifiedFiles(fileId("new-hash", modifiedPath))
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final Integer containsCount =
+        session.queryForObject(
+            Integer.class,
+            """
+            MATCH (:Commit {hash: $childHash})-[:CONTAINS]->(f:FileRevision {filePath: $modifiedPath})
+            RETURN count(f) AS fileCount
+            """,
+            Map.of("childHash", childHash, "modifiedPath", modifiedPath));
+
+    final Boolean containsNewHash =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $childHash})-[:CONTAINS]->(:FileRevision {
+                filePath: $modifiedPath, hash: 'new-hash'
+              })
+            } AS exists
+            """,
+            Map.of("childHash", childHash, "modifiedPath", modifiedPath));
+
+    assertEquals(1, containsCount);
+    assertTrue(containsNewHash);
+  }
+
   private static FileIdentifier fileId(final String hash, final String path) {
     return FileIdentifier.newBuilder().setFileHash(hash).setFilePath(path).build();
   }

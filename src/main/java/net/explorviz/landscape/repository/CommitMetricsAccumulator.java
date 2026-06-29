@@ -15,6 +15,7 @@ import org.neo4j.ogm.session.Session;
  * {@code FileRevision} has {@code hasFileData = true}.
  */
 @ApplicationScoped
+@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 public class CommitMetricsAccumulator {
 
   @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
@@ -66,6 +67,14 @@ public class CommitMetricsAccumulator {
       UNWIND [key IN keys(f) WHERE key STARTS WITH 'metrics.'] AS metricKey
       WITH commitId, substring(metricKey, 8) AS metricName, sum(toFloat(f[metricKey])) AS total
       RETURN commitId, metricName, total
+      """;
+
+  private static final String COUNT_LINKED_FILE_REVISIONS =
+      """
+      UNWIND $commitIds AS commitId
+      MATCH (c:Commit) WHERE id(c) = commitId
+      OPTIONAL MATCH (c)-[:CONTAINS]->(f:FileRevision)
+      RETURN commitId, count(f) AS fileCount
       """;
 
   private static final String UPDATE_COMMIT_METRICS =
@@ -120,6 +129,18 @@ public class CommitMetricsAccumulator {
               propsByCommitId
                   .computeIfAbsent(commitId, ignored -> new LinkedHashMap<>())
                   .put("metrics." + metricName, total);
+            });
+
+    session
+        .query(COUNT_LINKED_FILE_REVISIONS, Map.of("commitIds", commitIds))
+        .queryResults()
+        .forEach(
+            row -> {
+              final Long commitId = (Long) row.get("commitId");
+              final int fileCount = ((Number) row.get("fileCount")).intValue();
+              propsByCommitId
+                  .computeIfAbsent(commitId, ignored -> new LinkedHashMap<>())
+                  .put("metrics.fileCount", (double) fileCount);
             });
 
     final List<Map<String, Object>> rows = new ArrayList<>();

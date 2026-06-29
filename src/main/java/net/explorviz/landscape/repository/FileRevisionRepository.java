@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.HashMap;
@@ -73,6 +74,8 @@ public class FileRevisionRepository {
   @Inject DirectoryRepository directoryRepository;
   @Inject LandscapeRepository landscapeRepository;
   @Inject CommitFileStructureBatchWriter commitFileStructureBatchWriter;
+  @Inject UnchangedCommitFileCopier unchangedCommitFileCopier;
+  @Inject CommitRepository commitRepository;
 
   private FileRevision createRemainingFilePath(
       final Session session, final Directory startingDirectory, final String[] remainingPath) {
@@ -182,46 +185,36 @@ public class FileRevisionRepository {
       String landscapeTokenId,
       String repoName,
       String parentCommitHash,
-      String childCommitHash,
+      long childCommitInternalId,
+      Set<String> addedPaths,
       Set<String> modifiedPaths,
       Set<String> deletedPaths) {}
 
+  /**
+   * Links every parent file revision not listed as added, modified, or deleted to the child commit.
+   */
   public void copyUnchangedFilesFromParentCommit(
       final Session session, final CopyUnchangedFilesFromParentRequest request) {
-    final Map<String, Object> params =
-        Map.of(
-            "tokenId", request.landscapeTokenId(),
-            "repoName", request.repoName(),
-            "parentHash", request.parentCommitHash(),
-            "childHash", request.childCommitHash(),
-            "modifiedPaths", request.modifiedPaths(),
-            "deletedPaths", request.deletedPaths());
-
-    if (request.modifiedPaths().isEmpty() && request.deletedPaths().isEmpty()) {
-      session.query(
-          """
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-          MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(child:Commit {hash: $childHash})
-          MERGE (child)-[:CONTAINS]->(f)
-          """,
-          params);
+    final Optional<Long> parentCommitInternalId =
+        commitRepository.findCommitInternalIdInRepository(
+            session, request.parentCommitHash(), request.landscapeTokenId(), request.repoName());
+    if (parentCommitInternalId.isEmpty()) {
+      Log.warnf(
+          "Parent commit %s not found in repository '%s'; skipping unchanged-file copy to child %d",
+          request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
       return;
     }
 
-    session.query(
-        """
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(child:Commit {hash: $childHash})
-        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-        WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
-        MERGE (child)-[:CONTAINS]->(f)
-        """,
-        params);
+    unchangedCommitFileCopier.copyFromParentOrThrow(
+        session,
+        new UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest(
+            request.landscapeTokenId(),
+            request.repoName(),
+            parentCommitInternalId.get(),
+            request.childCommitInternalId(),
+            request.addedPaths(),
+            request.modifiedPaths(),
+            request.deletedPaths()));
   }
 
   public FileRevision createFileStructureFromStaticData(

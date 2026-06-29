@@ -8,6 +8,7 @@ import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -27,6 +28,7 @@ import net.explorviz.landscape.repository.CommitFilePersistenceContext;
 import net.explorviz.landscape.repository.CommitFileStubPolicy;
 import net.explorviz.landscape.repository.CommitMetricsAccumulator;
 import net.explorviz.landscape.repository.CommitRepository;
+import net.explorviz.landscape.repository.CommitStaleFileRevisionUnlinker;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
@@ -39,6 +41,7 @@ import org.neo4j.ogm.session.SessionFactory;
 import org.neo4j.ogm.transaction.Transaction;
 
 @GrpcService
+@SuppressWarnings("PMD.CouplingBetweenObjects")
 public class CommitServiceImpl implements CommitService {
 
   private static final String NO_PARENT_ID = "NONE";
@@ -50,6 +53,7 @@ public class CommitServiceImpl implements CommitService {
   @Inject RepositoryRepository repositoryRepository;
   @Inject FileRevisionRepository fileRevisionRepository;
   @Inject CommitDeletedFileUnlinker commitDeletedFileUnlinker;
+  @Inject CommitStaleFileRevisionUnlinker commitStaleFileRevisionUnlinker;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
   @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
   @Inject TagRepository tagRepository;
@@ -71,7 +75,12 @@ public class CommitServiceImpl implements CommitService {
     }
   }
 
-  @SuppressWarnings({"PMD.NcssCount", "PMD.NPathComplexity", "PMD.CyclomaticComplexity"})
+  @SuppressWarnings({
+    "PMD.NcssCount",
+    "PMD.NPathComplexity",
+    "PMD.CyclomaticComplexity",
+    "PMD.CognitiveComplexity"
+  })
   public void saveCommitData(final Session session, final CommitData commitData) {
     final long commitStart = System.nanoTime();
     long stepStart = commitStart;
@@ -134,6 +143,20 @@ public class CommitServiceImpl implements CommitService {
     long linkModifiedFilesMs = 0;
     long linkUnchangedFilesMs = 0;
     long copyUnchangedFromParentMs = 0;
+    long unlinkStaleRevisionsMs = 0;
+
+    final Set<String> addedPaths =
+        commitData.getAddedFilesList().stream()
+            .map(FileIdentifier::getFilePath)
+            .collect(Collectors.toCollection(HashSet::new));
+    final Set<String> modifiedPaths =
+        commitData.getModifiedFilesList().stream()
+            .map(FileIdentifier::getFilePath)
+            .collect(Collectors.toCollection(HashSet::new));
+    final Set<String> deletedPaths =
+        commitData.getDeletedFilesList().stream()
+            .map(FileIdentifier::getFilePath)
+            .collect(Collectors.toCollection(HashSet::new));
 
     stepStart = System.nanoTime();
     if (deferFileStubs) {
@@ -187,32 +210,26 @@ public class CommitServiceImpl implements CommitService {
 
       if (hasParent) {
         stepStart = System.nanoTime();
-        final Set<String> modifiedPaths =
-            commitData.getModifiedFilesList().stream()
-                .map(FileIdentifier::getFilePath)
-                .collect(Collectors.toCollection(HashSet::new));
-        final Set<String> deletedPaths =
-            commitData.getDeletedFilesList().stream()
-                .map(FileIdentifier::getFilePath)
-                .collect(Collectors.toCollection(HashSet::new));
-
         fileRevisionRepository.copyUnchangedFilesFromParentCommit(
             session,
             new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
                 commitData.getLandscapeToken(),
                 commitData.getRepositoryName(),
                 commitData.getParentCommitId(),
-                commitData.getCommitId(),
+                commit.getId(),
+                addedPaths,
                 modifiedPaths,
                 deletedPaths));
         copyUnchangedFromParentMs = elapsedMillis(stepStart);
+
+        if (!addedPaths.isEmpty() || !modifiedPaths.isEmpty()) {
+          stepStart = System.nanoTime();
+          commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
+              session, commit.getId(), modifiedPaths, addedPaths);
+          unlinkStaleRevisionsMs = elapsedMillis(stepStart);
+        }
       }
     }
-
-    final Set<String> deletedPaths =
-        commitData.getDeletedFilesList().stream()
-            .map(FileIdentifier::getFilePath)
-            .collect(Collectors.toCollection(HashSet::new));
 
     stepStart = System.nanoTime();
     if (!deferFileStubs && !deletedPaths.isEmpty()) {
@@ -236,16 +253,23 @@ public class CommitServiceImpl implements CommitService {
     final long tagsMs = elapsedMillis(stepStart);
 
     stepStart = System.nanoTime();
-    if (commitData.getParentCommitId().isEmpty()
-        || NO_PARENT_ID.equals(commitData.getParentCommitId())) {
+    final List<String> parentCommitIds = resolveParentCommitIds(commitData);
+    if (parentCommitIds.isEmpty()) {
       session.save(List.of(repo, branch, commit));
     } else {
-      final Commit parentCommit =
-          commitRepository.getOrCreateCommit(
-              session, commitData.getParentCommitId(), commitData.getLandscapeToken());
-      commit.addParentCommit(parentCommit);
-      repo.addCommit(parentCommit);
-      session.save(List.of(repo, branch, commit, parentCommit));
+      final List<Object> entitiesToSave = new ArrayList<>();
+      entitiesToSave.add(repo);
+      entitiesToSave.add(branch);
+      entitiesToSave.add(commit);
+      for (final String parentCommitId : parentCommitIds) {
+        final Commit parentCommit =
+            commitRepository.getOrCreateCommit(
+                session, parentCommitId, commitData.getLandscapeToken());
+        commit.addParentCommit(parentCommit);
+        repo.addCommit(parentCommit);
+        entitiesToSave.add(parentCommit);
+      }
+      session.save(entitiesToSave);
     }
     final long finalizeCommitMs = elapsedMillis(stepStart);
 
@@ -258,11 +282,11 @@ public class CommitServiceImpl implements CommitService {
     }
 
     Log.infof(
-        "persistCommit(commit=%s, repo='%s', deferFileStubs=%s): resolveRepository=%dms, "
-            + "setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms, "
-            + "linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms, "
-            + "copyUnchangedFromParent=%dms, unlinkDeletedFiles(%d)=%dms, "
-            + "tags(%d)=%dms, finalizeCommit=%dms, total=%dms",
+        "persistCommit(commit=%s, repo='%s', deferFileStubs=%s): resolveRepository=%dms,"
+            + " setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms,"
+            + " linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms,"
+            + " copyUnchangedFromParent=%dms, unlinkStaleRevisions(%d)=%dms,"
+            + " unlinkDeletedFiles(%d)=%dms, tags(%d)=%dms, finalizeCommit=%dms, total=%dms",
         commitData.getCommitId(),
         commitData.getRepositoryName(),
         deferFileStubs,
@@ -276,6 +300,8 @@ public class CommitServiceImpl implements CommitService {
         commitData.getUnchangedFilesList().size(),
         linkUnchangedFilesMs,
         copyUnchangedFromParentMs,
+        addedPaths.size() + modifiedPaths.size(),
+        unlinkStaleRevisionsMs,
         deletedPaths.size(),
         unlinkDeletedFilesMs,
         commitData.getTagsList().size(),
@@ -286,5 +312,21 @@ public class CommitServiceImpl implements CommitService {
 
   private static long elapsedMillis(final long startNanos) {
     return (System.nanoTime() - startNanos) / 1_000_000L;
+  }
+
+  private static List<String> resolveParentCommitIds(final CommitData commitData) {
+    if (!commitData.getParentCommitIdsList().isEmpty()) {
+      return commitData.getParentCommitIdsList().stream()
+          .filter(id -> !id.isBlank() && !NO_PARENT_ID.equals(id))
+          .distinct()
+          .toList();
+    }
+
+    if (commitData.getParentCommitId().isBlank()
+        || NO_PARENT_ID.equals(commitData.getParentCommitId())) {
+      return List.of();
+    }
+
+    return List.of(commitData.getParentCommitId());
   }
 }

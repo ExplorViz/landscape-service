@@ -18,8 +18,16 @@ import org.neo4j.ogm.session.Session;
  * when available to avoid redundant graph traversals.
  */
 @ApplicationScoped
+@SuppressWarnings("PMD.TooManyMethods")
 public class UnchangedCommitFileCopier {
 
+  private static final String COUNT_PARENT_FILES_AT_EXCLUDED_PATHS =
+      """
+      MATCH (parent) WHERE id(parent) = $parentCommitId
+      MATCH (parent)-[:CONTAINS]->(f:FileRevision)
+      WHERE f.filePath IN $excludedPaths
+      RETURN count(f) AS excludedCount
+      """;
   @Inject FileRevisionIdCache fileRevisionIdCache;
   @Inject CommitFileRevisionCache commitFileRevisionCache;
   @Inject CommitRepository commitRepository;
@@ -59,7 +67,7 @@ public class UnchangedCommitFileCopier {
             ? copyUnchangedFilesFromCache(session, request, cachedParent.get())
             : copyUnchangedFilesFromDb(session, request);
 
-    validateCopyResult(request, parentLinkedCount, copied);
+    validateCopyResult(session, request, parentLinkedCount, copied);
     Log.infof(
         "copyUnchangedFromParent(parent=%d, child=%d, repo='%s'): copied %d files in %dms",
         request.parentCommitInternalId(),
@@ -96,11 +104,14 @@ public class UnchangedCommitFileCopier {
   }
 
   private void validateCopyResult(
+      final Session session,
       final CopyUnchangedFilesFromParentRequest request,
       final int parentLinkedCount,
       final int copied) {
-    final int excludedCount = excludedPaths(request).size();
-    final int expectedMinimum = Math.max(0, parentLinkedCount - excludedCount);
+    final int excludedOnParent =
+        countParentFilesAtExcludedPaths(
+            session, request.parentCommitInternalId(), excludedPaths(request));
+    final int expectedMinimum = Math.max(0, parentLinkedCount - excludedOnParent);
     if (copied < expectedMinimum) {
       throw new IncompleteCommitFileCopyException(
           String.format(
@@ -112,7 +123,7 @@ public class UnchangedCommitFileCopier {
               request.repoName(),
               expectedMinimum,
               parentLinkedCount,
-              excludedCount));
+              excludedOnParent));
     } else if (copied > 0) {
       Log.debugf(
           "Copied %d unchanged file revisions from parent commit %d to child commit %d "
@@ -179,6 +190,7 @@ public class UnchangedCommitFileCopier {
       params.put("childCommitId", request.childCommitInternalId());
       params.put("excludedPaths", excluded);
       params.put("tokenId", request.landscapeTokenId());
+      params.put("lookupKeyPrefix", request.landscapeTokenId() + "/" + request.repoName() + "/");
       params.put("offset", offset);
       params.put("batchSize", FileRevisionRepository.COMMIT_FILE_BATCH_SIZE);
 
@@ -188,8 +200,23 @@ public class UnchangedCommitFileCopier {
               MATCH (parent) WHERE id(parent) = $parentCommitId
               MATCH (child) WHERE id(child) = $childCommitId
               MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-              WHERE f.filePath IS NULL OR NOT f.filePath IN $excludedPaths
-              WITH f, child, coalesce(f.filePath, f.name) AS path
+              WITH f, child, $lookupKeyPrefix AS lookupPrefix,
+                coalesce(
+                  f.filePath,
+                  CASE
+                    WHEN f.lookupKey IS NOT NULL
+                      AND f.lookupKey STARTS WITH lookupPrefix
+                      AND f.hash IS NOT NULL
+                    THEN substring(
+                      f.lookupKey,
+                      size(lookupPrefix),
+                      size(f.lookupKey) - size(lookupPrefix) - size(f.hash) - 1)
+                    ELSE null
+                  END,
+                  f.name
+                ) AS resolvedPath
+              WHERE resolvedPath IS NULL OR NOT resolvedPath IN $excludedPaths
+              WITH f, child, coalesce(f.filePath, resolvedPath) AS path
               ORDER BY id(f)
               SKIP $offset LIMIT $batchSize
               MERGE (child)-[:CONTAINS]->(f)
@@ -267,6 +294,23 @@ public class UnchangedCommitFileCopier {
                     .cacheKey(),
                 entry.fileRevId()));
     commitFileRevisionCache.putAll(request.childCommitInternalId(), unchangedFiles);
+  }
+
+  private int countParentFilesAtExcludedPaths(
+      final Session session, final long parentCommitInternalId, final Set<String> excludedPaths) {
+    if (excludedPaths.isEmpty()) {
+      return 0;
+    }
+    final Integer count =
+        session.queryForObject(
+            Integer.class,
+            COUNT_PARENT_FILES_AT_EXCLUDED_PATHS,
+            Map.of(
+                "parentCommitId",
+                parentCommitInternalId,
+                "excludedPaths",
+                new ArrayList<>(excludedPaths)));
+    return count != null ? count : 0;
   }
 
   private static long elapsedMillis(final long startNanos) {

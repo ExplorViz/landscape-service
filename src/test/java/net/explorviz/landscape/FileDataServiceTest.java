@@ -151,6 +151,7 @@ class FileDataServiceTest {
     assertTrue(commit.isHasAccumulatedMetrics());
     assertEquals(1d, commit.getMetrics().get("count"));
     assertEquals(2d, commit.getMetrics().get("lines"));
+    assertEquals(1d, commit.getMetrics().get("fileCount"));
   }
 
   @Test
@@ -228,6 +229,7 @@ class FileDataServiceTest {
 
     assertTrue(commit.isHasAccumulatedMetrics());
     assertEquals(35d, commit.getMetrics().get("lineCount"));
+    assertEquals(2d, commit.getMetrics().get("fileCount"));
   }
 
   @Test
@@ -306,6 +308,7 @@ class FileDataServiceTest {
 
     assertTrue(commit.isHasAccumulatedMetrics());
     assertEquals(35d, commit.getMetrics().get("lineCount"));
+    assertEquals(2d, commit.getMetrics().get("fileCount"));
   }
 
   @Test
@@ -1430,6 +1433,7 @@ class FileDataServiceTest {
 
     assertTrue(commit.isHasAccumulatedMetrics());
     assertEquals(140d, commit.getMetrics().get("lineCount"));
+    assertEquals(2d, commit.getMetrics().get("fileCount"));
   }
 
   @Test
@@ -1488,5 +1492,6 @@ class FileDataServiceTest {
 
     assertTrue(childCommit.isHasAccumulatedMetrics());
     assertEquals(42d, childCommit.getMetrics().get("lineCount"));
+    assertEquals(1d, childCommit.getMetrics().get("fileCount"));
   }
 }

@@ -168,7 +168,8 @@ public class StructureMapper {
             parentCityId,
             String.valueOf(node.parentId),
             (String) node.properties.get("language"),
-            extractMetrics(node.properties));
+            extractMetrics(node.properties),
+            (String) node.properties.get("hash"));
     context.buildings().put(id, building);
   }
 
