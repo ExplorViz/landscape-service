@@ -29,4 +29,31 @@ public class LandscapeRepository {
   public Landscape getOrCreateLandscape(final Session session, final String tokenId) {
     return findLandscapeByTokenId(session, tokenId).orElse(new Landscape(tokenId));
   }
+
+  /**
+   * Deletes all graph data associated with a landscape token, including runtime and static analysis
+   * data. Contributors that are no longer linked to any remaining graph data are removed as well;
+   * contributors still referenced by other landscapes are kept.
+   */
+  public void deleteLandscapeData(final Session session, final String tokenId) {
+    session.query(
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        CALL apoc.path.subgraphAll(l, {
+          relationshipFilter: "CONTAINS>|HAS_ROOT>|HAS_PARENT>|REPRESENTS>|BELONGS_TO>|IS_TAGGED_WITH>|INHERITS>|ADDED>|DELETED>|MODIFIED>|HAS_VERSION>|GENERATES>|USED>|DERIVED_FROM>|REFERENCES>"
+        })
+        YIELD nodes
+        UNWIND nodes AS n
+        DETACH DELETE n
+        """,
+        Map.of("tokenId", tokenId));
+
+    session.query(
+        """
+        MATCH (c:Contributor)
+        WHERE NOT (c)--()
+        DETACH DELETE c
+        """,
+        Map.of());
+  }
 }
