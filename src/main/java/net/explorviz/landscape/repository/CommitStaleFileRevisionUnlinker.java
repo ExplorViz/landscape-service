@@ -15,20 +15,24 @@ import org.neo4j.ogm.session.Session;
 @ApplicationScoped
 public class CommitStaleFileRevisionUnlinker {
 
+  /**
+   * Resolves candidate stale revisions by {@code filePath} first, then verifies the commit link.
+   * Avoids expanding every {@code CONTAINS} edge on large commits (e.g. 90k+ files).
+   */
   private static final String UNLINK_STALE_QUERY =
       """
       MATCH (child) WHERE id(child) = $childCommitId
       UNWIND $paths AS filePath
-      OPTIONAL MATCH (child)-[:%s]->(canonical:FileRevision)
+      MATCH (child)-[:%s]->(canonical:FileRevision)
       WHERE canonical.filePath = filePath
-      WITH child, filePath, canonical
-      WHERE canonical IS NOT NULL
-      MATCH (child)-[containsRel:CONTAINS]->(f:FileRevision)
-      WHERE f <> canonical
+      WITH child, canonical, filePath
+      MATCH (f:FileRevision)
+      WHERE id(f) <> id(canonical)
         AND (
           f.filePath = filePath
           OR (f.filePath IS NULL AND f.name = canonical.name)
         )
+      MATCH (child)-[containsRel:CONTAINS]->(f)
       WITH collect(DISTINCT containsRel) AS rels
       FOREACH (rel IN rels | DELETE rel)
       RETURN size(rels) AS unlinkedCount

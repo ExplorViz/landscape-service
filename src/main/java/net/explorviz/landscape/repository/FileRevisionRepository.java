@@ -188,33 +188,49 @@ public class FileRevisionRepository {
       long childCommitInternalId,
       Set<String> addedPaths,
       Set<String> modifiedPaths,
-      Set<String> deletedPaths) {}
+      Set<String> deletedPaths,
+      boolean requirePersistedParent) {}
 
   /**
    * Links every parent file revision not listed as added, modified, or deleted to the child commit.
+   *
+   * @return number of unchanged file revisions linked from the parent commit
    */
-  public void copyUnchangedFilesFromParentCommit(
+  public int copyUnchangedFilesFromParentCommit(
       final Session session, final CopyUnchangedFilesFromParentRequest request) {
     final Optional<Long> parentCommitInternalId =
-        commitRepository.findCommitInternalIdInRepository(
-            session, request.parentCommitHash(), request.landscapeTokenId(), request.repoName());
+        commitRepository.findCommitInternalIdInRepositoryWithRetry(
+            session,
+            request.parentCommitHash(),
+            request.landscapeTokenId(),
+            request.repoName(),
+            request.requirePersistedParent());
     if (parentCommitInternalId.isEmpty()) {
-      Log.warnf(
+      if (request.requirePersistedParent()) {
+        throw new ParentCommitNotReadyException(
+            String.format(
+                "Parent commit %s is not yet available in repository '%s'; cannot inherit"
+                    + " unchanged files for child %d",
+                request.parentCommitHash(), request.repoName(), request.childCommitInternalId()));
+      }
+      Log.debugf(
           "Parent commit %s not found in repository '%s'; skipping unchanged-file copy to child %d",
           request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
-      return;
+      return 0;
     }
 
-    unchangedCommitFileCopier.copyFromParentOrThrow(
+    return unchangedCommitFileCopier.copyFromParent(
         session,
         new UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest(
             request.landscapeTokenId(),
             request.repoName(),
+            request.parentCommitHash(),
             parentCommitInternalId.get(),
             request.childCommitInternalId(),
             request.addedPaths(),
             request.modifiedPaths(),
-            request.deletedPaths()));
+            request.deletedPaths(),
+            request.requirePersistedParent()));
   }
 
   public FileRevision createFileStructureFromStaticData(

@@ -32,7 +32,9 @@ import net.explorviz.landscape.repository.CommitStaleFileRevisionUnlinker;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
+import net.explorviz.landscape.repository.ParentCommitInheritancePolicy;
 import net.explorviz.landscape.repository.PendingCommitContextRegistry;
+import net.explorviz.landscape.repository.RepositoryCommitPersistenceCoordinator;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TagRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
@@ -59,28 +61,32 @@ public class CommitServiceImpl implements CommitService {
   @Inject TagRepository tagRepository;
   @Inject ContributorRepository contributorRepository;
   @Inject SessionFactory sessionFactory;
+  @Inject RepositoryCommitPersistenceCoordinator commitPersistenceCoordinator;
 
   @Blocking
   @Override
   public Uni<Empty> persistCommit(final CommitData request) {
-    final Session session = sessionFactory.openSession();
-    try (Transaction tx = session.beginTransaction()) {
-      saveCommitData(session, request);
-      tx.commit();
+    try {
+      commitPersistenceCoordinator.runExclusive(
+          request.getLandscapeToken(),
+          request.getRepositoryName(),
+          () -> {
+            final Session session = sessionFactory.openSession();
+            try (Transaction tx = session.beginTransaction()) {
+              saveCommitData(session, request);
+              tx.commit();
+            } finally {
+              session.clear();
+            }
+            return Empty.getDefaultInstance();
+          });
       return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
-    } finally {
-      session.clear();
     }
   }
 
-  @SuppressWarnings({
-    "PMD.NcssCount",
-    "PMD.NPathComplexity",
-    "PMD.CyclomaticComplexity",
-    "PMD.CognitiveComplexity"
-  })
+  @SuppressWarnings({"PMD.NcssCount", "PMD.CyclomaticComplexity", "PMD.CognitiveComplexity"})
   public void saveCommitData(final Session session, final CommitData commitData) {
     final long commitStart = System.nanoTime();
     long stepStart = commitStart;
@@ -135,9 +141,8 @@ public class CommitServiceImpl implements CommitService {
             commit.getId());
     final long createFileContextMs = elapsedMillis(stepStart);
 
-    final boolean hasParent =
-        !commitData.getParentCommitId().isEmpty()
-            && !NO_PARENT_ID.equals(commitData.getParentCommitId());
+    final boolean requirePersistedParent =
+        ParentCommitInheritancePolicy.requiresPersistedParent(commitData);
     final boolean deferFileStubs = CommitFileStubPolicy.defersFileStubCreation(commitData);
     long linkAddedFilesMs = 0;
     long linkModifiedFilesMs = 0;
@@ -208,21 +213,23 @@ public class CommitServiceImpl implements CommitService {
         linkUnchangedFilesMs = elapsedMillis(stepStart);
       }
 
-      if (hasParent) {
+      if (ParentCommitInheritancePolicy.hasPersistedParentReference(commitData)) {
         stepStart = System.nanoTime();
-        fileRevisionRepository.copyUnchangedFilesFromParentCommit(
-            session,
-            new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
-                commitData.getLandscapeToken(),
-                commitData.getRepositoryName(),
-                commitData.getParentCommitId(),
-                commit.getId(),
-                addedPaths,
-                modifiedPaths,
-                deletedPaths));
+        final int copiedFromParent =
+            fileRevisionRepository.copyUnchangedFilesFromParentCommit(
+                session,
+                new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
+                    commitData.getLandscapeToken(),
+                    commitData.getRepositoryName(),
+                    commitData.getParentCommitId(),
+                    commit.getId(),
+                    addedPaths,
+                    modifiedPaths,
+                    deletedPaths,
+                    requirePersistedParent));
         copyUnchangedFromParentMs = elapsedMillis(stepStart);
 
-        if (!addedPaths.isEmpty() || !modifiedPaths.isEmpty()) {
+        if (copiedFromParent > 0 && (!addedPaths.isEmpty() || !modifiedPaths.isEmpty())) {
           stepStart = System.nanoTime();
           commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
               session, commit.getId(), modifiedPaths, addedPaths);
@@ -253,24 +260,11 @@ public class CommitServiceImpl implements CommitService {
     final long tagsMs = elapsedMillis(stepStart);
 
     stepStart = System.nanoTime();
-    final List<String> parentCommitIds = resolveParentCommitIds(commitData);
-    if (parentCommitIds.isEmpty()) {
-      session.save(List.of(repo, branch, commit));
-    } else {
-      final List<Object> entitiesToSave = new ArrayList<>();
-      entitiesToSave.add(repo);
-      entitiesToSave.add(branch);
-      entitiesToSave.add(commit);
-      for (final String parentCommitId : parentCommitIds) {
-        final Commit parentCommit =
-            commitRepository.getOrCreateCommit(
-                session, parentCommitId, commitData.getLandscapeToken());
-        commit.addParentCommit(parentCommit);
-        repo.addCommit(parentCommit);
-        entitiesToSave.add(parentCommit);
-      }
-      session.save(entitiesToSave);
-    }
+    linkParentCommits(session, repo, commit, commitData);
+    final long linkParentCommitsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
+    session.save(List.of(repo, branch, commit));
     final long finalizeCommitMs = elapsedMillis(stepStart);
 
     if (!deferFileStubs) {
@@ -286,7 +280,8 @@ public class CommitServiceImpl implements CommitService {
             + " setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms,"
             + " linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms,"
             + " copyUnchangedFromParent=%dms, unlinkStaleRevisions(%d)=%dms,"
-            + " unlinkDeletedFiles(%d)=%dms, tags(%d)=%dms, finalizeCommit=%dms, total=%dms",
+            + " unlinkDeletedFiles(%d)=%dms, tags(%d)=%dms, linkParentCommits=%dms,"
+            + " finalizeCommit=%dms, total=%dms",
         commitData.getCommitId(),
         commitData.getRepositoryName(),
         deferFileStubs,
@@ -306,8 +301,33 @@ public class CommitServiceImpl implements CommitService {
         unlinkDeletedFilesMs,
         commitData.getTagsList().size(),
         tagsMs,
+        linkParentCommitsMs,
         finalizeCommitMs,
         elapsedMillis(commitStart));
+  }
+
+  private void linkParentCommits(
+      final Session session,
+      final Repository repo,
+      final Commit commit,
+      final CommitData commitData) {
+    final List<String> parentCommitIds = resolveParentCommitIds(commitData);
+    if (parentCommitIds.isEmpty()) {
+      return;
+    }
+
+    final List<Object> entitiesToSave = new ArrayList<>();
+    entitiesToSave.add(repo);
+    entitiesToSave.add(commit);
+    for (final String parentCommitId : parentCommitIds) {
+      final Commit parentCommit =
+          commitRepository.getOrCreateCommit(
+              session, parentCommitId, commitData.getLandscapeToken());
+      commit.addParentCommit(parentCommit);
+      repo.addCommit(parentCommit);
+      entitiesToSave.add(parentCommit);
+    }
+    session.save(entitiesToSave);
   }
 
   private static long elapsedMillis(final long startNanos) {

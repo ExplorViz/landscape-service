@@ -76,7 +76,7 @@ public class EvolutionResource {
     for (final Commit commit : commits) {
 
       if (commit.getBranch() == null) {
-        Log.warnf(
+        Log.debugf(
             "Commit with hash %s has no associated branch, will not be included in commit-tree",
             commit.getHash());
         continue;
@@ -91,7 +91,7 @@ public class EvolutionResource {
               .filter(
                   pc -> {
                     if (pc.getBranch() == null) {
-                      Log.warnf(
+                      Log.debugf(
                           "Parent commit with hash %s has no associated branch, will not be "
                               + "included in commit-tree calculation",
                           pc.getHash());

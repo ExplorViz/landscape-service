@@ -1,6 +1,7 @@
 package net.explorviz.landscape.repository;
 
 import com.google.common.collect.Lists;
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.HashMap;
@@ -18,6 +19,8 @@ import org.neo4j.ogm.session.SessionFactory;
 public class CommitRepository {
 
   @Inject SessionFactory sessionFactory;
+
+  @Inject ParentCommitLookupProperties parentCommitLookupProperties;
 
   /**
    * Find latest commit for which we have seen a CommitData message and also a FileData message for
@@ -88,8 +91,7 @@ public class CommitRepository {
             Commit.class,
             """
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
-            MATCH (repo)-[:CONTAINS]->(c:Commit)
-            OPTIONAL MATCH (c)-[r:BELONGS_TO]->(b:Branch)
+            MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
             OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
             OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
             RETURN DISTINCT c, r, b, h, parent, pr, pb
@@ -111,8 +113,7 @@ public class CommitRepository {
             MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application {name: $appName})
             MATCH (repo:Repository)<-[:CONTAINS]-(l)
             WHERE (repo)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(:Directory)<-[:HAS_ROOT]-(a)
-            MATCH (repo)-[:CONTAINS]->(c:Commit)
-            OPTIONAL MATCH (c)-[r:BELONGS_TO]->(b:Branch)
+            MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
             OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
             OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
             RETURN DISTINCT c, r, b, h, parent, pr, pb
@@ -154,6 +155,116 @@ public class CommitRepository {
             RETURN id(c) LIMIT 1
             """,
             Map.of("tokenId", tokenId, "repoName", repoName, "commitHash", commitHash)));
+  }
+
+  /**
+   * Like {@link #findCommitInternalIdInRepository} but only matches commits that were fully
+   * analyzed (branch metadata and at least one linked file revision).
+   */
+  public Optional<Long> findAnalyzedCommitInternalIdInRepository(
+      final Session session, final String commitHash, final String tokenId, final String repoName) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            Long.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
+            MATCH (c:Commit {hash: $commitHash})-[:BELONGS_TO]->(:Branch)
+            WHERE EXISTS { MATCH (repo)-[:CONTAINS]->(c) }
+              AND EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
+            RETURN id(c) LIMIT 1
+            """,
+            Map.of("tokenId", tokenId, "repoName", repoName, "commitHash", commitHash)));
+  }
+
+  /**
+   * Resolves a parent commit internal id, retrying briefly so a just-committed parent becomes
+   * visible before unchanged-file inheritance is skipped.
+   */
+  public Optional<Long> findCommitInternalIdInRepositoryWithRetry(
+      final Session session, final String commitHash, final String tokenId, final String repoName) {
+    return findCommitInternalIdInRepositoryWithRetry(
+        session,
+        commitHash,
+        tokenId,
+        repoName,
+        Math.max(1, parentCommitLookupProperties.maxAttempts()),
+        Math.max(0L, parentCommitLookupProperties.retryDelayMs()),
+        false);
+  }
+
+  public Optional<Long> findCommitInternalIdInRepositoryWithRetry(
+      final Session session,
+      final String commitHash,
+      final String tokenId,
+      final String repoName,
+      final boolean requirePersistedParent) {
+    if (!requirePersistedParent) {
+      return findCommitInternalIdInRepositoryWithRetry(session, commitHash, tokenId, repoName);
+    }
+    return findCommitInternalIdInRepositoryWithRetry(
+        session,
+        commitHash,
+        tokenId,
+        repoName,
+        Math.max(1, parentCommitLookupProperties.requiredMaxAttempts()),
+        Math.max(0L, parentCommitLookupProperties.requiredRetryDelayMs()),
+        true);
+  }
+
+  private Optional<Long> findCommitInternalIdInRepositoryWithRetry(
+      final Session session,
+      final String commitHash,
+      final String tokenId,
+      final String repoName,
+      final int maxAttempts,
+      final long retryDelayMs,
+      final boolean requireAnalyzedParent) {
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      final Optional<Long> commitInternalId =
+          requireAnalyzedParent
+              ? findAnalyzedCommitInternalIdInRepository(session, commitHash, tokenId, repoName)
+              : findCommitInternalIdInRepository(session, commitHash, tokenId, repoName);
+
+      if (commitInternalId.isPresent()) {
+        return commitInternalId;
+      }
+
+      // Commit exists but has not been analyzed yet; retrying will not help.
+      if (requireAnalyzedParent
+          && findCommitInternalIdInRepository(session, commitHash, tokenId, repoName).isPresent()) {
+        return Optional.empty();
+      }
+
+      if (attempt < maxAttempts && !waitForRetry(session, retryDelayMs, commitHash, repoName)) {
+        return Optional.empty();
+      }
+    }
+
+    return Optional.empty();
+  }
+
+  private boolean waitForRetry(
+      final Session session,
+      final long retryDelayMs,
+      final String commitHash,
+      final String repoName) {
+
+    if (retryDelayMs <= 0) {
+      return true;
+    }
+
+    try {
+      Thread.sleep(retryDelayMs);
+      session.clear();
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      Log.debugf(
+          "Interrupted while waiting for parent commit %s in repository '%s'",
+          commitHash, repoName);
+      return false;
+    }
   }
 
   public int countLinkedFileRevisions(final Session session, final long commitInternalId) {

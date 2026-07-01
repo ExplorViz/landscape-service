@@ -35,11 +35,13 @@ public class UnchangedCommitFileCopier {
   public record CopyUnchangedFilesFromParentRequest(
       String landscapeTokenId,
       String repoName,
+      String parentCommitHash,
       long parentCommitInternalId,
       long childCommitInternalId,
       Set<String> addedPaths,
       Set<String> modifiedPaths,
-      Set<String> deletedPaths) {}
+      Set<String> deletedPaths,
+      boolean requirePersistedParent) {}
 
   /**
    * Links every parent file revision not listed as added, modified, or deleted to the child commit.
@@ -52,7 +54,17 @@ public class UnchangedCommitFileCopier {
     final int parentLinkedCount =
         commitRepository.countLinkedFileRevisions(session, request.parentCommitInternalId());
     if (parentLinkedCount == 0) {
-      Log.warnf(
+      if (request.requirePersistedParent()) {
+        throw new ParentCommitNotReadyException(
+            String.format(
+                "Parent commit %s (id=%d) has no linked file revisions; cannot inherit unchanged"
+                    + " files for child %d in repository '%s'",
+                request.parentCommitHash(),
+                request.parentCommitInternalId(),
+                request.childCommitInternalId(),
+                request.repoName()));
+      }
+      Log.debugf(
           "Parent commit %d has no linked file revisions; skipping unchanged-file copy to child %d",
           request.parentCommitInternalId(), request.childCommitInternalId());
       return 0;

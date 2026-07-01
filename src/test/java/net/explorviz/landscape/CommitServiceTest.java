@@ -1017,6 +1017,37 @@ class CommitServiceTest {
     assertTrue(containsNewHash);
   }
 
+  @Test
+  void testIncrementalCommitFailsWhenParentIsMissing() {
+    final CommitData childCommitData =
+        CommitData.newBuilder()
+            .setCommitId("orphan-child")
+            .setParentCommitId("missing-parent")
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(2).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(2).build())
+            .addModifiedFiles(
+                FileIdentifier.newBuilder()
+                    .setFileHash("new-hash")
+                    .setFilePath("src/Modified.java")
+                    .build())
+            .build();
+
+    final StatusRuntimeException ex =
+        assertThrows(
+            StatusRuntimeException.class,
+            () ->
+                commitService
+                    .persistCommit(childCommitData)
+                    .await()
+                    .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS)));
+
+    assertEquals(Status.FAILED_PRECONDITION.getCode(), ex.getStatus().getCode());
+    assertTrue(ex.getStatus().getDescription().contains("missing-parent"));
+  }
+
   private static FileIdentifier fileId(final String hash, final String path) {
     return FileIdentifier.newBuilder().setFileHash(hash).setFilePath(path).build();
   }
