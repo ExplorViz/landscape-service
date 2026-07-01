@@ -208,21 +208,52 @@ public class ExampleDataResource {
             MERGE (innerDir)-[:CONTAINS]->(file3:FileRevision {name: "ClassC.java"})
             MERGE (file3)-[:CONTAINS]->(class3:Clazz {name: "ClassC"})
 
+            // --- Zusätzliche Klassen/Interfaces für Vererbung ---
+            MERGE (outerDir)-[:CONTAINS]->(file4:FileRevision {name: "AbstractBase.java"})
+            MERGE (file4)-[:CONTAINS]->(class4:Clazz {name: "AbstractBase"})
+            MERGE (outerDir)-[:CONTAINS]->(file5:FileRevision {name: "Comparable.java"})
+            MERGE (file5)-[:CONTAINS]->(class5:Clazz {name: "Comparable"})
+
             MERGE (repo)-[:HAS_ROOT]->(rootDir)
             MERGE (commit1)-[:CONTAINS]->(file1)
             MERGE (commit2)-[:CONTAINS]->(file1)
             MERGE (commit2)-[:CONTAINS]->(file2)
             MERGE (commit3)-[:CONTAINS]->(file2modified)
             MERGE (commit3)-[:CONTAINS]->(file3)
+            MERGE (commit3)-[:CONTAINS]->(file4)
+            MERGE (commit3)-[:CONTAINS]->(file5)
 
+            // --- 1) Import-Abhängigkeiten ---
             MERGE (class1)-[:IMPORT]->(class2)
             MERGE (class2)-[:IMPORT]->(class3)
             MERGE (class1)-[:IMPORT]->(class3)
             MERGE (class2modified)-[:IMPORT]->(class3)
 
+            // --- 2) Vererbungsbeziehungen ---
+            MERGE (class1)-[:EXTENDS]->(class4)
+            MERGE (class2)-[:IMPLEMENTS]->(class5)
+            MERGE (class2modified)-[:IMPLEMENTS]->(class5)
+
+            // --- 3) Methodenaufrufe ---
+            // Annahme: Methoden werden separat als Method-Nodes angelegt
+            // und über HAS_METHOD mit ihrer Clazz verbunden (siehe addFunctionsToClass).
+            MERGE (class1)-[:HAS_METHOD]->(m1:Method {name: "doWork"})
+            MERGE (class2)-[:HAS_METHOD]->(m2:Method {name: "helper"})
+            MERGE (class3)-[:HAS_METHOD]->(m3:Method {name: "utilMethod"})
+            MERGE (m1)-[:CALLS]->(m2)
+            MERGE (m2)-[:CALLS]->(m3)
+            MERGE (m1)-[:CALLS]->(m3)
+
+            // --- 4) Feld- und Typverwendungen ---
+            MERGE (class1)-[:HAS_FIELD]->(f1:Field {name: "helperField"})
+            MERGE (f1)-[:HAS_TYPE]->(class2)
+            MERGE (class2)-[:HAS_FIELD]->(f2:Field {name: "utilField"})
+            MERGE (f2)-[:HAS_TYPE]->(class3)
+            MERGE (class1)-[:USES_TYPE]->(class3)
+
             RETURN
-              [file1, file2, file2modified, file3] AS files,
-              [class1, class2, class2modified, class3] AS classes;
+              [file1, file2, file2modified, file3, file4, file5] AS files,
+              [class1, class2, class2modified, class3, class4, class5] AS classes;
             """,
             Map.of("repoName", repoName));
 

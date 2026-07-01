@@ -31,6 +31,48 @@ public class StructureRepository {
       String firstCommitHash,
       String secondCommitHash) {}
 
+  public record StaticDependency(Long sourceClazzId, Long targetClazzId, String type) {}
+
+  public List<StaticDependency> fetchStaticDependencies(
+      final Session session, final String landscapeToken, final String commitHash) {
+
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
+        MATCH (f)-[:CONTAINS]->(source:Clazz)
+        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (source)-[r]->(target:Clazz)
+        WHERE type(r) IN ['IMPORT', 'EXTENDS', 'IMPLEMENTS', 'USES_TYPE']
+        RETURN DISTINCT
+          id(source) AS sourceId,
+          id(target) AS targetId,
+          type(r)    AS type
+
+        UNION
+
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
+        MATCH (f)-[:CONTAINS]->(source:Clazz)
+        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (source)-[:HAS_METHOD]->(m1:Method)-[:CALLS]->(m2:Method)<-[:HAS_METHOD]-(target:Clazz)
+        WHERE source <> target
+        RETURN DISTINCT
+          id(source) AS sourceId,
+          id(target) AS targetId,
+          'CALLS'    AS type
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                "tokenId", landscapeToken,
+                "commitHash", commitHash));
+
+    return mapper.buildStaticDependencies(result);
+  }
+
   public FlatLandscapeDto fetchFlatLandscapeForRuntimeData(
       final Session session, final String landscapeToken) {
     final String query =

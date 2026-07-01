@@ -22,6 +22,21 @@ import org.neo4j.ogm.model.Result;
 @ApplicationScoped
 public class StructureMapper {
 
+  public List<StructureRepository.StaticDependency> buildStaticDependencies(final Result result) {
+    final List<StructureRepository.StaticDependency> dependencies = new ArrayList<>();
+
+    result.forEach(
+        row -> {
+          final Long sourceId = (Long) row.get("sourceId");
+          final Long targetId = (Long) row.get("targetId");
+          final String type = (String) row.get("type");
+
+          dependencies.add(new StructureRepository.StaticDependency(sourceId, targetId, type));
+        });
+
+    return dependencies;
+  }
+
   public FlatLandscapeDto buildFlatLandscape(
       final String landscapeToken,
       final Result result,
