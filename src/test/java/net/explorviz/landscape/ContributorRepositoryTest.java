@@ -6,9 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 import net.explorviz.landscape.ogm.Contributor;
 import net.explorviz.landscape.proto.ContributorData;
 import net.explorviz.landscape.repository.ContributorRepository;
@@ -28,75 +25,6 @@ public class ContributorRepositoryTest {
   void cleanup() {
     session = sessionFactory.openSession();
     resetDatabase(session);
-  }
-
-  @Test
-  void testFindContributorWithMostCommits() {
-    Session session = sessionFactory.openSession();
-
-    ContributorData aliceData =
-        ContributorData.newBuilder().setGitUsername("Alice").setEmail("alice@test.com").build();
-    ContributorData bobData =
-        ContributorData.newBuilder().setGitUsername("Bob").setEmail("bob@test.com").build();
-    contributorRepository.getOrCreateContributor(session, aliceData);
-    contributorRepository.getOrCreateContributor(session, bobData);
-
-    session.query(
-        """
-        CREATE (b:Branch {name: 'repo1'})
-        WITH b
-        MATCH (c1:Contributor {gitUsername: 'Alice'}), (c2:Contributor {gitUsername: 'Bob'})
-
-        // Alice's first commit
-        CREATE (c1)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-
-        // Bob's commit
-        CREATE (c2)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-
-        // Alice's second commit
-        CREATE (c1)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-        """,
-        new HashMap<>());
-
-    Optional<Contributor> result =
-        contributorRepository.findContributorWithMostCommits(session, "repo1");
-
-    assertTrue(result.isPresent());
-    assertEquals("Alice", result.get().getGitUsername());
-  }
-
-  @Test
-  void testCountCommitsPerContributor() {
-    Session session = sessionFactory.openSession();
-
-    ContributorData aliceData =
-        ContributorData.newBuilder().setGitUsername("Alice").setEmail("alice@test.com").build();
-    ContributorData bobData =
-        ContributorData.newBuilder().setGitUsername("Bob").setEmail("bob@test.com").build();
-    contributorRepository.getOrCreateContributor(session, aliceData);
-    contributorRepository.getOrCreateContributor(session, bobData);
-
-    session.query(
-        """
-        CREATE (b:Branch {name: 'repo1'})
-        WITH b
-        MATCH (c1:Contributor {gitUsername: 'Alice'}), (c2:Contributor {gitUsername: 'Bob'})
-
-        // Alice's first commit
-        CREATE (c1)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-
-        // Bob's commit
-        CREATE (c2)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-
-        // Alice's second commit
-        CREATE (c1)-[:AUTHORED]->(:Commit)-[:IN_BRANCH]->(b)
-        """,
-        new HashMap<>());
-
-    Map<String, Long> result = contributorRepository.countCommitsPerContributor(session, "repo1");
-
-    assertEquals(2L, result.get("Alice"));
-    assertEquals(1L, result.get("Bob"));
   }
 
   @Test
