@@ -107,22 +107,22 @@ public class ContributorRepository {
       final Contributor contributor, final ContributorData data) {
     boolean updated = false;
 
-    if (isBlank(contributor.getGithubLogin())) {
+    if (isBlank(contributor.getGithubLogin()) && isUsable(data.getGithubLogin())) {
       contributor.setGithubLogin(data.getGithubLogin());
       updated = true;
     }
 
-    if (isBlank(contributor.getAvatarUrl())) {
+    if (isBlank(contributor.getAvatarUrl()) && isUsable(data.getAvatarUrl())) {
       contributor.setAvatarUrl(data.getAvatarUrl());
       updated = true;
     }
 
-    if (isBlank(contributor.getGitUsername())) {
+    if (isBlank(contributor.getGitUsername()) && isUsable(data.getGitUsername())) {
       contributor.setGitUsername(data.getGitUsername());
       updated = true;
     }
 
-    if (isBlank(contributor.getEmail())) {
+    if (isBlank(contributor.getEmail()) && isUsable(data.getEmail())) {
       contributor.setEmail(data.getEmail());
       updated = true;
     }
@@ -136,5 +136,9 @@ public class ContributorRepository {
 
   private boolean isBlank(final String str) {
     return str == null || str.isBlank();
+  }
+
+  private boolean isUsable(final String str) {
+    return isPresent(str) && !"unknown".equals(str);
   }
 }

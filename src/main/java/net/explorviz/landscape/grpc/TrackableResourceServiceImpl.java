@@ -95,8 +95,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
             event.getAnnotationId(),
             AnnotationType.valueOf(event.getAnnotationType().name()));
 
-    annotation.setAssociatedContributor(
-        contributorRepository.getOrCreateContributor(session, event.getActor()));
+    if (!"unknown".equals(event.getActor().getGithubLogin())) {
+      annotation.setAssociatedContributor(
+          contributorRepository.getOrCreateContributor(session, event.getActor()));
+    }
 
     return annotation;
   }
