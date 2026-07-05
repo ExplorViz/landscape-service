@@ -7,10 +7,8 @@ import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import net.explorviz.landscape.ogm.AnnotationType;
 import net.explorviz.landscape.ogm.Issue;
 import net.explorviz.landscape.ogm.PullRequest;
@@ -85,9 +83,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     resourceVersion.setTitle(event.getTitle());
     resourceVersion.setCreationDate(getEventDate(event));
     resourceVersion.setExternalId(event.getAnnotationId());
-    final String[] labels = event.getLabels().split(",");
-    final Set<String> labelSet = new HashSet<>(Arrays.asList(labels));
-    resourceVersion.setLabels(labelSet);
+    resourceVersion.setLabels(new HashSet<>(event.getLabelsList()));
     return resourceVersion;
   }
 
