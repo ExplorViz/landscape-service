@@ -84,6 +84,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     resourceVersion.setWebUrl(event.getWebUrl());
     resourceVersion.setTitle(event.getTitle());
     resourceVersion.setCreationDate(getEventDate(event));
+    resourceVersion.setExternalId(event.getAnnotationId());
     final String[] labels = event.getLabels().split(",");
     final Set<String> labelSet = new HashSet<>(Arrays.asList(labels));
     resourceVersion.setLabels(labelSet);

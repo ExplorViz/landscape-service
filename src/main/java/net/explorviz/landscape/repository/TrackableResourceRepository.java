@@ -122,8 +122,8 @@ public class TrackableResourceRepository {
         ResourceVersion.class,
         """
         MATCH (t)-[:HAS_VERSION]->(v:ResourceVersion)
-        WHERE id(t) = $resourceId AND v.creationDate < $newDate
-        RETURN v ORDER BY v.creationDate DESC LIMIT 1
+        WHERE id(t) = $resourceId AND v.creationDate <= $newDate
+        RETURN v ORDER BY v.creationDate DESC, v.externalId DESC LIMIT 1
         """,
         Map.of("resourceId", resourceId, "newDate", timestamp));
   }
@@ -135,7 +135,7 @@ public class TrackableResourceRepository {
         """
         MATCH (t)-[:HAS_VERSION]->(v:ResourceVersion)
         WHERE id(t) = $resourceId AND v.creationDate > $newDate
-        RETURN v ORDER BY v.creationDate ASC LIMIT 1
+        RETURN v ORDER BY v.creationDate ASC, v.externalId ASC LIMIT 1
         """,
         Map.of("resourceId", resourceId, "newDate", timestamp));
   }
