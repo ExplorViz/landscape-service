@@ -3,6 +3,7 @@ package net.explorviz.landscape.repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -13,6 +14,7 @@ import net.explorviz.landscape.ogm.TrackableResource;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
+@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 @ApplicationScoped
 public class TrackableResourceRepository {
 
@@ -114,6 +116,49 @@ public class TrackableResourceRepository {
     session.save(trackableResource, 1);
 
     return annotation;
+  }
+
+  public void linkPullRequestToIssues(
+      final Session session,
+      final String tokenId,
+      final String repoName,
+      final Long pullRequestId,
+      final List<Integer> issueNumbers) {
+    session.query(
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: $repoName})
+        MATCH (p:PullRequest) WHERE id(p) = $prId
+        UNWIND $numbers AS num
+        MATCH (r)-[:CONTAINS]->(i:Issue {number: num})
+        MERGE (p)-[:REFERENCES]->(i)
+        """,
+        Map.of(
+            "tokenId",
+            tokenId,
+            "repoName",
+            repoName,
+            "prId",
+            pullRequestId,
+            "numbers",
+            issueNumbers));
+  }
+
+  /*
+  This method links pull requests to commits referenced within them. Since the commits are not
+  guaranteed to be present at the time of the pull request received, this will be called up by
+  the RelinkResourceRequest grpc message at the end of the analysis.
+   */
+  public void linkPullRequestToCommits(
+      final Session session, final String tokenId, final String repoName) {
+    session.query(
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: $repoName})
+          -[:CONTAINS]->(p:PullRequest)
+        UNWIND p.commitHashes AS sha
+        MATCH (r)-[:CONTAINS]->(c:Commit {hash: sha})
+        MERGE (p)-[:CONTAINS]->(c)
+        """,
+        Map.of("tokenId", tokenId, "repoName", repoName));
   }
 
   private ResourceVersion findPredecessor(
