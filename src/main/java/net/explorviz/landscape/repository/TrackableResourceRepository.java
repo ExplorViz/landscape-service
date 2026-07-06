@@ -14,7 +14,7 @@ import net.explorviz.landscape.ogm.TrackableResource;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 @ApplicationScoped
 public class TrackableResourceRepository {
 
@@ -73,6 +73,20 @@ public class TrackableResourceRepository {
     results.forEach(resultSet::add);
 
     return resultSet;
+  }
+
+  public Optional<ResourceAnnotation> findAnnotationByExternalId(
+      final Session session, final String externalId) {
+    final String cypher =
+        """
+        MATCH (a:ResourceAnnotation {externalId: $externalId})
+        RETURN a
+        """;
+
+    final ResourceAnnotation annotation =
+        session.queryForObject(ResourceAnnotation.class, cypher, Map.of("externalId", externalId));
+
+    return Optional.ofNullable(annotation);
   }
 
   /**

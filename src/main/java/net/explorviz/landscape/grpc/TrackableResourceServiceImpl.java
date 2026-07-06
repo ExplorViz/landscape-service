@@ -71,6 +71,13 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   public void saveTrackableResourceEvent(
       final Session session, final TrackableResourceEvent event) {
 
+    // skip if annotation already persisted
+    if (trackableResourceRepository
+        .findAnnotationByExternalId(session, event.getAnnotationId())
+        .isPresent()) {
+      return;
+    }
+
     final Repository repo = getRepository(session, event);
     final ResourceVersion resourceVersion = populateResourceVersion(event);
     final ResourceAnnotation resourceAnnotation = populateResourceAnnotation(session, event);
