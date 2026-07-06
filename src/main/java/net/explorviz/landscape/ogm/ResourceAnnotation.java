@@ -15,10 +15,6 @@ public class ResourceAnnotation {
   private String externalId;
   private AnnotationType annotationType;
 
-  private String label;
-  private String mergeCommitHash;
-  private String stateChange;
-
   @Relationship(type = "GENERATES", direction = Relationship.Direction.OUTGOING)
   private ResourceVersion generatedResourceVersion;
 
@@ -69,30 +65,6 @@ public class ResourceAnnotation {
 
   public void setAnnotationType(final AnnotationType annotationType) {
     this.annotationType = annotationType;
-  }
-
-  public String getLabel() {
-    return label;
-  }
-
-  public void setLabel(final String label) {
-    this.label = label;
-  }
-
-  public String getMergeCommitHash() {
-    return mergeCommitHash;
-  }
-
-  public void setMergeCommitHash(final String mergeCommitHash) {
-    this.mergeCommitHash = mergeCommitHash;
-  }
-
-  public String getStateChange() {
-    return stateChange;
-  }
-
-  public void setStateChange(final String stateChange) {
-    this.stateChange = stateChange;
   }
 
   public ResourceVersion getGeneratedResourceVersion() {

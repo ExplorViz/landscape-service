@@ -1,18 +1,14 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.util.Map;
 import java.util.Optional;
 import net.explorviz.landscape.ogm.Contributor;
 import net.explorviz.landscape.proto.ContributorData;
 import org.neo4j.ogm.session.Session;
-import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
 public class ContributorRepository {
-
-  @Inject SessionFactory sessionFactory;
 
   public Optional<Contributor> findContributor(
       final Session session, final String fieldName, final String fieldValue) {

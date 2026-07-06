@@ -1,7 +1,6 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -12,13 +11,10 @@ import net.explorviz.landscape.ogm.ResourceAnnotation;
 import net.explorviz.landscape.ogm.ResourceVersion;
 import net.explorviz.landscape.ogm.TrackableResource;
 import org.neo4j.ogm.session.Session;
-import org.neo4j.ogm.session.SessionFactory;
 
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 @ApplicationScoped
 public class TrackableResourceRepository {
-
-  @Inject SessionFactory sessionFactory;
 
   public <T extends TrackableResource> Optional<T> findByNumber(
       final Session session,
@@ -81,6 +77,7 @@ public class TrackableResourceRepository {
         """
         MATCH (a:ResourceAnnotation {externalId: $externalId})
         RETURN a
+        LIMIT 1
         """;
 
     final ResourceAnnotation annotation =
