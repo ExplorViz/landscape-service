@@ -70,7 +70,7 @@ public class TrackableResourceServiceTest {
   void shouldPersistNewIssueEvent() {
     initializeRepository();
     TrackableResourceEvent event =
-        createBaseEventBuilder("14", TrackableResourceType.ISSUE)
+        createBaseEventBuilder("14", TrackableResourceType.ISSUE, "14")
             .setAnnotationType(AnnotationType.CREATE)
             .setNewState(ResourceState.OPEN)
             .setTitle("Issue #14")
@@ -89,7 +89,7 @@ public class TrackableResourceServiceTest {
   void shouldPersistNewPullRequestEvent() {
     initializeRepository();
     TrackableResourceEvent event =
-        createBaseEventBuilder("1", TrackableResourceType.PULL_REQUEST)
+        createBaseEventBuilder("1", TrackableResourceType.PULL_REQUEST, "1")
             .setAnnotationType(AnnotationType.CREATE)
             .setNewState(ResourceState.OPEN)
             .setTitle("PR #1")
@@ -113,7 +113,7 @@ public class TrackableResourceServiceTest {
     // Create
     trackableResourceService
         .persistTrackableResourceEvent(
-            createBaseEventBuilder(resourceId, TrackableResourceType.ISSUE)
+            createBaseEventBuilder(resourceId, TrackableResourceType.ISSUE, "14")
                 .setAnnotationType(AnnotationType.CREATE)
                 .setNewState(ResourceState.OPEN)
                 .build())
@@ -123,7 +123,7 @@ public class TrackableResourceServiceTest {
     // Update (Label)
     trackableResourceService
         .persistTrackableResourceEvent(
-            createBaseEventBuilder(resourceId, TrackableResourceType.ISSUE)
+            createBaseEventBuilder(resourceId, TrackableResourceType.ISSUE, resourceId)
                 .setAnnotationType(AnnotationType.LABEL)
                 .setNewState(ResourceState.OPEN)
                 .build())
@@ -147,7 +147,7 @@ public class TrackableResourceServiceTest {
   @Test
   void shouldFailIfRepositoryNotInitialized() {
     TrackableResourceEvent event =
-        createBaseEventBuilder("99", TrackableResourceType.ISSUE)
+        createBaseEventBuilder("99", TrackableResourceType.ISSUE, "99")
             .setAnnotationType(AnnotationType.CREATE)
             .setNewState(ResourceState.OPEN)
             .build();
@@ -162,7 +162,7 @@ public class TrackableResourceServiceTest {
   }
 
   private TrackableResourceEvent.Builder createBaseEventBuilder(
-      String resourceId, TrackableResourceType type) {
+      String resourceId, TrackableResourceType type, String externalId) {
     Instant now = Instant.now();
     Timestamp protoTimestamp =
         Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
@@ -172,7 +172,7 @@ public class TrackableResourceServiceTest {
     return TrackableResourceEvent.newBuilder()
         .setEventTimestamp(protoTimestamp)
         .setActor(actor)
-        .setAnnotationId("ext-" + resourceId + "-" + type)
+        .setAnnotationId("ext-" + externalId + "-" + type)
         .setLandscapeToken(this.landscapeToken)
         .setRepositoryName(this.repoName)
         .setResourceId(resourceId)

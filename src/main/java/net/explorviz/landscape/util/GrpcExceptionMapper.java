@@ -7,6 +7,7 @@ import java.lang.reflect.UndeclaredThrowableException;
 import net.explorviz.landscape.proto.CommitData;
 import net.explorviz.landscape.proto.ContributorData;
 import net.explorviz.landscape.proto.FileData;
+import net.explorviz.landscape.proto.RelinkResourcesRequest;
 import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.TrackableResourceEvent;
 import net.explorviz.landscape.repository.IncompleteCommitFileCopyException;
@@ -105,6 +106,18 @@ public final class GrpcExceptionMapper {
             + trackableResourceEvent.getTitle()
             + "' and resource id '"
             + trackableResourceEvent.getResourceId()
+            + "'.";
+    return mapToGrpcException(e, contextInfo);
+  }
+
+  public static StatusRuntimeException mapToGrpcException(
+      final Exception e, final RelinkResourcesRequest relinkResourcesRequest) {
+    final String contextInfo =
+        "Regarding the call to persistRelinkResources for "
+            + "the landscape with tokenId '"
+            + relinkResourcesRequest.getLandscapeToken()
+            + "' and repository '"
+            + relinkResourcesRequest.getRepositoryName()
             + "'.";
     return mapToGrpcException(e, contextInfo);
   }
