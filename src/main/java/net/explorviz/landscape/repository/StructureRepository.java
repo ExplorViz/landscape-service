@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
@@ -21,6 +22,8 @@ public class StructureRepository {
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
 
   @Inject StructureMapper mapper;
+
+  private record CommitMeta(String hash, long authorDate) {}
 
   public record StaticDataRequest(
       String landscapeToken, String repositoryName, String commitHash) {}
@@ -162,81 +165,72 @@ public class StructureRepository {
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
   }
+
   /**
-   * Builds an ordered sequence of flat landscape for every consecutive commit pair
-   * in the given repository, used for commit-based animation.
-   * Each entry represents the structural diff between one commit and its predesessor,
-   * with values set relative to later commit.
-   *
-   *
+   * Builds an ordered sequence of flat landscape for every consecutive commit pair in the given
+   * repository, used for commit-based animation. Each entry represents the structural diff between
+   * one commit and its predesessor, with values set relative to later commit.
    */
+  public List<AnimationFrameDto> fetchFlatLandscapeForAnimation(
+      final Session session, final String landscapeToken, final String repositoryName) {
 
-  public List<FlatLandscapeDto> fetchFlatLandscapeForAnimation(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName) {
-
-    final List<String> commitHashes =
+    final List<CommitMeta> commits =
         fetchOrderedCommitHashesForRepository(session, landscapeToken, repositoryName);
-    //Test
-    System.out.println("Animation: found " + commitHashes.size() + " commits");
-    commitHashes.forEach(h -> System.out.println("  - " + h));
 
-    if (commitHashes.isEmpty()) {
+    if (commits.isEmpty()) {
       return List.of();
     }
 
-    final List<FlatLandscapeDto> frames = new ArrayList<>();
+    final List<AnimationFrameDto> frames = new ArrayList<>();
 
-    //First commit
+    // First commit
+    final CommitMeta first = commits.get(0);
     frames.add(
-          fetchFlatLandscapeForStaticData(
-              session,
-              new StaticDataRequest(landscapeToken, repositoryName, commitHashes.get(0))));
+        new AnimationFrameDto(
+            first.hash(),
+            first.authorDate(),
+            0,
+            fetchFlatLandscapeForStaticData(
+                session, new StaticDataRequest(landscapeToken, repositoryName, first.hash()))));
 
-    //Test
-    System.out.println("Frame 0 buildings: " + frames.get(0).buildings().size());
-    //Divs between commits
-    for (int i = 1; i < commitHashes.size();i++){
+    // Divs between commits
+    for (int i = 1; i < commits.size(); i++) {
+      final CommitMeta target = commits.get(i);
       frames.add(
-          fetchCombinedFlatLandscape(
-              session,
-              new CombinedStaticDataRequest(
-                  landscapeToken,
-                  repositoryName,
-                  commitHashes.get(i-1),
-                  commitHashes.get(i))));
-      // DEBUG
-      System.out.println("Frame " + i + " buildings: " + frames.get(i).buildings().size());
+          new AnimationFrameDto(
+              target.hash(),
+              target.authorDate(),
+              i,
+              fetchCombinedFlatLandscape(
+                  session,
+                  new CombinedStaticDataRequest(
+                      landscapeToken, repositoryName, commits.get(i - 1).hash(), target.hash()))));
     }
 
     return frames;
   }
 
-  private List<String> fetchOrderedCommitHashesForRepository(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName) {
+  private List<CommitMeta> fetchOrderedCommitHashesForRepository(
+      final Session session, final String landscapeToken, final String repositoryName) {
     final String query =
         """
         MATCH (:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(c:Commit)
-        RETURN c.hash AS hash
-        ORDER BY c.authorDate ASC
+        RETURN c.hash AS hash, coalesce(c.authorDate, c.commitDate, 0) AS authorDate
+        ORDER BY coalesce(c.authorDate, c.commitDate, 0) ASC, c.hash ASC
         """;
 
     final Result result =
-        session.query(
-            query,
-            Map.of("tokenId",landscapeToken, "repoName", repositoryName));
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
 
-    final List<String> hashes = new ArrayList<>();
-    result.forEach(row -> hashes.add((String) row.get("hash")));
-    return hashes;
-
-
+    final List<CommitMeta> commits = new ArrayList<>();
+    result.forEach(
+        row -> {
+          final Object date = row.get("authorDate");
+          final long authorDate = date instanceof Number n ? n.longValue() : 0L;
+          commits.add(new CommitMeta((String) row.get("hash"), authorDate));
+        });
+    return commits;
   }
-
-
 }

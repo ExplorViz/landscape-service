@@ -13,6 +13,7 @@ import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.repository.FileDetailedMapper;
@@ -129,20 +130,17 @@ public class StructureResource {
    *
    * @param landscapeToken String identifier of the landscape
    * @param repositoryName Name of the repository for which to retrieve structure data
-   * @param commitHash Identifier of the git commit for which to retrieve structure
    * @return The flat landscape containing the applications of the repository at the given commit,
    *     where each application represents a city
    */
-
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/{repositoryName}/animation")
-  public List <FlatLandscapeDto> getEvolutionAnimation(
-      @RestPath final String landscapeToken,
-      @RestPath final String repositoryName){
+  public List<AnimationFrameDto> getEvolutionAnimation(
+      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
     final Session session = sessionFactory.openSession();
 
     return structureRepository.fetchFlatLandscapeForAnimation(
-        session, landscapeToken, repositoryName);}
-
+        session, landscapeToken, repositoryName);
+  }
 }
