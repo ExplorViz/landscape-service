@@ -51,6 +51,7 @@ class CommitRepositoryTest {
     commit1.addFileRevision(file1);
     commit1.setCommitDate(Instant.ofEpochMilli(1000));
     commit1.setBranch(branch);
+    commit1.setHasAccumulatedMetrics(true);
 
     Commit commit2 = new Commit("commit2");
     commit2.addParentCommit(commit1);
@@ -58,6 +59,7 @@ class CommitRepositoryTest {
     commit2.addFileRevision(file2);
     commit2.setCommitDate(Instant.ofEpochMilli(2000));
     commit2.setBranch(branch);
+    commit2.setHasAccumulatedMetrics(true);
 
     Commit commit3 = new Commit("commit3");
     commit3.addParentCommit(commit2);
@@ -84,5 +86,16 @@ class CommitRepositoryTest {
 
     assertTrue(latestCommit.isPresent());
     assertEquals("commit2", latestCommit.get().getHash());
+
+    branch.setLatestFullyPersistedCommitHash("commit2");
+    branch.setLatestFullyPersistedCommitDate(Instant.ofEpochMilli(2000));
+    session.save(branch);
+
+    Optional<Commit> cachedLatestCommit =
+        commitRepository.findLatestFullyPersistedCommit(
+            session, "myrepo", "mytokenvalue", "main", List.of());
+
+    assertTrue(cachedLatestCommit.isPresent());
+    assertEquals("commit2", cachedLatestCommit.get().getHash());
   }
 }

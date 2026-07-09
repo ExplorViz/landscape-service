@@ -32,6 +32,19 @@ public class CommitRepository {
       final String tokenId,
       final String branchName,
       final List<String> applicationNames) {
+    if (applicationNames == null || applicationNames.isEmpty()) {
+      final Optional<String> cachedHash =
+          findLatestFullyPersistedCommitHashOnBranch(session, repoName, tokenId, branchName);
+      final Optional<Commit> cachedCommit =
+          cachedHash.isPresent()
+              ? findCommitByHashAndLandscapeToken(session, cachedHash.get(), tokenId)
+              : Optional.empty();
+      if (cachedCommit.isPresent()
+          && isFullyPersistedCommit(session, tokenId, cachedCommit.get(), List.of())) {
+        return cachedCommit;
+      }
+    }
+
     return Optional.ofNullable(
         session.queryForObject(
             Commit.class,
@@ -40,15 +53,13 @@ public class CommitRepository {
             MATCH (l)-[:CONTAINS]->(repo:Repository {name: $repoName})
             CALL (l, repo) {
               MATCH (repo)-[:CONTAINS]->(c:Commit)-[:BELONGS_TO]->(:Branch {name: $branchName})
-              WHERE EXISTS { MATCH (c)-[:CONTAINS]->(:FileRevision) }
-                AND NOT EXISTS {
-                  MATCH (c)-[:CONTAINS]->(f:FileRevision)
-                  WHERE coalesce(f.hasFileData, false) = false
-                }
-                AND all(appName IN $applicationNames WHERE EXISTS {
-                  MATCH (l)-[:CONTAINS]->(:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
-                  MATCH (root)-[:CONTAINS*1..]->(:FileRevision)<-[:CONTAINS]-(c)
-                })
+              WHERE coalesce(c.hasAccumulatedMetrics, false) = true
+                AND ($applicationNames IS NULL OR size($applicationNames) = 0
+                  OR all(appName IN $applicationNames WHERE EXISTS {
+                    MATCH (l)-[:CONTAINS]->(:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
+                    MATCH (c)-[:CONTAINS]->(f:FileRevision)
+                    MATCH (root)-[:CONTAINS*0..]->(:Directory)-[:CONTAINS*0..]->(f)
+                  }))
               RETURN c
               ORDER BY c.commitDate DESC
               LIMIT 1
@@ -63,7 +74,74 @@ public class CommitRepository {
                 "branchName",
                 branchName,
                 "applicationNames",
-                applicationNames)));
+                applicationNames != null ? applicationNames : List.of())));
+  }
+
+  public Optional<String> findLatestFullyPersistedCommitHashOnBranch(
+      final Session session, final String repoName, final String tokenId, final String branchName) {
+    return Optional.ofNullable(
+        session.queryForObject(
+            String.class,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(b:Branch {name: $branchName})
+            WHERE b.latestFullyPersistedCommitHash IS NOT NULL
+            RETURN b.latestFullyPersistedCommitHash
+            LIMIT 1
+            """,
+            Map.of("tokenId", tokenId, "repoName", repoName, "branchName", branchName)));
+  }
+
+  public void updateLatestFullyPersistedCommitOnBranch(
+      final Session session,
+      final long commitInternalId,
+      final String repoName,
+      final String tokenId) {
+    session.query(
+        """
+        MATCH (c:Commit) WHERE id(c) = $commitId
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c)-[:BELONGS_TO]->(b:Branch)
+        WHERE coalesce(c.hasAccumulatedMetrics, false) = true
+          AND c.commitDate >= coalesce(b.latestFullyPersistedCommitDate, 0)
+        SET b.latestFullyPersistedCommitHash = c.hash,
+            b.latestFullyPersistedCommitDate = c.commitDate
+        """,
+        Map.of(
+            "commitId", commitInternalId,
+            "tokenId", tokenId,
+            "repoName", repoName));
+  }
+
+  private boolean isFullyPersistedCommit(
+      final Session session,
+      final String tokenId,
+      final Commit commit,
+      final List<String> applicationNames) {
+    if (!commit.isHasAccumulatedMetrics()) {
+      return false;
+    }
+    final Boolean stillValid =
+        session.queryForObject(
+            Boolean.class,
+            """
+            MATCH (l:Landscape {tokenId: $tokenId})
+            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+            RETURN coalesce(c.hasAccumulatedMetrics, false) = true
+              AND ($applicationNames IS NULL OR size($applicationNames) = 0
+                OR all(appName IN $applicationNames WHERE EXISTS {
+                  MATCH (l)-[:CONTAINS]->(:Application {name: appName})-[:HAS_ROOT]->(root:Directory)
+                  MATCH (c)-[:CONTAINS]->(f:FileRevision)
+                  MATCH (root)-[:CONTAINS*0..]->(:Directory)-[:CONTAINS*0..]->(f)
+                }))
+            LIMIT 1
+            """,
+            Map.of(
+                "tokenId", tokenId,
+                "commitHash", commit.getHash(),
+                "applicationNames", applicationNames));
+    return Boolean.TRUE.equals(stillValid);
   }
 
   public Optional<Commit> findCommitByHashAndLandscapeToken(

@@ -152,6 +152,12 @@ public class CommitMetricsAccumulator {
     }
 
     session.query(UPDATE_COMMIT_METRICS, Map.of("rows", rows));
+
+    for (final Long commitId : commitIds) {
+      commitRepository.updateLatestFullyPersistedCommitOnBranch(
+          session, commitId, repoName, landscapeToken);
+    }
+
     Log.debugf(
         "Updated accumulated metrics for %d fully persisted commit(s): %s",
         commitIds.size(), commitIds);

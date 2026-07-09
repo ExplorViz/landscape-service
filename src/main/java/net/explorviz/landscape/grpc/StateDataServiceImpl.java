@@ -124,27 +124,23 @@ public class StateDataServiceImpl implements StateDataService {
                       .orElse(new Application(applicationName));
               landscape.addApplication(application);
 
-              final Directory applicationRootDirectory =
-                  directoryRepository.createDirectoryStructureAndReturnLastDirStaticData(
-                      session,
-                      (repository.getName() + "/" + applicationPath).split("/"),
-                      stateData.getRepositoryName(),
-                      stateData.getLandscapeToken());
-
               final Directory existingAppRoot = application.getRootDirectory();
+              final Directory applicationRootDirectory;
               if (existingAppRoot != null
-                  && !Objects.equals(existingAppRoot.getId(), applicationRootDirectory.getId())) {
+                  && !Application.ROOT_NAME_PLACEHOLDER_RUNTIME.equals(existingAppRoot.getName())) {
+                applicationRootDirectory = existingAppRoot;
+              } else {
+                applicationRootDirectory =
+                    directoryRepository.createDirectoryStructureAndReturnLastDirStaticData(
+                        session,
+                        (repository.getName() + "/" + applicationPath).split("/"),
+                        stateData.getRepositoryName(),
+                        stateData.getLandscapeToken());
 
-                if (Application.ROOT_NAME_PLACEHOLDER_RUNTIME.equals(existingAppRoot.getName())) {
+                if (existingAppRoot != null
+                    && !Objects.equals(existingAppRoot.getId(), applicationRootDirectory.getId())) {
                   directoryRepository.mergeDirectories(
                       session, existingAppRoot.getId(), applicationRootDirectory.getId());
-                } else {
-                  throw new IllegalArgumentException(
-                      "Application \""
-                          + applicationName
-                          + "\" already exists with different root directory path. ID of existing "
-                          + "application root: "
-                          + existingAppRoot.getId());
                 }
               }
 
