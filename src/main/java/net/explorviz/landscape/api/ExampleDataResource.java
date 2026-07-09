@@ -218,6 +218,7 @@ public class ExampleDataResource {
             MERGE (commit1)-[:CONTAINS]->(file1)
             MERGE (commit2)-[:CONTAINS]->(file1)
             MERGE (commit2)-[:CONTAINS]->(file2)
+            MERGE (commit2)-[:CONTAINS]->(file3)  // ClassC.java auch in commit2
             MERGE (commit3)-[:CONTAINS]->(file2modified)
             MERGE (commit3)-[:CONTAINS]->(file3)
             MERGE (commit3)-[:CONTAINS]->(file4)
@@ -279,7 +280,7 @@ public class ExampleDataResource {
                   });
             });
 
-    return "Successfully created example \"staticDependencies\"";
+    return "Successfully created example staticDependencies";
   }
 
   @SuppressWarnings("unchecked")

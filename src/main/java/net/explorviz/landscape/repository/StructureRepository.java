@@ -16,9 +16,12 @@ import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
+@SuppressWarnings("PMD.TooManyMethods")
 public class StructureRepository {
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
+  private static final String PARAM_TOKEN_ID = "tokenId";
+  private static final String PARAM_COMMIT_HASH = "commitHash";
 
   @Inject StructureMapper mapper;
 
@@ -33,7 +36,34 @@ public class StructureRepository {
 
   public record StaticDependency(Long sourceClazzId, Long targetClazzId, String type) {}
 
-  public List<StaticDependency> fetchStaticDependencies(
+  public List<StaticDependency> fetchImportDependencies(
+      final Session session, final String landscapeToken, final String commitHash) {
+
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
+        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (source)-[r:IMPORT]->(target:Clazz)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
+        RETURN DISTINCT
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                PARAM_TOKEN_ID, landscapeToken,
+                PARAM_COMMIT_HASH, commitHash));
+
+    return mapper.buildStaticDependencies(result);
+  }
+
+  public List<StaticDependency> fetchExtendsDependencies(
       final Session session, final String landscapeToken, final String commitHash) {
 
     final String query =
@@ -42,15 +72,54 @@ public class StructureRepository {
         MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
         MATCH (f)-[:CONTAINS]->(source:Clazz)
         WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
-        MATCH (source)-[r]->(target:Clazz)
-        WHERE type(r) IN ['IMPORT', 'EXTENDS', 'IMPLEMENTS', 'USES_TYPE']
+        MATCH (source)-[r:EXTENDS]->(target:Clazz)
         RETURN DISTINCT
           id(source) AS sourceId,
           id(target) AS targetId,
           type(r)    AS type
+        """;
 
-        UNION
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                PARAM_TOKEN_ID, landscapeToken,
+                PARAM_COMMIT_HASH, commitHash));
 
+    return mapper.buildStaticDependencies(result);
+  }
+
+  public List<StaticDependency> fetchImplementsDependencies(
+      final Session session, final String landscapeToken, final String commitHash) {
+
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
+        MATCH (f)-[:CONTAINS]->(source:Clazz)
+        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (source)-[r:IMPLEMENTS]->(target:Clazz)
+        RETURN DISTINCT
+          id(source) AS sourceId,
+          id(target) AS targetId,
+          type(r)    AS type
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                PARAM_TOKEN_ID, landscapeToken,
+                PARAM_COMMIT_HASH, commitHash));
+
+    return mapper.buildStaticDependencies(result);
+  }
+
+  public List<StaticDependency> fetchMethodCallDependencies(
+      final Session session, final String landscapeToken, final String commitHash) {
+
+    final String query =
+        """
         MATCH (l:Landscape {tokenId: $tokenId})
         MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
         MATCH (f)-[:CONTAINS]->(source:Clazz)
@@ -67,8 +136,34 @@ public class StructureRepository {
         session.query(
             query,
             Map.of(
-                "tokenId", landscapeToken,
-                "commitHash", commitHash));
+                PARAM_TOKEN_ID, landscapeToken,
+                PARAM_COMMIT_HASH, commitHash));
+
+    return mapper.buildStaticDependencies(result);
+  }
+
+  public List<StaticDependency> fetchFieldTypeUsageDependencies(
+      final Session session, final String landscapeToken, final String commitHash) {
+
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
+        MATCH (f)-[:CONTAINS]->(source:Clazz)
+        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (source)-[r:USES_TYPE]->(target:Clazz)
+        RETURN DISTINCT
+          id(source) AS sourceId,
+          id(target) AS targetId,
+          type(r)    AS type
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                PARAM_TOKEN_ID, landscapeToken,
+                PARAM_COMMIT_HASH, commitHash));
 
     return mapper.buildStaticDependencies(result);
   }
