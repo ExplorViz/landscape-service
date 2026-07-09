@@ -22,6 +22,7 @@ import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
+import net.explorviz.landscape.repository.TagRepository;
 import net.explorviz.landscape.util.CommitBranchOrderer;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
@@ -41,6 +42,8 @@ public class EvolutionResource {
   @Inject CommitRepository commitRepository;
 
   @Inject RepositoryRepository repositoryRepository;
+
+  @Inject TagRepository tagRepository;
 
   @GET
   @Produces(MediaType.APPLICATION_JSON)
@@ -68,6 +71,10 @@ public class EvolutionResource {
 
     final List<Commit> commits =
         commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
+            session, landscapeToken, repositoryName);
+
+    final Map<String, List<String>> tagsByCommitHash =
+        tagRepository.findTagNamesByCommitHashForRepository(
             session, landscapeToken, repositoryName);
 
     final Map<String, List<Commit>> branchToCommitMap = new HashMap<>();
@@ -136,7 +143,8 @@ public class EvolutionResource {
                                         commit.getHash(),
                                         commit.getCommitDate(),
                                         commit.getMetrics(),
-                                        commit.isHasAccumulatedMetrics()))
+                                        commit.isHasAccumulatedMetrics(),
+                                        tagsByCommitHash.getOrDefault(commit.getHash(), List.of())))
                             .toList(),
                         branchToBranchPointMap.get(e.getKey())))
             .toList();

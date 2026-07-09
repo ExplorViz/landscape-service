@@ -172,7 +172,8 @@ public class CommitRepository {
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
             OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
             OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb
+            OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
+            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
@@ -194,7 +195,8 @@ public class CommitRepository {
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
             OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
             OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb
+            OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
+            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "appName", applicationName)));
