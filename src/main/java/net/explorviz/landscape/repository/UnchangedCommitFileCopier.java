@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -46,43 +47,31 @@ public class UnchangedCommitFileCopier {
   /**
    * Links every parent file revision not listed as added, modified, or deleted to the child commit.
    *
+   * <p>When the parent's cache entry is already {@linkplain
+   * CommitFileRevisionCache#isVerifiedComplete verified complete}, this runs with zero database
+   * round-trips beyond the batched relationship writes themselves: both the parent's file count and
+   * the excluded-path overlap are derived from the in-memory map instead of querying the graph.
+   * Otherwise it falls back to a database-verified copy, which self-heals the verified flag for
+   * subsequent copies from the same parent.
+   *
    * @return number of unchanged file revisions linked to the child commit
    */
   public int copyFromParent(
       final Session session, final CopyUnchangedFilesFromParentRequest request) {
     final long copyStart = System.nanoTime();
-    final int parentLinkedCount =
-        commitRepository.countLinkedFileRevisions(session, request.parentCommitInternalId());
-    if (parentLinkedCount == 0) {
-      if (request.requirePersistedParent()) {
-        throw new ParentCommitNotReadyException(
-            String.format(
-                "Parent commit %s (id=%d) has no linked file revisions; cannot inherit unchanged"
-                    + " files for child %d in repository '%s'",
-                request.parentCommitHash(),
-                request.parentCommitInternalId(),
-                request.childCommitInternalId(),
-                request.repoName()));
-      }
-      Log.debugf(
-          "Parent commit %d has no linked file revisions; skipping unchanged-file copy to child %d",
-          request.parentCommitInternalId(), request.childCommitInternalId());
-      return 0;
-    }
+    final long parentCommitInternalId = request.parentCommitInternalId();
 
     final Optional<Map<String, CommitFileRevisionCache.FileRevEntry>> cachedParent =
-        commitFileRevisionCache.get(request.parentCommitInternalId());
+        commitFileRevisionCache.get(parentCommitInternalId);
     final int copied =
         cachedParent.isPresent()
-                && isCacheCompleteForParent(
-                    session, request.parentCommitInternalId(), cachedParent.get())
-            ? copyUnchangedFilesFromCache(session, request, cachedParent.get())
-            : copyUnchangedFilesFromDb(session, request);
+                && commitFileRevisionCache.isVerifiedComplete(parentCommitInternalId)
+            ? copyFromVerifiedCache(session, request, cachedParent.get())
+            : copyFromParentWithDatabaseVerification(session, request, cachedParent);
 
-    validateCopyResult(session, request, parentLinkedCount, copied);
     Log.infof(
         "copyUnchangedFromParent(parent=%d, child=%d, repo='%s'): copied %d files in %dms",
-        request.parentCommitInternalId(),
+        parentCommitInternalId,
         request.childCommitInternalId(),
         request.repoName(),
         copied,
@@ -99,30 +88,102 @@ public class UnchangedCommitFileCopier {
     copyFromParent(session, request);
   }
 
-  private boolean isCacheCompleteForParent(
-      final Session session,
-      final long parentCommitInternalId,
-      final Map<String, CommitFileRevisionCache.FileRevEntry> cachedParent) {
-    final int linkedInDb =
-        commitRepository.countLinkedFileRevisions(session, parentCommitInternalId);
-    if (cachedParent.size() < linkedInDb) {
+  /**
+   * Verifies that {@code commitInternalId}'s in-memory file cache exactly matches the graph's
+   * linked file revisions and, if so, marks it verified-complete so it becomes an O(1) copy source
+   * (no per-copy database verification) once it is used as a parent commit. Intended to be called
+   * once, right after a commit's own file-linking steps (added/modified/unchanged/copy/unlink) have
+   * all completed.
+   */
+  public void verifyAndMarkComplete(final Session session, final long commitInternalId) {
+    final int cachedCount = commitFileRevisionCache.getFileCount(commitInternalId);
+    final int linkedCount = commitRepository.countLinkedFileRevisions(session, commitInternalId);
+    if (cachedCount == linkedCount) {
+      commitFileRevisionCache.markVerifiedComplete(commitInternalId);
+    } else {
       Log.debugf(
-          "Parent commit %d cache has %d paths but %d files are linked in the graph; "
-              + "using database-backed copy",
-          parentCommitInternalId, cachedParent.size(), linkedInDb);
-      return false;
+          "Commit %d cache has %d paths but %d files are linked in the graph; "
+              + "will re-verify against the database when used as a parent commit",
+          commitInternalId, cachedCount, linkedCount);
     }
-    return true;
+  }
+
+  private int copyFromVerifiedCache(
+      final Session session,
+      final CopyUnchangedFilesFromParentRequest request,
+      final Map<String, CommitFileRevisionCache.FileRevEntry> parentFiles) {
+    final int copied = copyUnchangedFilesFromCache(session, request, parentFiles);
+    final int excludedOnParent = countExcludedPathsInMap(excludedPaths(request), parentFiles);
+    validateCopyResult(request, parentFiles.size(), excludedOnParent, copied);
+    return copied;
+  }
+
+  private int copyFromParentWithDatabaseVerification(
+      final Session session,
+      final CopyUnchangedFilesFromParentRequest request,
+      final Optional<Map<String, CommitFileRevisionCache.FileRevEntry>> cachedParent) {
+    final long parentCommitInternalId = request.parentCommitInternalId();
+    final int parentLinkedCount =
+        commitRepository.countLinkedFileRevisions(session, parentCommitInternalId);
+    if (parentLinkedCount == 0) {
+      if (request.requirePersistedParent()) {
+        throw new ParentCommitNotReadyException(
+            String.format(
+                "Parent commit %s (id=%d) has no linked file revisions; cannot inherit unchanged"
+                    + " files for child %d in repository '%s'",
+                request.parentCommitHash(),
+                parentCommitInternalId,
+                request.childCommitInternalId(),
+                request.repoName()));
+      }
+      Log.debugf(
+          "Parent commit %d has no linked file revisions; skipping unchanged-file copy to child %d",
+          parentCommitInternalId, request.childCommitInternalId());
+      return 0;
+    }
+
+    final boolean cacheComplete =
+        cachedParent.isPresent() && cachedParent.get().size() >= parentLinkedCount;
+    final int copied;
+    if (cacheComplete) {
+      commitFileRevisionCache.markVerifiedComplete(parentCommitInternalId);
+      copied = copyUnchangedFilesFromCache(session, request, cachedParent.get());
+    } else {
+      if (cachedParent.isPresent()) {
+        Log.debugf(
+            "Parent commit %d cache has %d paths but %d files are linked in the graph; "
+                + "using database-backed copy",
+            parentCommitInternalId, cachedParent.get().size(), parentLinkedCount);
+      }
+      copied = copyUnchangedFilesFromDb(session, request);
+    }
+
+    final int excludedOnParent =
+        countParentFilesAtExcludedPaths(session, parentCommitInternalId, excludedPaths(request));
+    validateCopyResult(request, parentLinkedCount, excludedOnParent, copied);
+    return copied;
+  }
+
+  private int countExcludedPathsInMap(
+      final Set<String> excludedPaths,
+      final Map<String, CommitFileRevisionCache.FileRevEntry> parentFiles) {
+    if (excludedPaths.isEmpty()) {
+      return 0;
+    }
+    int count = 0;
+    for (final String excludedPath : excludedPaths) {
+      if (parentFiles.containsKey(excludedPath)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   private void validateCopyResult(
-      final Session session,
       final CopyUnchangedFilesFromParentRequest request,
       final int parentLinkedCount,
+      final int excludedOnParent,
       final int copied) {
-    final int excludedOnParent =
-        countParentFilesAtExcludedPaths(
-            session, request.parentCommitInternalId(), excludedPaths(request));
     final int expectedMinimum = Math.max(0, parentLinkedCount - excludedOnParent);
     if (copied < expectedMinimum) {
       throw new IncompleteCommitFileCopyException(
@@ -192,6 +253,8 @@ public class UnchangedCommitFileCopier {
       final Session session, final CopyUnchangedFilesFromParentRequest request) {
     final Set<String> excluded = excludedPaths(request);
     final Map<String, CommitFileRevisionCache.FileRevEntry> childEntries = new HashMap<>();
+    final Set<Long> alreadyLinkedFileRevIds =
+        findExistingContainsTargetIds(session, request.childCommitInternalId());
     int totalCopied = 0;
     int offset = 0;
 
@@ -201,6 +264,7 @@ public class UnchangedCommitFileCopier {
       params.put("parentCommitId", request.parentCommitInternalId());
       params.put("childCommitId", request.childCommitInternalId());
       params.put("excludedPaths", excluded);
+      params.put("alreadyLinkedFileRevIds", alreadyLinkedFileRevIds);
       params.put("tokenId", request.landscapeTokenId());
       params.put("lookupKeyPrefix", request.landscapeTokenId() + "/" + request.repoName() + "/");
       params.put("offset", offset);
@@ -231,7 +295,10 @@ public class UnchangedCommitFileCopier {
               WITH f, child, coalesce(f.filePath, resolvedPath) AS path
               ORDER BY id(f)
               SKIP $offset LIMIT $batchSize
-              MERGE (child)-[:CONTAINS]->(f)
+              FOREACH (
+                _ IN CASE WHEN id(f) IN $alreadyLinkedFileRevIds THEN [] ELSE [1] END |
+                CREATE (child)-[:CONTAINS]->(f)
+              )
               WITH f, child, path, $repoName AS repoName, $tokenId AS tokenId
               SET f.repoName = repoName,
                 f.filePath = path,
@@ -272,14 +339,37 @@ public class UnchangedCommitFileCopier {
     return totalCopied;
   }
 
+  /**
+   * Links {@code fileRevIds} to the child commit in batches, creating only relationships that don't
+   * already exist.
+   *
+   * <p>Deliberately avoids {@code MERGE (child)-[:CONTAINS]->(f)}: with both endpoints already
+   * bound, Neo4j must scan one side's relationship chain to check whether the link already exists,
+   * and {@code FileRevision} nodes for files that stay unchanged across many commits (very common
+   * in long-lived repositories) can accumulate an enormous {@code CONTAINS} in-degree over time.
+   * That made each existence check — and therefore this whole copy — scale with the repository's
+   * total history rather than with this commit's own file count. Instead, existing links are looked
+   * up once via a traversal anchored at the child commit (whose own degree is always small and
+   * bounded by its file count) and only the missing links are created.
+   */
   private void linkFileRevisionsToChildInBatches(
       final Session session, final long childCommitInternalId, final List<Long> fileRevIds) {
+    if (fileRevIds.isEmpty()) {
+      return;
+    }
+
+    final Set<Long> alreadyLinkedFileRevIds =
+        findExistingContainsTargetIds(session, childCommitInternalId);
+
     for (int offset = 0;
         offset < fileRevIds.size();
         offset += FileRevisionRepository.COMMIT_FILE_BATCH_SIZE) {
       final int end =
           Math.min(offset + FileRevisionRepository.COMMIT_FILE_BATCH_SIZE, fileRevIds.size());
-      final List<Long> batch = fileRevIds.subList(offset, end);
+      final List<Long> batch =
+          fileRevIds.subList(offset, end).stream()
+              .filter(fileRevId -> !alreadyLinkedFileRevIds.contains(fileRevId))
+              .collect(Collectors.toList());
       if (batch.isEmpty()) {
         continue;
       }
@@ -289,10 +379,33 @@ public class UnchangedCommitFileCopier {
           WITH child
           UNWIND $fileRevIds AS fId
           MATCH (f:FileRevision) WHERE id(f) = fId
-          MERGE (child)-[:CONTAINS]->(f)
+          CREATE (child)-[:CONTAINS]->(f)
           """,
           Map.of("childCommitId", childCommitInternalId, "fileRevIds", batch));
     }
+  }
+
+  /**
+   * Returns the ids of file revisions already linked to {@code commitInternalId} via {@code
+   * CONTAINS}. Anchored at the commit rather than at individual file revisions so the traversal
+   * cost is bounded by the commit's own file count, not by how many commits across the repository's
+   * history happen to link to the same (possibly very high-degree) file revision node.
+   */
+  private Set<Long> findExistingContainsTargetIds(
+      final Session session, final long commitInternalId) {
+    final Result result =
+        session.query(
+            """
+            MATCH (commit) WHERE id(commit) = $commitId
+            MATCH (commit)-[:CONTAINS]->(f)
+            RETURN id(f) AS fileRevId
+            """,
+            Map.of("commitId", commitInternalId));
+    final Set<Long> fileRevIds = new HashSet<>();
+    for (final Map<String, Object> row : result.queryResults()) {
+      fileRevIds.add((Long) row.get("fileRevId"));
+    }
+    return fileRevIds;
   }
 
   private void populateCachesFromMemory(

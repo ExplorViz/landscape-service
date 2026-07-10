@@ -232,7 +232,7 @@ public class CommitServiceImpl implements CommitService {
         if (copiedFromParent > 0 && (!addedPaths.isEmpty() || !modifiedPaths.isEmpty())) {
           stepStart = System.nanoTime();
           commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
-              session, commit.getId(), modifiedPaths, addedPaths);
+              session, commit.getId(), commitData.getRepositoryName(), modifiedPaths, addedPaths);
           unlinkStaleRevisionsMs = elapsedMillis(stepStart);
         }
       }
@@ -243,6 +243,10 @@ public class CommitServiceImpl implements CommitService {
       commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(session, commit.getId(), deletedPaths);
     }
     final long unlinkDeletedFilesMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
+    verifyCommitFileCacheUnlessDeferred(session, commit, deferFileStubs);
+    final long verifyCacheMs = elapsedMillis(stepStart);
 
     stepStart = System.nanoTime();
     commitData
@@ -280,8 +284,8 @@ public class CommitServiceImpl implements CommitService {
             + " setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms,"
             + " linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms,"
             + " copyUnchangedFromParent=%dms, unlinkStaleRevisions(%d)=%dms,"
-            + " unlinkDeletedFiles(%d)=%dms, tags(%d)=%dms, linkParentCommits=%dms,"
-            + " finalizeCommit=%dms, total=%dms",
+            + " unlinkDeletedFiles(%d)=%dms, verifyCache=%dms, tags(%d)=%dms,"
+            + " linkParentCommits=%dms, finalizeCommit=%dms, total=%dms",
         commitData.getCommitId(),
         commitData.getRepositoryName(),
         deferFileStubs,
@@ -299,11 +303,23 @@ public class CommitServiceImpl implements CommitService {
         unlinkStaleRevisionsMs,
         deletedPaths.size(),
         unlinkDeletedFilesMs,
+        verifyCacheMs,
         commitData.getTagsList().size(),
         tagsMs,
         linkParentCommitsMs,
         finalizeCommitMs,
         elapsedMillis(commitStart));
+  }
+
+  /**
+   * Marks the commit's in-memory file cache as an O(1) copy source for its future children once all
+   * of its own file-linking steps have completed, provided file stubs were not deferred.
+   */
+  private void verifyCommitFileCacheUnlessDeferred(
+      final Session session, final Commit commit, final boolean deferFileStubs) {
+    if (!deferFileStubs) {
+      fileRevisionRepository.verifyAndCacheCommitCompleteness(session, commit.getId());
+    }
   }
 
   private void linkParentCommits(

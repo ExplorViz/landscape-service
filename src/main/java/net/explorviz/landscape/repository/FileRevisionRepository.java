@@ -233,6 +233,16 @@ public class FileRevisionRepository {
             request.requirePersistedParent()));
   }
 
+  /**
+   * Verifies that a just-persisted commit's in-memory file cache exactly mirrors its linked file
+   * revisions in the graph and, if so, marks it as an O(1) copy source for its future children.
+   * Should be called once a commit's own file-linking steps (added, modified, unchanged, copy from
+   * parent, and stale/deleted unlinking) have all completed.
+   */
+  public void verifyAndCacheCommitCompleteness(final Session session, final long commitInternalId) {
+    unchangedCommitFileCopier.verifyAndMarkComplete(session, commitInternalId);
+  }
+
   public FileRevision createFileStructureFromStaticData(
       final Session session,
       final FileIdentifier fileIdentifier,
