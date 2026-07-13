@@ -436,9 +436,9 @@ public class StructureRepository {
 
     if (firstNode instanceof ChimneyDto firstChimney
         && secondNode instanceof ChimneyDto secondChimney) {
-      return firstChimney.value().equals(secondChimney.value())
-          ? DebugSnapshotComparison.UNCHANGED
-          : DebugSnapshotComparison.CHANGED;
+      final boolean isEqual = firstChimney.value().equals(secondChimney.value());
+
+      return isEqual ? DebugSnapshotComparison.UNCHANGED : DebugSnapshotComparison.CHANGED;
     }
 
     return null;
