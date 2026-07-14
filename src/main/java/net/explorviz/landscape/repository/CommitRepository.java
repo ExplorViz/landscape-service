@@ -310,12 +310,6 @@ public class CommitRepository {
         return commitInternalId;
       }
 
-      // Commit exists but has not been analyzed yet; retrying will not help.
-      if (requireAnalyzedParent
-          && findCommitInternalIdInRepository(session, commitHash, tokenId, repoName).isPresent()) {
-        return Optional.empty();
-      }
-
       if (attempt < maxAttempts && !waitForRetry(session, retryDelayMs, commitHash, repoName)) {
         return Optional.empty();
       }

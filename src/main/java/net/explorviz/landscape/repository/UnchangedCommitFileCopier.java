@@ -127,18 +127,19 @@ public class UnchangedCommitFileCopier {
         commitRepository.countLinkedFileRevisions(session, parentCommitInternalId);
     if (parentLinkedCount == 0) {
       if (request.requirePersistedParent()) {
-        throw new ParentCommitNotReadyException(
-            String.format(
-                "Parent commit %s (id=%d) has no linked file revisions; cannot inherit unchanged"
-                    + " files for child %d in repository '%s'",
-                request.parentCommitHash(),
-                parentCommitInternalId,
-                request.childCommitInternalId(),
-                request.repoName()));
+        Log.warnf(
+            "Parent commit %s (id=%d) has no linked file revisions; skipping unchanged-file copy"
+                + " to child %d in repository '%s'",
+            request.parentCommitHash(),
+            parentCommitInternalId,
+            request.childCommitInternalId(),
+            request.repoName());
+      } else {
+        Log.debugf(
+            "Parent commit %d has no linked file revisions; skipping unchanged-file copy to child"
+                + " %d",
+            parentCommitInternalId, request.childCommitInternalId());
       }
-      Log.debugf(
-          "Parent commit %d has no linked file revisions; skipping unchanged-file copy to child %d",
-          parentCommitInternalId, request.childCommitInternalId());
       return 0;
     }
 
@@ -276,17 +277,17 @@ public class UnchangedCommitFileCopier {
               MATCH (parent) WHERE id(parent) = $parentCommitId
               MATCH (child) WHERE id(child) = $childCommitId
               MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-              WITH f, child, $lookupKeyPrefix AS lookupPrefix,
+              WITH f, child,
                 coalesce(
                   f.filePath,
                   CASE
                     WHEN f.lookupKey IS NOT NULL
-                      AND f.lookupKey STARTS WITH lookupPrefix
+                      AND f.lookupKey STARTS WITH $lookupKeyPrefix
                       AND f.hash IS NOT NULL
                     THEN substring(
                       f.lookupKey,
-                      size(lookupPrefix),
-                      size(f.lookupKey) - size(lookupPrefix) - size(f.hash) - 1)
+                      size($lookupKeyPrefix),
+                      size(f.lookupKey) - size($lookupKeyPrefix) - size(f.hash) - 1)
                     ELSE null
                   END,
                   f.name

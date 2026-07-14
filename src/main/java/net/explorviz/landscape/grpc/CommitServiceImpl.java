@@ -3,16 +3,12 @@ package net.explorviz.landscape.grpc;
 import com.google.protobuf.Empty;
 import io.grpc.Status;
 import io.quarkus.grpc.GrpcService;
-import io.quarkus.logging.Log;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Contributor;
@@ -20,20 +16,19 @@ import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.ogm.Tag;
 import net.explorviz.landscape.proto.CommitData;
 import net.explorviz.landscape.proto.CommitService;
-import net.explorviz.landscape.proto.FileIdentifier;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
 import net.explorviz.landscape.repository.CommitDeletedFileUnlinker;
+import net.explorviz.landscape.repository.CommitFileLinkTimings;
+import net.explorviz.landscape.repository.CommitFileLinker;
 import net.explorviz.landscape.repository.CommitFilePersistenceContext;
-import net.explorviz.landscape.repository.CommitFileStubPolicy;
 import net.explorviz.landscape.repository.CommitMetricsAccumulator;
 import net.explorviz.landscape.repository.CommitRepository;
-import net.explorviz.landscape.repository.CommitStaleFileRevisionUnlinker;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
-import net.explorviz.landscape.repository.ParentCommitInheritancePolicy;
-import net.explorviz.landscape.repository.PendingCommitContextRegistry;
+import net.explorviz.landscape.repository.PersistCommitTimingLogger;
+import net.explorviz.landscape.repository.PersistCommitTimingReport;
 import net.explorviz.landscape.repository.RepositoryCommitPersistenceCoordinator;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TagRepository;
@@ -55,9 +50,9 @@ public class CommitServiceImpl implements CommitService {
   @Inject RepositoryRepository repositoryRepository;
   @Inject FileRevisionRepository fileRevisionRepository;
   @Inject CommitDeletedFileUnlinker commitDeletedFileUnlinker;
-  @Inject CommitStaleFileRevisionUnlinker commitStaleFileRevisionUnlinker;
+  @Inject CommitFileLinker commitFileLinker;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
-  @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
+  @Inject PersistCommitTimingLogger persistCommitTimingLogger;
   @Inject TagRepository tagRepository;
   @Inject ContributorRepository contributorRepository;
   @Inject SessionFactory sessionFactory;
@@ -86,23 +81,91 @@ public class CommitServiceImpl implements CommitService {
     }
   }
 
-  @SuppressWarnings({"PMD.NcssCount", "PMD.CyclomaticComplexity", "PMD.CognitiveComplexity"})
   public void saveCommitData(final Session session, final CommitData commitData) {
     final long commitStart = System.nanoTime();
-    long stepStart = commitStart;
 
-    final Repository repo =
-        repositoryRepository
-            .findRepositoryByNameAndLandscapeToken(
-                session, commitData.getRepositoryName(), commitData.getLandscapeToken())
-            .orElseThrow(
-                () ->
-                    Status.FAILED_PRECONDITION
-                        .withDescription("No corresponding state data was sent before.")
-                        .asRuntimeException());
-    final long resolveRepositoryMs = elapsedMillis(stepStart);
+    final Repository repo = resolveRepository(session, commitData);
+    final long resolveRepositoryMs = elapsedMillis(commitStart);
 
-    stepStart = System.nanoTime();
+    final long setupStart = System.nanoTime();
+    final Branch branch = setupBranch(session, commitData, repo);
+    final Commit commit = setupCommit(session, commitData, repo, branch);
+    final long setupCommitMs = elapsedMillis(setupStart);
+
+    final long createFileContextStart = System.nanoTime();
+    final CommitFilePersistenceContext fileContext =
+        fileRevisionRepository.createFilePersistenceContext(
+            session,
+            commitData.getLandscapeToken(),
+            commitData.getRepositoryName(),
+            commitData.getCommitId(),
+            commit.getId());
+    final long createFileContextMs = elapsedMillis(createFileContextStart);
+
+    final CommitFileLinkTimings fileLinkTimings =
+        commitFileLinker.linkCommitFiles(session, commitData, commit, fileContext);
+
+    final long unlinkDeletedStart = System.nanoTime();
+    if (fileLinkTimings.shouldUnlinkDeletedFiles() && !fileLinkTimings.deletedPaths().isEmpty()) {
+      commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(
+          session, commit.getId(), fileLinkTimings.deletedPaths());
+    }
+    final long unlinkDeletedFilesMs = elapsedMillis(unlinkDeletedStart);
+
+    final long verifyCacheStart = System.nanoTime();
+    if (!fileLinkTimings.metadataOnlyCommit()) {
+      verifyCommitFileCacheUnlessDeferred(session, commit, fileLinkTimings.deferFileStubs());
+    }
+    final long verifyCacheMs = elapsedMillis(verifyCacheStart);
+
+    final long tagsStart = System.nanoTime();
+    applyCommitTags(session, commitData, repo, commit);
+    final long tagsMs = elapsedMillis(tagsStart);
+
+    final long linkParentCommitsStart = System.nanoTime();
+    linkParentCommits(session, repo, commit, commitData);
+    final long linkParentCommitsMs = elapsedMillis(linkParentCommitsStart);
+
+    final long finalizeCommitStart = System.nanoTime();
+    session.save(List.of(repo, branch, commit));
+    final long finalizeCommitMs = elapsedMillis(finalizeCommitStart);
+
+    if (fileLinkTimings.shouldUpdatePendingMetrics()) {
+      commitMetricsAccumulator.updatePendingForCommit(
+          session,
+          commitData.getLandscapeToken(),
+          commitData.getRepositoryName(),
+          commitData.getCommitId());
+    }
+
+    persistCommitTimingLogger.log(
+        commitData,
+        fileLinkTimings,
+        new PersistCommitTimingReport(
+            resolveRepositoryMs,
+            setupCommitMs,
+            createFileContextMs,
+            unlinkDeletedFilesMs,
+            verifyCacheMs,
+            tagsMs,
+            linkParentCommitsMs,
+            finalizeCommitMs,
+            elapsedMillis(commitStart)));
+  }
+
+  private Repository resolveRepository(final Session session, final CommitData commitData) {
+    return repositoryRepository
+        .findRepositoryByNameAndLandscapeToken(
+            session, commitData.getRepositoryName(), commitData.getLandscapeToken())
+        .orElseThrow(
+            () ->
+                Status.FAILED_PRECONDITION
+                    .withDescription("No corresponding state data was sent before.")
+                    .asRuntimeException());
+  }
+
+  private Branch setupBranch(
+      final Session session, final CommitData commitData, final Repository repo) {
     final Branch branch =
         branchRepository.getOrCreateBranch(
             session,
@@ -110,7 +173,14 @@ public class CommitServiceImpl implements CommitService {
             commitData.getRepositoryName(),
             commitData.getLandscapeToken());
     repo.addBranch(branch);
+    return branch;
+  }
 
+  private Commit setupCommit(
+      final Session session,
+      final CommitData commitData,
+      final Repository repo,
+      final Branch branch) {
     final Commit commit =
         commitRepository.getOrCreateCommit(
             session, commitData.getCommitId(), commitData.getLandscapeToken());
@@ -129,126 +199,14 @@ public class CommitServiceImpl implements CommitService {
             commitData.getAuthorDate().getSeconds(), commitData.getAuthorDate().getNanos()));
     repo.addCommit(commit);
     session.save(List.of(repo, branch, commit));
-    final long setupCommitMs = elapsedMillis(stepStart);
+    return commit;
+  }
 
-    stepStart = System.nanoTime();
-    final CommitFilePersistenceContext fileContext =
-        fileRevisionRepository.createFilePersistenceContext(
-            session,
-            commitData.getLandscapeToken(),
-            commitData.getRepositoryName(),
-            commitData.getCommitId(),
-            commit.getId());
-    final long createFileContextMs = elapsedMillis(stepStart);
-
-    final boolean requirePersistedParent =
-        ParentCommitInheritancePolicy.requiresPersistedParent(commitData);
-    final boolean deferFileStubs = CommitFileStubPolicy.defersFileStubCreation(commitData);
-    long linkAddedFilesMs = 0;
-    long linkModifiedFilesMs = 0;
-    long linkUnchangedFilesMs = 0;
-    long copyUnchangedFromParentMs = 0;
-    long unlinkStaleRevisionsMs = 0;
-
-    final Set<String> addedPaths =
-        commitData.getAddedFilesList().stream()
-            .map(FileIdentifier::getFilePath)
-            .collect(Collectors.toCollection(HashSet::new));
-    final Set<String> modifiedPaths =
-        commitData.getModifiedFilesList().stream()
-            .map(FileIdentifier::getFilePath)
-            .collect(Collectors.toCollection(HashSet::new));
-    final Set<String> deletedPaths =
-        commitData.getDeletedFilesList().stream()
-            .map(FileIdentifier::getFilePath)
-            .collect(Collectors.toCollection(HashSet::new));
-
-    stepStart = System.nanoTime();
-    if (deferFileStubs) {
-      pendingCommitContextRegistry.register(
-          new PendingCommitContextRegistry.PendingCommit(
-              commitData.getLandscapeToken(),
-              commitData.getRepositoryName(),
-              commitData.getCommitId(),
-              commit.getId(),
-              commitData.getAnalysisFileCount()));
-      Log.warnf(
-          "Commit %s for repository '%s': received metadata-only CommitData from an outdated "
-              + "analyzer (%d files expected, %d deleted paths). "
-              + "File stubs will not be pre-linked; "
-              + "upgrade the code-analyzer to send file identifiers in CommitData.",
-          commitData.getCommitId(),
-          commitData.getRepositoryName(),
-          commitData.getAnalysisFileCount(),
-          commitData.getDeletedFilesList().size());
-    } else {
-      pendingCommitContextRegistry.unregister(
-          commitData.getLandscapeToken(), commitData.getRepositoryName());
-
-      commitMetricsAccumulator.updatePendingForRepository(
-          session, commitData.getLandscapeToken(), commitData.getRepositoryName());
-
-      fileRevisionRepository.persistCommitFilesInBatches(
-          session,
-          fileContext,
-          commitData.getAddedFilesList(),
-          FileRevisionRepository.CommitFileLinkType.ADDED);
-      linkAddedFilesMs = elapsedMillis(stepStart);
-
-      stepStart = System.nanoTime();
-      fileRevisionRepository.persistCommitFilesInBatches(
-          session,
-          fileContext,
-          commitData.getModifiedFilesList(),
-          FileRevisionRepository.CommitFileLinkType.MODIFIED);
-      linkModifiedFilesMs = elapsedMillis(stepStart);
-
-      if (!commitData.getUnchangedFilesList().isEmpty()) {
-        stepStart = System.nanoTime();
-        fileRevisionRepository.persistCommitFilesInBatches(
-            session,
-            fileContext,
-            commitData.getUnchangedFilesList(),
-            FileRevisionRepository.CommitFileLinkType.CONTAINS);
-        linkUnchangedFilesMs = elapsedMillis(stepStart);
-      }
-
-      if (ParentCommitInheritancePolicy.hasPersistedParentReference(commitData)) {
-        stepStart = System.nanoTime();
-        final int copiedFromParent =
-            fileRevisionRepository.copyUnchangedFilesFromParentCommit(
-                session,
-                new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
-                    commitData.getLandscapeToken(),
-                    commitData.getRepositoryName(),
-                    commitData.getParentCommitId(),
-                    commit.getId(),
-                    addedPaths,
-                    modifiedPaths,
-                    deletedPaths,
-                    requirePersistedParent));
-        copyUnchangedFromParentMs = elapsedMillis(stepStart);
-
-        if (copiedFromParent > 0 && (!addedPaths.isEmpty() || !modifiedPaths.isEmpty())) {
-          stepStart = System.nanoTime();
-          commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
-              session, commit.getId(), commitData.getRepositoryName(), modifiedPaths, addedPaths);
-          unlinkStaleRevisionsMs = elapsedMillis(stepStart);
-        }
-      }
-    }
-
-    stepStart = System.nanoTime();
-    if (!deferFileStubs && !deletedPaths.isEmpty()) {
-      commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(session, commit.getId(), deletedPaths);
-    }
-    final long unlinkDeletedFilesMs = elapsedMillis(stepStart);
-
-    stepStart = System.nanoTime();
-    verifyCommitFileCacheUnlessDeferred(session, commit, deferFileStubs);
-    final long verifyCacheMs = elapsedMillis(stepStart);
-
-    stepStart = System.nanoTime();
+  private void applyCommitTags(
+      final Session session,
+      final CommitData commitData,
+      final Repository repo,
+      final Commit commit) {
     commitData
         .getTagsList()
         .forEach(
@@ -261,54 +219,6 @@ public class CommitServiceImpl implements CommitService {
               commit.addTag(tag);
               repo.addTag(tag);
             });
-    final long tagsMs = elapsedMillis(stepStart);
-
-    stepStart = System.nanoTime();
-    linkParentCommits(session, repo, commit, commitData);
-    final long linkParentCommitsMs = elapsedMillis(stepStart);
-
-    stepStart = System.nanoTime();
-    session.save(List.of(repo, branch, commit));
-    final long finalizeCommitMs = elapsedMillis(stepStart);
-
-    if (!deferFileStubs) {
-      commitMetricsAccumulator.updatePendingForCommit(
-          session,
-          commitData.getLandscapeToken(),
-          commitData.getRepositoryName(),
-          commitData.getCommitId());
-    }
-
-    Log.infof(
-        "persistCommit(commit=%s, repo='%s', deferFileStubs=%s): resolveRepository=%dms,"
-            + " setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms,"
-            + " linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms,"
-            + " copyUnchangedFromParent=%dms, unlinkStaleRevisions(%d)=%dms,"
-            + " unlinkDeletedFiles(%d)=%dms, verifyCache=%dms, tags(%d)=%dms,"
-            + " linkParentCommits=%dms, finalizeCommit=%dms, total=%dms",
-        commitData.getCommitId(),
-        commitData.getRepositoryName(),
-        deferFileStubs,
-        resolveRepositoryMs,
-        setupCommitMs,
-        createFileContextMs,
-        commitData.getAddedFilesList().size(),
-        linkAddedFilesMs,
-        commitData.getModifiedFilesList().size(),
-        linkModifiedFilesMs,
-        commitData.getUnchangedFilesList().size(),
-        linkUnchangedFilesMs,
-        copyUnchangedFromParentMs,
-        addedPaths.size() + modifiedPaths.size(),
-        unlinkStaleRevisionsMs,
-        deletedPaths.size(),
-        unlinkDeletedFilesMs,
-        verifyCacheMs,
-        commitData.getTagsList().size(),
-        tagsMs,
-        linkParentCommitsMs,
-        finalizeCommitMs,
-        elapsedMillis(commitStart));
   }
 
   /**

@@ -207,15 +207,16 @@ public class FileRevisionRepository {
             request.requirePersistedParent());
     if (parentCommitInternalId.isEmpty()) {
       if (request.requirePersistedParent()) {
-        throw new ParentCommitNotReadyException(
-            String.format(
-                "Parent commit %s is not yet available in repository '%s'; cannot inherit"
-                    + " unchanged files for child %d",
-                request.parentCommitHash(), request.repoName(), request.childCommitInternalId()));
+        Log.warnf(
+            "No analyzed parent commit available for %s in repository '%s'; skipping"
+                + " unchanged-file inheritance for child %d",
+            request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
+      } else {
+        Log.debugf(
+            "Parent commit %s not found in repository '%s'; skipping unchanged-file copy to child"
+                + " %d",
+            request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
       }
-      Log.debugf(
-          "Parent commit %s not found in repository '%s'; skipping unchanged-file copy to child %d",
-          request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
       return 0;
     }
 

@@ -8,6 +8,14 @@ public final class CommitFileStubPolicy {
   private CommitFileStubPolicy() {}
 
   /**
+   * Returns {@code true} when the analyzer persisted only commit metadata (for example sampled-out
+   * commits) and no file analysis should be linked or inherited.
+   */
+  public static boolean isMetadataOnlyCommit(final CommitData commitData) {
+    return commitData.getMetadataOnly();
+  }
+
+  /**
    * Returns {@code true} when the analyzer omitted file identifiers and expects stubs to be linked
    * as {@code FileData} arrives.
    */
