@@ -7,7 +7,6 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.Map;
 import java.util.Objects;
 import net.explorviz.landscape.api.v3.model.MetricValue;
-import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
 import net.explorviz.landscape.proto.Language;
 
 /**
@@ -47,17 +46,5 @@ public record BuildingDto(
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);
     Objects.requireNonNull(parentCityId);
-  }
-
-  /** Must be implemented by any object which can be represented as a building during flattening. */
-  public interface BuildingConvertible extends FlatConvertible {
-    default String getLanguage() {
-
-      return null;
-    }
-
-    default Map<String, MetricValue> getMetrics() {
-      return Map.of();
-    }
   }
 }

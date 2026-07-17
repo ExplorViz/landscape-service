@@ -7,10 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.util.Map;
-import net.explorviz.landscape.messaging.SpanConsumer;
+import net.explorviz.landscape.messaging.TelemetryConsumer;
 import net.explorviz.landscape.messaging.TokenEventConsumer;
 import net.explorviz.landscape.proto.CodeDescriptor;
-import net.explorviz.landscape.proto.ParsedSpan;
+import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.proto.EventType;
 import net.explorviz.proto.LandscapeToken;
 import net.explorviz.proto.TokenEvent;
@@ -27,7 +27,7 @@ class TokenEventConsumerTest {
 
   @Inject TokenEventConsumer tokenEventConsumer;
 
-  @Inject SpanConsumer spanConsumer;
+  @Inject TelemetryConsumer telemetryConsumer;
 
   @Inject SessionFactory sessionFactory;
 
@@ -37,7 +37,7 @@ class TokenEventConsumerTest {
   void setUp() {
     session = sessionFactory.openSession();
     resetDatabase(session);
-    persistRuntimeSpan();
+    persistRuntimeCodeEntity();
   }
 
   @Test
@@ -93,22 +93,18 @@ class TokenEventConsumerTest {
     assertTrue(landscapeExists());
   }
 
-  private void persistRuntimeSpan() {
-    final ParsedSpan span =
-        ParsedSpan.newBuilder()
-            .setSpanId("span1")
-            .setTraceId("trace1")
-            .setApplicationName("myApp")
+  private void persistRuntimeCodeEntity() {
+    final TelemetryEntity entity =
+        TelemetryEntity.newBuilder()
             .setLandscapeTokenId(LANDSCAPE_TOKEN)
             .setCodeDescriptor(
                 CodeDescriptor.newBuilder()
+                    .setApplicationName("myApp")
                     .setFilePath("net/explorviz/myApp/MyClass.java")
                     .setFunctionName("myMethod"))
-            .setStartTime(1)
-            .setEndTime(5)
             .build();
 
-    spanConsumer.consume(span.toByteArray());
+    telemetryConsumer.consume(entity.toByteArray());
   }
 
   private boolean landscapeExists() {

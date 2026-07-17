@@ -10,8 +10,8 @@ import org.neo4j.ogm.annotation.Relationship;
  * following responsibilities:
  *
  * <ul>
- *   <li><b>Runtime analysis:</b> Associates the file tree reconstructed from runtime analysis spans
- *       with a specific application name.
+ *   <li><b>Runtime analysis:</b> Associates the file tree reconstructed from runtime analysis
+ *       telemetry with a specific application name.
  *   <li><b>Runtime-Evolution Bridge:</b> Points to the directory within a repository relative to
  *       which all function fully-qualified names from runtime analysis are given. File paths from
  *       runtime data are mostly based on fqns that do not contain the entire path within the

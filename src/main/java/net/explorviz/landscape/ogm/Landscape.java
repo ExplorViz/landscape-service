@@ -17,9 +17,6 @@ public class Landscape {
   @Id private String tokenId;
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
-  private final Set<Trace> traces = new HashSet<>();
-
-  @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final Set<Repository> repositories = new HashSet<>();
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
@@ -35,14 +32,6 @@ public class Landscape {
 
   public String getTokenId() {
     return tokenId;
-  }
-
-  public Set<Trace> getTraces() {
-    return Set.copyOf(traces);
-  }
-
-  public void addTrace(final Trace trace) {
-    traces.add(trace);
   }
 
   public Set<Repository> getRepositories() {

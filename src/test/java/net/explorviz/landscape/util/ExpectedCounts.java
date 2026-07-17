@@ -79,16 +79,6 @@ public class ExpectedCounts {
       return this;
     }
 
-    public Builder spans(long v) {
-      values.put(NodeCountType.SPAN.key(), v);
-      return this;
-    }
-
-    public Builder traces(long v) {
-      values.put(NodeCountType.TRACE.key(), v);
-      return this;
-    }
-
     public Map<String, Long> build() {
       return values;
     }

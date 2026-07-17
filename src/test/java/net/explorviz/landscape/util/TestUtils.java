@@ -16,8 +16,6 @@ public class TestUtils {
       List.of(
           "CREATE CONSTRAINT landscape_token_id IF NOT EXISTS FOR (l:Landscape) REQUIRE l.tokenId"
               + " IS UNIQUE",
-          "CREATE INDEX trace_trace_id IF NOT EXISTS FOR (t:Trace) ON (t.traceId)",
-          "CREATE INDEX span_span_id IF NOT EXISTS FOR (s:Span) ON (s.spanId)",
           "CREATE INDEX directory_name IF NOT EXISTS FOR (d:Directory) ON (d.name)",
           "CREATE INDEX file_revision_hash_name IF NOT EXISTS FOR (f:FileRevision) ON (f.hash,"
               + " f.name)",
@@ -72,6 +70,10 @@ public class TestUtils {
     SCHEMA_STATEMENTS.forEach(statement -> session.query(statement, Map.of()));
   }
 
+  public static void createLandscape(final Session session, final String landscapeTokenId) {
+    session.query("MERGE (l:Landscape {tokenId: $tokenId})", Map.of("tokenId", landscapeTokenId));
+  }
+
   public static Map<String, Object> getNodeCountMap(Session session) {
     Result result =
         session.query(
@@ -88,9 +90,7 @@ public class TestUtils {
               COUNT {(:Clazz)} AS classes,
               COUNT {(:Field)} AS fields,
               COUNT {(:Function)} AS functions,
-              COUNT {(:Parameter)} AS parameters,
-              COUNT {(:Trace)} AS traces,
-              COUNT {(:Span)} AS spans;
+              COUNT {(:Parameter)} AS parameters;
             """,
             Map.of());
 

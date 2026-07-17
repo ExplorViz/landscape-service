@@ -2,19 +2,15 @@ package net.explorviz.landscape.repository;
 
 import com.google.common.collect.Lists;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.explorviz.landscape.ogm.Application;
 import org.neo4j.ogm.session.Session;
-import org.neo4j.ogm.session.SessionFactory;
 
 @ApplicationScoped
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals"})
 public class ApplicationRepository {
-
-  @Inject SessionFactory sessionFactory;
 
   /**
    * Returns the application object with the given name within the landscape with the provided
@@ -38,10 +34,9 @@ public class ApplicationRepository {
 
   /**
    * Returns a list of Application objects hydrated with respect to the file structure generated
-   * from runtime analysis, meaning all files and corresponding directories gathered from trace
-   * analysis are fetched. This includes hydrated functions and classes. A file / class is
-   * considered to be gathered from runtime analysis if it contains a function that is represented
-   * by at least one span. Empty if no Application is matched.
+   * from runtime analysis, meaning all files and corresponding directories gathered from telemetry
+   * analysis are fetched. This includes hydrated functions and classes. Empty if no Application is
+   * matched.
    */
   public List<Application> fetchAllApplicationsHydratedForRuntimeData(
       final Session session, final String landscapeToken) {
@@ -50,14 +45,16 @@ public class ApplicationRepository {
             Application.class,
             """
             MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (func:Function)
+            MATCH p = (a:Application)
+              -[:HAS_ROOT]->(:Directory)
+              -[:CONTAINS]->+(f:FileRevision)
             WHERE
-              (l)-[:CONTAINS]->(:Trace)-[:CONTAINS]->(:Span)-[:REPRESENTS]->(func)
+              (l)-[:CONTAINS]->(a:)
+              AND f.telemetryKey IS NOT NULL
 
-            MATCH p = (a:Application)-[:HAS_ROOT]->(:Directory)-[:CONTAINS]->*(endNode)
-            WHERE
-              func IN nodes(p)
-            UNWIND relationships(p) AS rel
+            MATCH p2 = (f)-[:CONTAINS]->*(endNode)
+
+            UNWIND relationships(p) + relationships(p2) AS rel
             WITH DISTINCT rel AS r
             RETURN startNode(r), r, endNode(r);
             """,

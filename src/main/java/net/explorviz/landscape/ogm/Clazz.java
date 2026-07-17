@@ -26,6 +26,12 @@ public class Clazz implements Comparable<Clazz> {
   private ClassType type;
 
   /**
+   * Identifier for looking up telemetry data related to this class (e.g. for detailed spans). Note
+   * that this can be the same value for different revisions of the same class.
+   */
+  private String telemetryId;
+
+  /**
    * FQNs of superclasses in the form {@code path/to/File.ext::ClassName}. Stored as a node property
    * (string array) rather than graph relationships to avoid per-file DB lookups during ingestion.
    */
