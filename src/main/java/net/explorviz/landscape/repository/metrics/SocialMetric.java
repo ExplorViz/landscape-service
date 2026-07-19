@@ -6,6 +6,7 @@ import java.util.Set;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
+import net.explorviz.landscape.repository.SocialMetricsRepository.RepoTimeBounds;
 
 public abstract class SocialMetric {
 
@@ -13,7 +14,8 @@ public abstract class SocialMetric {
       List<ContributorFileActivity> base,
       List<FileSnapshot> snapshot,
       Set<Long> contributorIds,
-      Set<Long> coreContributorIds) {}
+      Set<Long> coreContributorIds,
+      RepoTimeBounds repoTimeBounds) {}
 
   public abstract String getId();
 

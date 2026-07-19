@@ -24,7 +24,12 @@ public class CommitActivityTest {
       final Set<Long> contributorIds,
       final Set<Long> coreIds) {
     return commitActivity.computeMetric(
-        new MetricInput(fileActivities, snapshotFiles, contributorIds, coreIds));
+        new MetricInput(
+            fileActivities,
+            snapshotFiles,
+            contributorIds,
+            coreIds,
+            new SocialMetricsRepository.RepoTimeBounds(0, 0)));
   }
 
   /** A: alice 2 + bob 1 = 3, B: alice 1. */

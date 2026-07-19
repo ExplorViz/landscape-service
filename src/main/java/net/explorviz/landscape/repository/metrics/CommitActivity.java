@@ -9,6 +9,7 @@ import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.N95Normalizer;
+import net.explorviz.landscape.util.SocialMetricsHelper;
 
 public class CommitActivity extends SocialMetric {
 
@@ -44,7 +45,7 @@ public class CommitActivity extends SocialMetric {
       final List<ContributorFileActivity> base, final Set<Long> contributorIds) {
     final Map<String, Long> commitCountByPath = new HashMap<>();
     for (final ContributorFileActivity row : base) {
-      if (contributorIds.isEmpty() || contributorIds.contains(row.contributorId())) {
+      if (SocialMetricsHelper.includes(contributorIds, row.contributorId())) {
         commitCountByPath.merge(row.path(), row.commits(), Long::sum);
       }
     }

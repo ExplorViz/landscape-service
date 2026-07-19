@@ -13,12 +13,14 @@ import net.explorviz.landscape.api.v3.model.ContributorsDto.TimeRange;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorRepository.ContributorActivity;
+import net.explorviz.landscape.repository.SocialMetricsRepository.RepoTimeBounds;
 import net.explorviz.landscape.repository.metrics.CommitActivity;
 import net.explorviz.landscape.repository.metrics.CoreContributorActivity;
 import net.explorviz.landscape.repository.metrics.KnowledgeSilo;
+import net.explorviz.landscape.repository.metrics.KnowledgeStaleness;
 import net.explorviz.landscape.repository.metrics.SocialMetric;
 import net.explorviz.landscape.repository.metrics.SocialMetric.MetricInput;
-import net.explorviz.landscape.util.CoreContributorHelper;
+import net.explorviz.landscape.util.SocialMetricsHelper;
 import org.neo4j.ogm.session.Session;
 
 @ApplicationScoped
@@ -28,7 +30,11 @@ public class SocialMetricsService {
   @Inject ContributorRepository contributorRepository;
 
   private final List<SocialMetric> metrics =
-      List.of(new CommitActivity(), new CoreContributorActivity(), new KnowledgeSilo());
+      List.of(
+          new CommitActivity(),
+          new CoreContributorActivity(),
+          new KnowledgeSilo(),
+          new KnowledgeStaleness());
 
   //      new KnowledgeSilo(),
   //      new KnowledgeStalenesas()
@@ -47,9 +53,11 @@ public class SocialMetricsService {
         socialMetricsRepository.getFileSnapshots(session, token, repo, commit);
     final List<ContributorActivity> contributorActivities =
         contributorRepository.getContributorData(session, token, repo);
-    final Set<Long> coreIds =
-        CoreContributorHelper.computeCoreContributorIds(contributorActivities);
-    final MetricInput metricInput = new MetricInput(base, snapshot, contributorIds, coreIds);
+    final Set<Long> coreIds = SocialMetricsHelper.computeCoreContributorIds(contributorActivities);
+    final RepoTimeBounds repoTimeBounds =
+        socialMetricsRepository.getRepoTimeBounds(session, token, repo);
+    final MetricInput metricInput =
+        new MetricInput(base, snapshot, contributorIds, coreIds, repoTimeBounds);
 
     final Map<String, Map<Long, MetricScore>> fileScoresByMetricId = new LinkedHashMap<>();
     for (final SocialMetric metric : metrics) {
@@ -77,7 +85,7 @@ public class SocialMetricsService {
       return new ContributorsDto(List.of(), new TimeRange(0L, 0L));
     }
 
-    final Set<Long> coreIds = CoreContributorHelper.computeCoreContributorIds(rows);
+    final Set<Long> coreIds = SocialMetricsHelper.computeCoreContributorIds(rows);
 
     final List<ContributorDto> contributorDtos =
         rows.stream()

@@ -38,6 +38,8 @@ public class SocialMetricsRepository {
              coalesce(f.`metrics.lineCount`, 0) AS loc
       """;
 
+  public record RepoTimeBounds(long initDate, long lastDate) {}
+
   public List<ContributorFileActivity> getBaseAggregation(
       final Session session,
       final String token,
@@ -75,5 +77,19 @@ public class SocialMetricsRepository {
                         (String) r.get("path"),
                         ((Number) r.get("loc")).doubleValue())));
     return rows;
+  }
+
+  public RepoTimeBounds getRepoTimeBounds(
+      final Session session, final String token, final String repo) {
+    final List<RepoTimeBounds> result =
+        session.queryDto(
+            """
+            MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
+              -[:CONTAINS]->(c:Commit)
+            RETURN min(c.commitDate) AS initDate, max(c.commitDate) AS lastDate
+            """,
+            Map.of("token", token, "repo", repo),
+            RepoTimeBounds.class);
+    return result.isEmpty() ? new RepoTimeBounds(0L, 0L) : result.get(0);
   }
 }
