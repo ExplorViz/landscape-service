@@ -22,6 +22,7 @@ import net.explorviz.landscape.proto.CodeDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.FlatLandscapeComparator;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,9 @@ import org.junit.jupiter.api.Test;
 public class CodeTelemetryServiceIntegrationTest {
 
   @InjectKafkaCompanion KafkaCompanion companion;
+
+  @ConfigProperty(name = "mp.messaging.incoming.telemetry-entities.topic")
+  String entitiesTopic;
 
   private static final String DEFAULT_LANDSCAPE_ID = "mytokenvalue";
   private static final String DEFAULT_LANDSCAPE_SECRET = "mytokensecret";
@@ -68,7 +72,7 @@ public class CodeTelemetryServiceIntegrationTest {
     companion
         .produce(String.class, byte[].class)
         .fromRecords(
-            new ProducerRecord<>("telemetry.entities", DEFAULT_LANDSCAPE_ID, entity.toByteArray()))
+            new ProducerRecord<>(entitiesTopic, DEFAULT_LANDSCAPE_ID, entity.toByteArray()))
         .awaitCompletion();
 
     FlatLandscapeDto expectedLandscape =
