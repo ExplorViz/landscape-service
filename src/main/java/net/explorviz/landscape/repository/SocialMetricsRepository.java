@@ -8,6 +8,7 @@ import java.util.Map;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
+@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 @ApplicationScoped
 public class SocialMetricsRepository {
 
@@ -39,6 +40,8 @@ public class SocialMetricsRepository {
       """;
 
   public record RepoTimeBounds(long initDate, long lastDate) {}
+
+  public record MergedPrStats(long prId, long lifetime, long commentCount, List<String> paths) {}
 
   public List<ContributorFileActivity> getBaseAggregation(
       final Session session,
@@ -92,4 +95,66 @@ public class SocialMetricsRepository {
             RepoTimeBounds.class);
     return result.isEmpty() ? new RepoTimeBounds(0L, 0L) : result.get(0);
   }
+
+  public List<MergedPrStats> getMergedPrStats(
+      final Session session, final String token, final String repo) {
+    final List<MergedPrStats> rows = new ArrayList<>();
+
+    session
+        .query(
+            """
+            MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
+                  -[:CONTAINS]->(pr:PullRequest)-[:HAS_VERSION]->(mv:ResourceVersion {state:'MERGED'})
+            MATCH (pr)-[:HAS_VERSION]->(v:ResourceVersion)
+            WITH pr, min(v.creationDate) AS createdAt, min(mv.creationDate) AS mergedAt
+            OPTIONAL MATCH (pr)-[:HAS_VERSION]->(:ResourceVersion)<-[:GENERATES]-(a:ResourceAnnotation)
+              WHERE a.annotationType IN ['COMMENT','REVIEW']
+            WITH pr, createdAt, mergedAt, count(DISTINCT a) AS commentCount
+            MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
+            RETURN id(pr) AS prId, mergedAt - createdAt AS lifetimeMillis,
+                   commentCount, collect(DISTINCT f.filePath) AS paths
+            """,
+            Map.of("token", token, "repo", repo))
+        .queryResults()
+        .forEach(
+            r -> {
+              final List<String> paths = new ArrayList<>();
+              final Object rawPaths = r.get("paths");
+              if (rawPaths instanceof Object[] arr) {
+                for (final Object path : arr) {
+                  paths.add((String) path);
+                }
+              }
+              rows.add(
+                  new MergedPrStats(
+                      ((Number) r.get("prId")).longValue(),
+                      ((Number) r.get("lifetimeMillis")).longValue(),
+                      ((Number) r.get("commentCount")).longValue(),
+                      paths));
+            });
+    return rows;
+  }
+
+  // on hold
+  //  public Map<String, Long> getBugIssueCountByPath(Session session, String token, String repo) {
+  //    final Map<String, Long> bugIssueCountByPath = new HashMap<>();
+  //    session.query(
+  //        """
+  //        MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
+  //              -[:CONTAINS]->(pr:PullRequest)-[:REFERENCES]->(i:Issue)
+  //        WHERE any(l IN i.labels WHERE toLower(l) CONTAINS 'bug')
+  //        MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
+  //        RETURN f.filePath AS path, count(DISTINCT i) AS bugCount
+  //        """,
+  //        Map.of("token", token, "repo", repo))
+  //        .queryResults()
+  //        .forEach( r ->
+  //            bugIssueCountByPath.put(
+  //                ((String) r.get("path")),
+  //                ((Number) r.get("bugCount")).longValue()));
+  //
+  //    return bugIssueCountByPath;
+  //  }
+  //
+
 }

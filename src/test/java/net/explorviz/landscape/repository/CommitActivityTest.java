@@ -29,7 +29,8 @@ public class CommitActivityTest {
             snapshotFiles,
             contributorIds,
             coreIds,
-            new SocialMetricsRepository.RepoTimeBounds(0, 0)));
+            new SocialMetricsRepository.RepoTimeBounds(0, 0),
+            List.of()));
   }
 
   /** A: alice 2 + bob 1 = 3, B: alice 1. */

@@ -41,7 +41,7 @@ public class CommitActivity extends SocialMetric {
     return scoreByFileRevisionId;
   }
 
-  static Map<String, Long> getCommitCountByPath(
+  public static Map<String, Long> getCommitCountByPath(
       final List<ContributorFileActivity> base, final Set<Long> contributorIds) {
     final Map<String, Long> commitCountByPath = new HashMap<>();
     for (final ContributorFileActivity row : base) {

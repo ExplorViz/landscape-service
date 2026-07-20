@@ -13,11 +13,15 @@ import net.explorviz.landscape.api.v3.model.ContributorsDto.TimeRange;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorRepository.ContributorActivity;
+import net.explorviz.landscape.repository.SocialMetricsRepository.MergedPrStats;
 import net.explorviz.landscape.repository.SocialMetricsRepository.RepoTimeBounds;
+import net.explorviz.landscape.repository.metrics.AbandonedKnowledgeSilo;
 import net.explorviz.landscape.repository.metrics.CommitActivity;
+import net.explorviz.landscape.repository.metrics.CommitCount;
 import net.explorviz.landscape.repository.metrics.CoreContributorActivity;
 import net.explorviz.landscape.repository.metrics.KnowledgeSilo;
 import net.explorviz.landscape.repository.metrics.KnowledgeStaleness;
+import net.explorviz.landscape.repository.metrics.ReviewFriction;
 import net.explorviz.landscape.repository.metrics.SocialMetric;
 import net.explorviz.landscape.repository.metrics.SocialMetric.MetricInput;
 import net.explorviz.landscape.util.SocialMetricsHelper;
@@ -31,13 +35,13 @@ public class SocialMetricsService {
 
   private final List<SocialMetric> metrics =
       List.of(
+          new CommitCount(),
           new CommitActivity(),
           new CoreContributorActivity(),
           new KnowledgeSilo(),
-          new KnowledgeStaleness());
-
-  //      new KnowledgeSilo(),
-  //      new KnowledgeStalenesas()
+          new KnowledgeStaleness(),
+          new AbandonedKnowledgeSilo(),
+          new ReviewFriction());
 
   public List<SocialMetricDto> calculateMetrics(
       final Session session,
@@ -56,8 +60,10 @@ public class SocialMetricsService {
     final Set<Long> coreIds = SocialMetricsHelper.computeCoreContributorIds(contributorActivities);
     final RepoTimeBounds repoTimeBounds =
         socialMetricsRepository.getRepoTimeBounds(session, token, repo);
+    final List<MergedPrStats> mergedPrStats =
+        socialMetricsRepository.getMergedPrStats(session, token, repo);
     final MetricInput metricInput =
-        new MetricInput(base, snapshot, contributorIds, coreIds, repoTimeBounds);
+        new MetricInput(base, snapshot, contributorIds, coreIds, repoTimeBounds, mergedPrStats);
 
     final Map<String, Map<Long, MetricScore>> fileScoresByMetricId = new LinkedHashMap<>();
     for (final SocialMetric metric : metrics) {
