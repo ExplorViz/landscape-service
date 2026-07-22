@@ -9,6 +9,7 @@ import java.util.Set;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.metrics.CommitActivity;
 import net.explorviz.landscape.repository.metrics.SocialMetric.MetricInput;
+import net.explorviz.landscape.util.MetricNormalizer.NormalizationOptions;
 import org.junit.jupiter.api.Test;
 
 public class CommitActivityTest {
@@ -30,7 +31,9 @@ public class CommitActivityTest {
             contributorIds,
             coreIds,
             new SocialMetricsRepository.RepoTimeBounds(0, 0),
-            List.of()));
+            List.of(),
+            new NormalizationOptions(
+                NormalizationOptions.LEGACY.logScale(), NormalizationOptions.LEGACY.quantile())));
   }
 
   /** A: alice 2 + bob 1 = 3, B: alice 1. */

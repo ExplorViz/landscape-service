@@ -22,7 +22,8 @@ public class AbandonedKnowledgeSilo extends SocialMetric {
             Set.of(), // empty contributor set so no filtering
             input.coreContributorIds(),
             input.repoTimeBounds(),
-            input.mergedPrStats());
+            input.mergedPrStats(),
+            input.normalizationOpts());
     final KnowledgeSilo knowledgeSilo = new KnowledgeSilo();
     final KnowledgeStaleness knowledgeStaleness = new KnowledgeStaleness();
     final Map<Long, MetricScore> knowledgeSiloScores = knowledgeSilo.computeMetric(unfilteredInput);

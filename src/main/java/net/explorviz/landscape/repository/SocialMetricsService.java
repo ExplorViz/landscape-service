@@ -24,6 +24,7 @@ import net.explorviz.landscape.repository.metrics.KnowledgeStaleness;
 import net.explorviz.landscape.repository.metrics.ReviewFriction;
 import net.explorviz.landscape.repository.metrics.SocialMetric;
 import net.explorviz.landscape.repository.metrics.SocialMetric.MetricInput;
+import net.explorviz.landscape.util.MetricNormalizer.NormalizationOptions;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 import org.neo4j.ogm.session.Session;
 
@@ -50,7 +51,8 @@ public class SocialMetricsService {
       final Long from,
       final Long to,
       final Set<Long> contributorIds,
-      final String commit) {
+      final String commit,
+      final NormalizationOptions normalizationOpts) {
     final List<ContributorFileActivity> base =
         socialMetricsRepository.getBaseAggregation(session, token, repo, from, to);
     final List<FileSnapshot> snapshot =
@@ -63,7 +65,14 @@ public class SocialMetricsService {
     final List<MergedPrStats> mergedPrStats =
         socialMetricsRepository.getMergedPrStats(session, token, repo);
     final MetricInput metricInput =
-        new MetricInput(base, snapshot, contributorIds, coreIds, repoTimeBounds, mergedPrStats);
+        new MetricInput(
+            base,
+            snapshot,
+            contributorIds,
+            coreIds,
+            repoTimeBounds,
+            mergedPrStats,
+            normalizationOpts);
 
     final Map<String, Map<Long, MetricScore>> fileScoresByMetricId = new LinkedHashMap<>();
     for (final SocialMetric metric : metrics) {

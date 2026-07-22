@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Set;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto;
 import net.explorviz.landscape.repository.SocialMetricsService;
+import net.explorviz.landscape.util.MetricNormalizer.NormalizationOptions;
 import org.jboss.resteasy.reactive.RestPath;
 import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.session.Session;
@@ -31,7 +32,9 @@ public class SocialMetricsResource {
       @RestQuery final String commit,
       @RestQuery final Long from,
       @RestQuery final Long to,
-      @RestQuery final List<Long> contributors) {
+      @RestQuery final List<Long> contributors,
+      @RestQuery final Boolean logScale,
+      @RestQuery final Double quantile) {
 
     if (commit == null || commit.isBlank()) {
       throw new BadRequestException("commit cannot be null or blank");
@@ -42,6 +45,10 @@ public class SocialMetricsResource {
     final long fromTimestamp = Objects.requireNonNullElse(from, Long.MIN_VALUE);
     final long toTimestamp = Objects.requireNonNullElse(to, Long.MAX_VALUE);
     final Set<Long> contributorIds = contributors == null ? Set.of() : Set.copyOf(contributors);
+    final NormalizationOptions normalizationOpts =
+        new NormalizationOptions(
+            Objects.requireNonNullElse(logScale, NormalizationOptions.DEFAULT.logScale()),
+            Objects.requireNonNullElse(quantile, NormalizationOptions.DEFAULT.quantile()));
 
     return socialMetricsService.calculateMetrics(
         session,
@@ -50,6 +57,7 @@ public class SocialMetricsResource {
         fromTimestamp,
         toTimestamp,
         contributorIds,
-        commit);
+        commit,
+        normalizationOpts);
   }
 }

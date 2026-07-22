@@ -8,6 +8,7 @@ import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.repository.SocialMetricsRepository.MergedPrStats;
 import net.explorviz.landscape.repository.SocialMetricsRepository.RepoTimeBounds;
+import net.explorviz.landscape.util.MetricNormalizer.NormalizationOptions;
 
 public abstract class SocialMetric {
 
@@ -17,7 +18,8 @@ public abstract class SocialMetric {
       Set<Long> contributorIds,
       Set<Long> coreContributorIds,
       RepoTimeBounds repoTimeBounds,
-      List<MergedPrStats> mergedPrStats) {}
+      List<MergedPrStats> mergedPrStats,
+      NormalizationOptions normalizationOpts) {}
 
   public abstract String getId();
 

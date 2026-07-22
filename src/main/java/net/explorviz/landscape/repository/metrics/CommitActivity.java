@@ -8,7 +8,7 @@ import java.util.Set;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
-import net.explorviz.landscape.util.N95Normalizer;
+import net.explorviz.landscape.util.MetricNormalizer;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
 public class CommitActivity extends SocialMetric {
@@ -30,7 +30,8 @@ public class CommitActivity extends SocialMetric {
       rawScores[i] = commitCountByPath.getOrDefault(metricInput.snapshot().get(i).path(), 0L);
     }
 
-    final N95Normalizer normalizer = new N95Normalizer(rawScores);
+    final MetricNormalizer normalizer =
+        new MetricNormalizer(rawScores, metricInput.normalizationOpts());
 
     final Map<Long, MetricScore> scoreByFileRevisionId = new LinkedHashMap<>();
     for (int i = 0; i < metricInput.snapshot().size(); i++) {

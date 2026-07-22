@@ -6,7 +6,7 @@ import java.util.Map;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.repository.SocialMetricsRepository.MergedPrStats;
-import net.explorviz.landscape.util.N95Normalizer;
+import net.explorviz.landscape.util.MetricNormalizer;
 
 public class ReviewFriction extends SocialMetric {
 
@@ -29,8 +29,10 @@ public class ReviewFriction extends SocialMetric {
       comments[i] = prs.get(i).commentCount();
     }
 
-    final N95Normalizer lifeNormalizer = new N95Normalizer(lifetimes);
-    final N95Normalizer commentNormalizer = new N95Normalizer(comments);
+    final MetricNormalizer lifeNormalizer =
+        new MetricNormalizer(lifetimes, input.normalizationOpts());
+    final MetricNormalizer commentNormalizer =
+        new MetricNormalizer(comments, input.normalizationOpts());
 
     final Map<String, Integer> countByPath = new LinkedHashMap<>();
     final Map<String, Double> sumByPath = new LinkedHashMap<>();
