@@ -1,11 +1,14 @@
 package net.explorviz.landscape.ogm;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
 import org.neo4j.ogm.annotation.NodeEntity;
+import org.neo4j.ogm.annotation.Properties;
 import org.neo4j.ogm.annotation.Relationship;
 import org.neo4j.ogm.annotation.typeconversion.DateLong;
 
@@ -49,6 +52,15 @@ public class Commit {
   @Relationship(type = "AUTHORED", direction = Relationship.Direction.INCOMING)
   private Contributor author;
 
+  /**
+   * Accumulated commit metrics, computed once every linked file revision has {@code hasFileData =
+   * true}. Includes {@code fileCount} (number of linked {@link FileRevision} nodes) and sums of
+   * each {@code metrics.*} property across those file revisions.
+   */
+  @Properties private final Map<String, Double> metrics = new HashMap<>();
+
+  private boolean hasAccumulatedMetrics;
+
   public Commit() {
     // Empty constructor required by Neo4j OGM
   }
@@ -79,6 +91,10 @@ public class Commit {
     for (final FileRevision fileRevision : fileRevisions) {
       modifiedFileRevisions.add(fileRevision);
     }
+  }
+
+  public Long getId() {
+    return id;
   }
 
   public String getHash() {
@@ -139,5 +155,22 @@ public class Commit {
 
   public void setAuthor(final Contributor author) {
     this.author = author;
+  }
+
+  public Map<String, Double> getMetrics() {
+    return Map.copyOf(metrics);
+  }
+
+  public void setMetrics(final Map<String, Double> metrics) {
+    this.metrics.clear();
+    this.metrics.putAll(metrics);
+  }
+
+  public boolean isHasAccumulatedMetrics() {
+    return hasAccumulatedMetrics;
+  }
+
+  public void setHasAccumulatedMetrics(final boolean hasAccumulatedMetrics) {
+    this.hasAccumulatedMetrics = hasAccumulatedMetrics;
   }
 }

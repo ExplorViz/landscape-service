@@ -9,12 +9,14 @@ public record FileDetailedDto(
     String name,
     String language,
     String packageName,
+    List<String> importNames,
     int addedLines,
     int modifiedLines,
     int deletedLines,
     Map<String, Double> metrics,
     List<ClazzDto> classes,
-    List<FunctionDto> functions) {
+    List<FunctionDto> functions,
+    String fileUrl) {
   @RegisterForReflection
   public record ClazzDto(
       String name,

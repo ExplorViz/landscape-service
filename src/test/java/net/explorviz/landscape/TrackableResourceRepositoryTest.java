@@ -300,6 +300,50 @@ class TrackableResourceRepositoryTest {
     assertEquals("ver-B", annC.getUsedResource().getExternalId());
   }
 
+  @Test
+  void shouldLinkVersionsWithIdenticalTimestampsInsteadOfForking() {
+    final Session session = sessionFactory.openSession();
+    final String tokenId = "token-tie";
+    final String repoName = "repo-tie";
+    setupGraph(session, tokenId, repoName);
+    Issue issue = createIssue(session, 600, "Issue 600");
+    linkIssueToRepo(session, repoName, 600);
+
+    Contributor tester = new Contributor("tester");
+    Instant tieTime = Instant.parse("2026-05-13T10:00:00Z");
+
+    // Event X and Event Y arrive with the exact same timestamp (e.g. merge+close
+    // reported together).
+    trackableResourceRepository.addAnnotationEvent(
+        session,
+        issue,
+        createAnnotation(tester, "ann-X", AnnotationType.CREATE, tieTime),
+        createVersion("ver-X", ResourceState.OPEN, tieTime));
+
+    trackableResourceRepository.addAnnotationEvent(
+        session,
+        issue,
+        createAnnotation(tester, "ann-Y", AnnotationType.CLOSE, tieTime),
+        createVersion("ver-Y", ResourceState.CLOSED, tieTime));
+
+    session.clear();
+
+    Optional<Issue> found =
+        trackableResourceRepository.findByNumber(session, Issue.class, 600, repoName, tokenId);
+    Issue finalIssue = found.get();
+    assertEquals(2, finalIssue.getVersions().size());
+
+    ResourceVersion verY =
+        session.queryForObject(
+            ResourceVersion.class,
+            "MATCH (v:ResourceVersion {externalId: 'ver-Y'}) RETURN v",
+            Map.of());
+    ResourceVersion loadedY = session.load(ResourceVersion.class, verY.getId(), 1);
+
+    assertNotNull(loadedY.getDerivedFrom());
+    assertEquals("ver-X", loadedY.getDerivedFrom().getExternalId());
+  }
+
   private void linkIssueToRepo(Session session, String repoName, int number) {
     session.query(
         "MATCH (r:Repository {name: $repoName}), (i:Issue {number: $number}) MERGE"

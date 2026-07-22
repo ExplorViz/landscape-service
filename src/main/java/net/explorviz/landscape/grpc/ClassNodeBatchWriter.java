@@ -1,6 +1,7 @@
 package net.explorviz.landscape.grpc;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,64 +9,99 @@ import java.util.Map;
 import net.explorviz.landscape.proto.ClassData;
 import org.neo4j.ogm.session.Session;
 
-/** Creates {@code Clazz} nodes for a batch of files, processing one class-depth level per query. */
+/**
+ * Creates {@code Clazz} nodes for a batch of files in exactly two round-trips regardless of nesting
+ * depth.
+ *
+ * <ol>
+ *   <li>CREATE all {@code Clazz} nodes for the entire batch (no MATCH), collecting every node id.
+ *   <li>Wire every {@code CONTAINS} relationship in a single UNWIND (both FileRevision→Clazz and
+ *       Clazz→Clazz), using the ids returned from step 1.
+ * </ol>
+ *
+ * <p>The previous depth-level loop required one round-trip per nesting level (O(maxDepth + 1)).
+ * Deep inner classes — {@code A { B { C } } } — needed 3 queries; now always 2.
+ */
 @ApplicationScoped
 public class ClassNodeBatchWriter {
 
-  private static final String CREATE_CLASSES_ON_FILE_REVISION =
-      """
-      UNWIND $rows AS row
-      MATCH (parent:FileRevision) WHERE id(parent) = row.parentId
-      CREATE (parent)-[:CONTAINS]->(cl:Clazz {name: row.name})
-      SET cl += row.props
-      RETURN row.batchKey AS batchKey, id(cl) AS clazzId
-      """;
+  @Inject FileDataInsertProperties fileDataInsertProperties;
 
-  private static final String CREATE_CLASSES_ON_CLAZZ =
+  private static final String CREATE_CLAZZ_NODES =
       """
       UNWIND $rows AS row
-      MATCH (parent:Clazz) WHERE id(parent) = row.parentId
-      CREATE (parent)-[:CONTAINS]->(cl:Clazz {name: row.name})
-      SET cl += row.props
+      CREATE (cl:Clazz)
+      SET cl = row.props
       RETURN row.batchKey AS batchKey, id(cl) AS clazzId
       """;
 
   /**
-   * Creates all {@code Clazz} nodes in {@code allPending}, processing each depth level in a single
-   * UNWIND query. Returns a map from each class's batch key to its Neo4j node ID.
+   * Both lookups are label-free id seeks (O(1) each) so this query scales with batch size, not with
+   * graph size.
+   */
+  private static final String WIRE_CLAZZ_RELATIONSHIPS =
+      """
+      UNWIND $rows AS row
+      MATCH (parent) WHERE id(parent) = row.parentId
+      MATCH (cl)     WHERE id(cl)     = row.clazzId
+      CREATE (parent)-[:CONTAINS]->(cl)
+      """;
+
+  /**
+   * Creates all {@code Clazz} nodes in {@code allPending} and wires their {@code CONTAINS}
+   * relationships in exactly two UNWIND passes. Returns a map from each class's batch key to its
+   * Neo4j node id.
    */
   Map<String, Long> createClassesByDepth(
       final Session session, final List<PendingClass> allPending) {
-    final int maxDepth = allPending.stream().mapToInt(PendingClass::depth).max().orElse(-1);
-    final Map<String, Long> clazzIds = new LinkedHashMap<>();
+    if (allPending.isEmpty()) {
+      return new LinkedHashMap<>();
+    }
 
-    for (int depth = 0; depth <= maxDepth; depth++) {
-      final int currentDepth = depth;
-      final List<Map<String, Object>> rows = new ArrayList<>();
+    final Map<String, Long> clazzIds = createAllClazzNodes(session, allPending);
+    wireAllRelationships(session, allPending, clazzIds);
+    return clazzIds;
+  }
 
-      for (final PendingClass pc : allPending) {
-        if (pc.depth() != currentDepth) {
-          continue;
-        }
-        final long parentId = depth == 0 ? pc.parentFileRevId() : clazzIds.get(pc.parentBatchKey());
-        final Map<String, Object> row = new LinkedHashMap<>();
-        row.put("batchKey", pc.batchKey());
-        row.put("parentId", parentId);
-        row.put("name", pc.data().getName());
-        row.put("props", buildClazzProps(pc.data()));
-        rows.add(row);
-      }
+  private Map<String, Long> createAllClazzNodes(
+      final Session session, final List<PendingClass> allPending) {
+    final List<Map<String, Object>> rows = new ArrayList<>(allPending.size());
+    for (final PendingClass pc : allPending) {
+      final Map<String, Object> row = new LinkedHashMap<>();
+      row.put("batchKey", pc.batchKey());
+      row.put("props", buildClazzProps(pc.data()));
+      rows.add(row);
+    }
 
-      if (rows.isEmpty()) {
-        continue;
-      }
-      final String query = depth == 0 ? CREATE_CLASSES_ON_FILE_REVISION : CREATE_CLASSES_ON_CLAZZ;
+    final Map<String, Long> clazzIds = new LinkedHashMap<>(allPending.size() * 2);
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
-          .query(query, Map.of("rows", rows))
+          .query(CREATE_CLAZZ_NODES, Map.of("rows", chunk))
           .queryResults()
-          .forEach(row -> clazzIds.put((String) row.get("batchKey"), (Long) row.get("clazzId")));
+          .forEach(r -> clazzIds.put((String) r.get("batchKey"), (Long) r.get("clazzId")));
     }
     return clazzIds;
+  }
+
+  private void wireAllRelationships(
+      final Session session,
+      final List<PendingClass> allPending,
+      final Map<String, Long> clazzIds) {
+    final List<Map<String, Object>> rows = new ArrayList<>(allPending.size());
+    for (final PendingClass pc : allPending) {
+      final long parentId =
+          pc.depth() == 0 ? pc.parentFileRevId() : clazzIds.get(pc.parentBatchKey());
+      final Map<String, Object> row = new LinkedHashMap<>();
+      row.put("parentId", parentId);
+      row.put("clazzId", clazzIds.get(pc.batchKey()));
+      rows.add(row);
+    }
+
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
+      session.query(WIRE_CLAZZ_RELATIONSHIPS, Map.of("rows", chunk));
+    }
   }
 
   /**
@@ -91,6 +127,7 @@ public class ClassNodeBatchWriter {
 
   private static Map<String, Object> buildClazzProps(final ClassData cd) {
     final Map<String, Object> props = new LinkedHashMap<>();
+    props.put("name", cd.getName());
     props.put("type", cd.getType().name());
     props.put("modifiers", cd.getModifiersList());
     props.put("superclassFqns", cd.getSuperclassesList());

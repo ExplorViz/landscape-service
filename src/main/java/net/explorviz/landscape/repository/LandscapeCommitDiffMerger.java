@@ -63,10 +63,7 @@ final class LandscapeCommitDiffMerger {
       final Map<String, T> targetMap,
       final Map<String, String> idMap) {
     if (firstNode != null && secondNode != null) {
-      final CommitComparison comp =
-          LandscapeNodeMetadata.getId(firstNode).equals(LandscapeNodeMetadata.getId(secondNode))
-              ? CommitComparison.UNCHANGED
-              : CommitComparison.MODIFIED;
+      final CommitComparison comp = comparisonForPair(firstNode, secondNode);
       targetMap.put(
           LandscapeNodeMetadata.getId(secondNode),
           withComparison(secondNode, firstNode, comp, idMap));
@@ -96,5 +93,26 @@ final class LandscapeCommitDiffMerger {
       return (T) BuildingCommitDiffApplier.apply(d, (BuildingDto) otherDto, comp, idMap);
     }
     return dto;
+  }
+
+  private static <T> CommitComparison comparisonForPair(final T firstNode, final T secondNode) {
+    if (firstNode instanceof BuildingDto firstBuilding
+        && secondNode instanceof BuildingDto secondBuilding
+        && sameBuildingIdentity(firstBuilding, secondBuilding)) {
+      return CommitComparison.UNCHANGED;
+    }
+    return LandscapeNodeMetadata.getId(firstNode).equals(LandscapeNodeMetadata.getId(secondNode))
+        ? CommitComparison.UNCHANGED
+        : CommitComparison.MODIFIED;
+  }
+
+  private static boolean sameBuildingIdentity(
+      final BuildingDto firstBuilding, final BuildingDto secondBuilding) {
+    if (firstBuilding.flatBaseModel().id().equals(secondBuilding.flatBaseModel().id())) {
+      return true;
+    }
+    final String firstHash = firstBuilding.fileHash();
+    final String secondHash = secondBuilding.fileHash();
+    return firstHash != null && firstHash.equals(secondHash);
   }
 }

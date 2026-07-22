@@ -11,21 +11,38 @@ import net.explorviz.landscape.ogm.Clazz;
 import net.explorviz.landscape.ogm.Field;
 import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Function;
+import net.explorviz.landscape.util.RepositoryFileUrlBuilder;
 
 @ApplicationScoped
 public class FileDetailedMapper {
 
-  public FileDetailedDto map(final FileRevision fileRevision) {
+  public FileDetailedDto map(final FileDetailedContext context) {
+    return map(context, null);
+  }
+
+  public FileDetailedDto map(final FileDetailedContext context, final String requestedCommitHash) {
+    final FileRevision fileRevision = context.fileRevision();
+    final String commitHashForUrl =
+        requestedCommitHash != null && !requestedCommitHash.isBlank()
+            ? requestedCommitHash
+            : context.commitHash();
+    final String fileUrl =
+        RepositoryFileUrlBuilder.buildFileUrl(
+                context.remoteUrl(), commitHashForUrl, context.fqn(), context.repositoryName())
+            .orElse(null);
+
     return new FileDetailedDto(
         fileRevision.getName(),
         fileRevision.getLanguage(),
         fileRevision.getPackageName(),
+        List.copyOf(fileRevision.getImportNames()),
         fileRevision.getAddedLines(),
         fileRevision.getModifiedLines(),
         fileRevision.getDeletedLines(),
         fileRevision.getMetrics(),
         fileRevision.getClasses().stream().map(this::mapClazz).collect(Collectors.toList()),
-        fileRevision.getFunctions().stream().map(this::mapFunction).collect(Collectors.toList()));
+        fileRevision.getFunctions().stream().map(this::mapFunction).collect(Collectors.toList()),
+        fileUrl);
   }
 
   private ClazzDto mapClazz(final Clazz clazz) {

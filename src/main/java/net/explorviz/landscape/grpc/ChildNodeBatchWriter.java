@@ -1,6 +1,7 @@
 package net.explorviz.landscape.grpc;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,27 +20,20 @@ import org.neo4j.ogm.session.Session;
 @SuppressWarnings("PMD.AvoidDuplicateLiterals")
 public class ChildNodeBatchWriter {
 
+  @Inject FileDataInsertProperties fileDataInsertProperties;
+
   private static final String CREATE_FIELDS =
       """
       UNWIND $rows AS row
-      MATCH (parent:Clazz) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(fi:Field {name: row.name, type: row.type})
       SET fi.modifiers = row.modifiers
       """;
 
-  private static final String CREATE_FUNCTIONS_ON_FILE_REVISION =
+  private static final String CREATE_FUNCTIONS =
       """
       UNWIND $rows AS row
-      MATCH (parent:FileRevision) WHERE id(parent) = row.parentId
-      CREATE (parent)-[:CONTAINS]->(func:Function {name: row.name})
-      SET func += row.props
-      RETURN row.batchKey AS batchKey, id(func) AS functionId
-      """;
-
-  private static final String CREATE_FUNCTIONS_ON_CLAZZ =
-      """
-      UNWIND $rows AS row
-      MATCH (parent:Clazz) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(func:Function {name: row.name})
       SET func += row.props
       RETURN row.batchKey AS batchKey, id(func) AS functionId
@@ -48,7 +42,7 @@ public class ChildNodeBatchWriter {
   private static final String CREATE_PARAMETERS =
       """
       UNWIND $rows AS row
-      MATCH (parent:Function) WHERE id(parent) = row.parentId
+      MATCH (parent) WHERE id(parent) = row.parentId
       CREATE (parent)-[:CONTAINS]->(p:Parameter {name: row.name, type: row.type})
       SET p.modifiers = row.modifiers
       """;
@@ -71,8 +65,9 @@ public class ChildNodeBatchWriter {
         rows.add(row);
       }
     }
-    if (!rows.isEmpty()) {
-      session.query(CREATE_FIELDS, Map.of("rows", rows));
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
+      session.query(CREATE_FIELDS, Map.of("rows", chunk));
     }
   }
 
@@ -91,9 +86,10 @@ public class ChildNodeBatchWriter {
         rows.add(buildFuncRow(classFuncKey(pc.batchKey(), i, fn), parentId, fn));
       }
     }
-    if (!rows.isEmpty()) {
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
-          .query(CREATE_FUNCTIONS_ON_CLAZZ, Map.of("rows", rows))
+          .query(CREATE_FUNCTIONS, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
@@ -115,9 +111,10 @@ public class ChildNodeBatchWriter {
                 fileRevFuncKey(FileDataBatchWriter.makeBatchKey(file), i, fn), parentId, fn));
       }
     }
-    if (!rows.isEmpty()) {
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session
-          .query(CREATE_FUNCTIONS_ON_FILE_REVISION, Map.of("rows", rows))
+          .query(CREATE_FUNCTIONS, Map.of("rows", chunk))
           .queryResults()
           .forEach(
               row -> functionIds.put((String) row.get("batchKey"), (Long) row.get("functionId")));
@@ -134,8 +131,9 @@ public class ChildNodeBatchWriter {
     final List<Map<String, Object>> rows = new ArrayList<>();
     collectClassFuncParamRows(allPending, functionIds, rows);
     collectFileRevFuncParamRows(files, functionIds, rows);
-    if (!rows.isEmpty()) {
-      session.query(CREATE_PARAMETERS, Map.of("rows", rows));
+    for (final List<Map<String, Object>> chunk :
+        FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
+      session.query(CREATE_PARAMETERS, Map.of("rows", chunk));
     }
   }
 

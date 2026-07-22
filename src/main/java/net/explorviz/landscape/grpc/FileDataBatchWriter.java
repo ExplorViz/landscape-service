@@ -1,14 +1,14 @@
 package net.explorviz.landscape.grpc;
 
-import io.grpc.Status;
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import net.explorviz.landscape.proto.FileData;
+import net.explorviz.landscape.repository.FileRevisionBatchResolver;
 import org.neo4j.ogm.session.Session;
 
 /**
@@ -16,29 +16,20 @@ import org.neo4j.ogm.session.Session;
  * UNWIND} Cypher queries — one query per node type — rather than relying on OGM's per-entity
  * cascade save.
  *
- * <p>For a batch of N files, this produces O(max_class_depth + 6) bolt round-trips regardless of N,
+ * <p>For a batch of N files, this produces O(8) bolt round-trips regardless of N or nesting depth,
  * compared with the OGM approach's O(12 × N) round-trips. Orchestration is split across {@link
  * ClassNodeBatchWriter} and {@link ChildNodeBatchWriter} to keep each class focused.
+ *
+ * <p>Large row lists are split into sub-batches of at most {@link
+ * FileDataInsertProperties#getChunkSize()} rows before being sent to Neo4j. This bounds the Bolt
+ * parameter payload per call and keeps Neo4j's query planning cost O(chunk) rather than O(N).
  */
 @ApplicationScoped
 public class FileDataBatchWriter {
 
-  private static final String MATCH_FILE_REVISIONS =
-      """
-      UNWIND $rows AS row
-      MATCH (f:FileRevision {repoName: row.repoName, filePath: row.filePath, hash: row.hash})
-      RETURN row.batchKey AS batchKey, id(f) AS fileRevId
-      """;
-
-  private static final String UPDATE_FILE_REVISIONS =
-      """
-      UNWIND $rows AS row
-      MATCH (f:FileRevision) WHERE id(f) = row.fileRevId
-      SET f += row.props
-      """;
-
   @Inject ClassNodeBatchWriter classNodeWriter;
   @Inject ChildNodeBatchWriter childNodeWriter;
+  @Inject FileRevisionBatchResolver fileRevisionResolver;
 
   /**
    * Persists all files in {@code files} within the already-open {@code session}. The caller is
@@ -49,72 +40,62 @@ public class FileDataBatchWriter {
       return;
     }
 
-    final Map<String, Long> fileRevIds = lookupFileRevisions(session, files);
-    validateAllFilesFound(files, fileRevIds);
-    updateFileRevisions(session, files, fileRevIds);
+    final long batchStart = System.nanoTime();
+    long stepStart = batchStart;
 
+    final Map<String, Long> fileRevIds = fileRevisionResolver.lookupFileRevisions(session, files);
+    final long lookupFileRevisionsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
+    fileRevisionResolver.validateAllFilesFound(files, fileRevIds);
+    final long validateAllFilesFoundMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
+    fileRevisionResolver.updateFileRevisions(session, files, fileRevIds);
+    final long updateFileRevisionsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     final List<PendingClass> allPending = collectAllClasses(files, fileRevIds);
-    final Map<String, Long> clazzIds = classNodeWriter.createClassesByDepth(session, allPending);
+    final long collectAllClassesMs = elapsedMillis(stepStart);
 
+    stepStart = System.nanoTime();
+    final Map<String, Long> clazzIds = classNodeWriter.createClassesByDepth(session, allPending);
+    final long createClassesMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     childNodeWriter.createFields(session, allPending, clazzIds);
+    final long createFieldsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     final Map<String, Long> functionIds = new LinkedHashMap<>();
     childNodeWriter.createClassFunctions(session, allPending, clazzIds, functionIds);
+    final long createClassFunctionsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     childNodeWriter.createFileRevFunctions(session, files, fileRevIds, functionIds);
+    final long createFileRevFunctionsMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     childNodeWriter.createAllParameters(session, allPending, files, functionIds);
+    final long createAllParametersMs = elapsedMillis(stepStart);
+
+    Log.infof(
+        "persistBatch(%d files): lookupFileRevisions=%dms, validateAllFilesFound=%dms, "
+            + "updateFileRevisions=%dms, collectAllClasses=%dms, createClasses=%dms, "
+            + "createFields=%dms, createClassFunctions=%dms, createFileRevFunctions=%dms, "
+            + "createAllParameters=%dms, total=%dms",
+        files.size(),
+        lookupFileRevisionsMs,
+        validateAllFilesFoundMs,
+        updateFileRevisionsMs,
+        collectAllClassesMs,
+        createClassesMs,
+        createFieldsMs,
+        createClassFunctionsMs,
+        createFileRevFunctionsMs,
+        createAllParametersMs,
+        elapsedMillis(batchStart));
   }
-
-  // ── FileRevision lookup and update ───────────────────────────────────────
-
-  private Map<String, Long> lookupFileRevisions(final Session session, final List<FileData> files) {
-    final List<Map<String, Object>> rows =
-        files.stream()
-            .map(
-                f -> {
-                  final Map<String, Object> row = new LinkedHashMap<>();
-                  row.put("batchKey", makeBatchKey(f));
-                  row.put("repoName", f.getRepositoryName());
-                  row.put("filePath", f.getFilePath());
-                  row.put("hash", f.getFileHash());
-                  return row;
-                })
-            .collect(Collectors.toList());
-
-    final Map<String, Long> result = new LinkedHashMap<>();
-    session
-        .query(MATCH_FILE_REVISIONS, Map.of("rows", rows))
-        .queryResults()
-        .forEach(row -> result.put((String) row.get("batchKey"), (Long) row.get("fileRevId")));
-    return result;
-  }
-
-  private void validateAllFilesFound(
-      final List<FileData> files, final Map<String, Long> fileRevIds) {
-    for (final FileData file : files) {
-      if (!fileRevIds.containsKey(makeBatchKey(file))) {
-        throw Status.FAILED_PRECONDITION
-            .withDescription(
-                "No corresponding file was sent before in CommitData: " + file.getFilePath())
-            .asRuntimeException();
-      }
-    }
-  }
-
-  private void updateFileRevisions(
-      final Session session, final List<FileData> files, final Map<String, Long> fileRevIds) {
-    final List<Map<String, Object>> rows =
-        files.stream()
-            .map(
-                f -> {
-                  final Map<String, Object> row = new LinkedHashMap<>();
-                  row.put("fileRevId", fileRevIds.get(makeBatchKey(f)));
-                  row.put("props", buildFileRevisionProps(f));
-                  return row;
-                })
-            .collect(Collectors.toList());
-    session.query(UPDATE_FILE_REVISIONS, Map.of("rows", rows));
-  }
-
-  // ── Class tree collection ─────────────────────────────────────────────────
 
   private List<PendingClass> collectAllClasses(
       final List<FileData> files, final Map<String, Long> fileRevIds) {
@@ -127,27 +108,23 @@ public class FileDataBatchWriter {
     return acc;
   }
 
-  // ── Property builder ─────────────────────────────────────────────────────
-
-  static Map<String, Object> buildFileRevisionProps(final FileData f) {
-    final Map<String, Object> props = new LinkedHashMap<>();
-    props.put("language", f.getLanguage().toString());
-    if (f.hasPackageName()) {
-      props.put("packageName", f.getPackageName());
-    }
-    props.put("importNames", f.getImportNamesList());
-    props.put("lastEditor", f.getLastEditor());
-    props.put("addedLines", f.getAddedLines());
-    props.put("modifiedLines", f.getModifiedLines());
-    props.put("deletedLines", f.getDeletedLines());
-    props.put("hasFileData", true);
-    f.getMetricsMap().forEach((k, v) -> props.put("metrics." + k, v));
-    return props;
+  public static String makeBatchKey(final FileData f) {
+    return f.getRepositoryName() + "/" + f.getFilePath() + "/" + f.getFileHash();
   }
 
-  // ── Key utility ───────────────────────────────────────────────────────────
+  private static long elapsedMillis(final long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
+  }
 
-  static String makeBatchKey(final FileData f) {
-    return f.getRepositoryName() + "/" + f.getFilePath() + "/" + f.getFileHash();
+  /**
+   * Splits {@code list} into consecutive sub-lists of at most {@code size} elements. The last
+   * sub-list may be smaller. Returns a view; callers must not mutate the source list concurrently.
+   */
+  public static <T> List<List<T>> partition(final List<T> list, final int size) {
+    final List<List<T>> chunks = new ArrayList<>();
+    for (int i = 0; i < list.size(); i += size) {
+      chunks.add(list.subList(i, Math.min(i + size, list.size())));
+    }
+    return chunks;
   }
 }

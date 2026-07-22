@@ -7,10 +7,8 @@ import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import net.explorviz.landscape.ogm.AnnotationType;
 import net.explorviz.landscape.ogm.Issue;
 import net.explorviz.landscape.ogm.PullRequest;
@@ -19,8 +17,10 @@ import net.explorviz.landscape.ogm.ResourceAnnotation;
 import net.explorviz.landscape.ogm.ResourceState;
 import net.explorviz.landscape.ogm.ResourceVersion;
 import net.explorviz.landscape.ogm.TrackableResource;
+import net.explorviz.landscape.proto.RelinkResourcesRequest;
 import net.explorviz.landscape.proto.TrackableResourceEvent;
 import net.explorviz.landscape.proto.TrackableResourceService;
+import net.explorviz.landscape.proto.TrackableResourceType;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TrackableResourceRepository;
@@ -52,8 +52,31 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     }
   }
 
+  @Override
+  @Blocking
+  public Uni<Empty> relinkResources(final RelinkResourcesRequest request) {
+    final Session session = sessionFactory.openSession();
+    try (Transaction tx = session.beginTransaction()) {
+      trackableResourceRepository.linkPullRequestToCommits(
+          session, request.getLandscapeToken(), request.getRepositoryName());
+      tx.commit();
+      return Uni.createFrom().item(Empty.getDefaultInstance());
+    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+      return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
+    } finally {
+      session.clear();
+    }
+  }
+
   public void saveTrackableResourceEvent(
       final Session session, final TrackableResourceEvent event) {
+
+    // skip if annotation already persisted
+    if (trackableResourceRepository
+        .findAnnotationByExternalId(session, event.getAnnotationId())
+        .isPresent()) {
+      return;
+    }
 
     final Repository repo = getRepository(session, event);
     final ResourceVersion resourceVersion = populateResourceVersion(event);
@@ -64,6 +87,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
         session, resource, resourceAnnotation, resourceVersion);
 
     linkResourceToRepository(session, repo.getName(), event.getLandscapeToken(), resource);
+    if (event.getResourceType() == TrackableResourceType.PULL_REQUEST
+        && event.getAnnotationType() == net.explorviz.landscape.proto.AnnotationType.CREATE) {
+      linkPullRequestResources(session, event, resource);
+    }
   }
 
   private Repository getRepository(final Session session, final TrackableResourceEvent event) {
@@ -84,9 +111,8 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
     resourceVersion.setWebUrl(event.getWebUrl());
     resourceVersion.setTitle(event.getTitle());
     resourceVersion.setCreationDate(getEventDate(event));
-    final String[] labels = event.getLabels().split(",");
-    final Set<String> labelSet = new HashSet<>(Arrays.asList(labels));
-    resourceVersion.setLabels(labelSet);
+    resourceVersion.setExternalId(event.getAnnotationId());
+    resourceVersion.setLabels(new HashSet<>(event.getLabelsList()));
     return resourceVersion;
   }
 
@@ -98,8 +124,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
             event.getAnnotationId(),
             AnnotationType.valueOf(event.getAnnotationType().name()));
 
-    annotation.setAssociatedContributor(
-        contributorRepository.getOrCreateContributor(session, event.getActor()));
+    if (!"unknown".equals(event.getActor().getGithubLogin())) {
+      annotation.setAssociatedContributor(
+          contributorRepository.getOrCreateContributor(session, event.getActor()));
+    }
 
     return annotation;
   }
@@ -146,5 +174,19 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
             "tokenId", tokenId,
             "repoName", repoName,
             "resourceId", resource.getId()));
+  }
+
+  private void linkPullRequestResources(
+      final Session session, final TrackableResourceEvent event, final TrackableResource resource) {
+    final PullRequest pullRequest = (PullRequest) resource;
+    pullRequest.setCommitHashes(new HashSet<>(event.getCommitShasList()));
+    session.save(pullRequest, 0);
+
+    trackableResourceRepository.linkPullRequestToIssues(
+        session,
+        event.getLandscapeToken(),
+        event.getRepositoryName(),
+        pullRequest.getId(),
+        event.getReferencedIssueNumbersList());
   }
 }

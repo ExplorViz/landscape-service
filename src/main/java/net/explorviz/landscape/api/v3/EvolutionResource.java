@@ -16,10 +16,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v3.model.BranchDto;
 import net.explorviz.landscape.api.v3.model.BranchPointDto;
+import net.explorviz.landscape.api.v3.model.CommitNodeDto;
 import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
+import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
+import net.explorviz.landscape.repository.TagRepository;
+import net.explorviz.landscape.util.CommitBranchOrderer;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -39,6 +43,8 @@ public class EvolutionResource {
 
   @Inject RepositoryRepository repositoryRepository;
 
+  @Inject TagRepository tagRepository;
+
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/repositories")
@@ -54,24 +60,30 @@ public class EvolutionResource {
       @RestPath final String landscapeToken, @RestPath final String repositoryName) {
     final Session session = sessionFactory.openSession();
 
-    if (repositoryRepository
-        .findRepositoryByNameAndLandscapeToken(session, repositoryName, landscapeToken)
-        .isEmpty()) {
-      throw new NotFoundException(
-          "The requested repository does not exist in the database for the given landscape token.");
-    }
+    final Repository repository =
+        repositoryRepository
+            .findRepositoryByNameAndLandscapeToken(session, repositoryName, landscapeToken)
+            .orElseThrow(
+                () ->
+                    new NotFoundException(
+                        "The requested repository does not exist in the database for the given"
+                            + " landscape token."));
 
     final List<Commit> commits =
         commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
             session, landscapeToken, repositoryName);
 
-    final Map<String, List<String>> branchToCommitMap = new HashMap<>();
+    final Map<String, List<String>> tagsByCommitHash =
+        tagRepository.findTagNamesByCommitHashForRepository(
+            session, landscapeToken, repositoryName);
+
+    final Map<String, List<Commit>> branchToCommitMap = new HashMap<>();
     final Map<String, BranchPointDto> branchToBranchPointMap = new HashMap<>();
 
     for (final Commit commit : commits) {
 
       if (commit.getBranch() == null) {
-        Log.warnf(
+        Log.debugf(
             "Commit with hash %s has no associated branch, will not be included in commit-tree",
             commit.getHash());
         continue;
@@ -79,14 +91,14 @@ public class EvolutionResource {
 
       final String branchName = commit.getBranch().getName();
 
-      branchToCommitMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit.getHash());
+      branchToCommitMap.computeIfAbsent(branchName, k -> new ArrayList<>()).add(commit);
 
       final Set<Commit> parentCommits =
           commit.getParentCommits().stream()
               .filter(
                   pc -> {
                     if (pc.getBranch() == null) {
-                      Log.warnf(
+                      Log.debugf(
                           "Parent commit with hash %s has no associated branch, will not be "
                               + "included in commit-tree calculation",
                           pc.getHash());
@@ -122,9 +134,21 @@ public class EvolutionResource {
         branchToCommitMap.entrySet().stream()
             .map(
                 e ->
-                    new BranchDto(e.getKey(), e.getValue(), branchToBranchPointMap.get(e.getKey())))
+                    new BranchDto(
+                        e.getKey(),
+                        CommitBranchOrderer.orderAlongBranch(e.getValue()).stream()
+                            .map(
+                                commit ->
+                                    new CommitNodeDto(
+                                        commit.getHash(),
+                                        commit.getCommitDate(),
+                                        commit.getMetrics(),
+                                        commit.isHasAccumulatedMetrics(),
+                                        tagsByCommitHash.getOrDefault(commit.getHash(), List.of())))
+                            .toList(),
+                        branchToBranchPointMap.get(e.getKey())))
             .toList();
 
-    return new CommitTreeDto(repositoryName, branches);
+    return new CommitTreeDto(repositoryName, branches, repository.getRemoteUrl());
   }
 }

@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.HashMap;
@@ -42,6 +43,23 @@ public class FileRevisionRepository {
       ORDER BY length(p) DESC
       LIMIT 1;
       """;
+  private static final String FIND_FILE_DETAILED_CONTEXT =
+      """
+      MATCH (f:FileRevision) WHERE id(f) = $fileRevId
+      MATCH (l:Landscape {tokenId: $landscapeToken})-[:CONTAINS]->(repo:Repository)
+      MATCH (repo)-[:CONTAINS]->(c:Commit)-[:CONTAINS]->(f)
+      MATCH (l)-[:CONTAINS]->(:Application)-[:HAS_ROOT]->(appRoot:Directory)
+      MATCH p = (appRoot)-[:CONTAINS]->*(f)
+      WITH f, repo, c, [node IN nodes(p)[1..] | node.name] AS nodeNames
+      RETURN
+        id(f) AS fileRevisionId,
+        repo.remoteUrl AS remoteUrl,
+        repo.name AS repositoryName,
+        c.hash AS commitHash,
+        apoc.text.join(nodeNames, "/") AS fqn
+      ORDER BY c.commitDate DESC
+      LIMIT 1
+      """;
   private static final Logger LOGGER = Logger.getLogger(FileRevisionRepository.class);
   public static final int COMMIT_FILE_BATCH_SIZE = 2000;
 
@@ -56,6 +74,8 @@ public class FileRevisionRepository {
   @Inject DirectoryRepository directoryRepository;
   @Inject LandscapeRepository landscapeRepository;
   @Inject CommitFileStructureBatchWriter commitFileStructureBatchWriter;
+  @Inject UnchangedCommitFileCopier unchangedCommitFileCopier;
+  @Inject CommitRepository commitRepository;
 
   private FileRevision createRemainingFilePath(
       final Session session, final Directory startingDirectory, final String[] remainingPath) {
@@ -151,24 +171,95 @@ public class FileRevisionRepository {
     return createRemainingFilePath(session, rootDir, splitFileFqn);
   }
 
+  public CommitFilePersistenceContext createFilePersistenceContext(
+      final Session session,
+      final String landscapeTokenId,
+      final String repoName,
+      final String commitHash,
+      final long commitInternalId) {
+    return CommitFilePersistenceContext.create(
+        session, directoryRepository, landscapeTokenId, repoName, commitHash, commitInternalId);
+  }
+
+  public record CopyUnchangedFilesFromParentRequest(
+      String landscapeTokenId,
+      String repoName,
+      String parentCommitHash,
+      long childCommitInternalId,
+      Set<String> addedPaths,
+      Set<String> modifiedPaths,
+      Set<String> deletedPaths,
+      boolean requirePersistedParent) {}
+
+  /**
+   * Links every parent file revision not listed as added, modified, or deleted to the child commit.
+   *
+   * @return number of unchanged file revisions linked from the parent commit
+   */
+  public int copyUnchangedFilesFromParentCommit(
+      final Session session, final CopyUnchangedFilesFromParentRequest request) {
+    final Optional<Long> parentCommitInternalId =
+        commitRepository.findCommitInternalIdInRepositoryWithRetry(
+            session,
+            request.parentCommitHash(),
+            request.landscapeTokenId(),
+            request.repoName(),
+            request.requirePersistedParent());
+    if (parentCommitInternalId.isEmpty()) {
+      if (request.requirePersistedParent()) {
+        Log.warnf(
+            "No analyzed parent commit available for %s in repository '%s'; skipping"
+                + " unchanged-file inheritance for child %d",
+            request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
+      } else {
+        Log.debugf(
+            "Parent commit %s not found in repository '%s'; skipping unchanged-file copy to child"
+                + " %d",
+            request.parentCommitHash(), request.repoName(), request.childCommitInternalId());
+      }
+      return 0;
+    }
+
+    return unchangedCommitFileCopier.copyFromParent(
+        session,
+        new UnchangedCommitFileCopier.CopyUnchangedFilesFromParentRequest(
+            request.landscapeTokenId(),
+            request.repoName(),
+            request.parentCommitHash(),
+            parentCommitInternalId.get(),
+            request.childCommitInternalId(),
+            request.addedPaths(),
+            request.modifiedPaths(),
+            request.deletedPaths(),
+            request.requirePersistedParent()));
+  }
+
+  /**
+   * Verifies that a just-persisted commit's in-memory file cache exactly mirrors its linked file
+   * revisions in the graph and, if so, marks it as an O(1) copy source for its future children.
+   * Should be called once a commit's own file-linking steps (added, modified, unchanged, copy from
+   * parent, and stale/deleted unlinking) have all completed.
+   */
+  public void verifyAndCacheCommitCompleteness(final Session session, final long commitInternalId) {
+    unchangedCommitFileCopier.verifyAndMarkComplete(session, commitInternalId);
+  }
+
   public FileRevision createFileStructureFromStaticData(
       final Session session,
       final FileIdentifier fileIdentifier,
       final String repoName,
       final String landscapeTokenId,
       final Commit commit) {
-    final Long rootDirectoryId =
-        directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
-    final Map<String, Long> directoryLeafCache = new HashMap<>();
+    final CommitFilePersistenceContext context =
+        CommitFilePersistenceContext.create(
+            session,
+            directoryRepository,
+            landscapeTokenId,
+            repoName,
+            commit.getHash(),
+            commit.getId());
     commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
-        session,
-        List.of(fileIdentifier),
-        repoName,
-        landscapeTokenId,
-        commit.getHash(),
-        CommitFileLinkType.CONTAINS,
-        rootDirectoryId,
-        directoryLeafCache);
+        session, context, List.of(fileIdentifier), CommitFileLinkType.CONTAINS);
     return getFileRevisionFromHashAndPath(
             session,
             fileIdentifier.getFileHash(),
@@ -180,100 +271,43 @@ public class FileRevisionRepository {
 
   public void persistCommitFilesInBatches(
       final Session session,
+      final CommitFilePersistenceContext context,
       final List<FileIdentifier> fileIdentifiers,
-      final String repoName,
-      final String landscapeTokenId,
-      final String commitHash,
       final CommitFileLinkType linkType) {
     if (fileIdentifiers.isEmpty()) {
       return;
     }
 
     if (fileIdentifiers.size() > COMMIT_FILE_BATCH_SIZE) {
-      LOGGER.infof(
+      LOGGER.debugf(
           "Linking %d commit file stubs in batches of %d for repository '%s'",
-          fileIdentifiers.size(), COMMIT_FILE_BATCH_SIZE, repoName);
+          fileIdentifiers.size(), COMMIT_FILE_BATCH_SIZE, context.repoName());
     }
-
-    final Long rootDirectoryId =
-        directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
-    final Map<String, Long> directoryLeafCache = new HashMap<>();
 
     for (int offset = 0; offset < fileIdentifiers.size(); offset += COMMIT_FILE_BATCH_SIZE) {
       final int end = Math.min(offset + COMMIT_FILE_BATCH_SIZE, fileIdentifiers.size());
       final List<FileIdentifier> batch = fileIdentifiers.subList(offset, end);
-      commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
-          session,
-          batch,
-          repoName,
-          landscapeTokenId,
-          commitHash,
-          linkType,
-          rootDirectoryId,
-          directoryLeafCache);
-      session.clear();
+      persistCommitFileBatch(session, context, batch, linkType);
 
       if (end % (COMMIT_FILE_BATCH_SIZE * 5) == 0 || end == fileIdentifiers.size()) {
-        LOGGER.infof(
+        LOGGER.debugf(
             "Linked %d of %d commit file stubs for repository '%s'",
-            end, fileIdentifiers.size(), repoName);
+            end, fileIdentifiers.size(), context.repoName());
       }
     }
   }
 
-  public record CopyUnchangedFilesFromParentRequest(
-      String landscapeTokenId,
-      String repoName,
-      String parentCommitHash,
-      String childCommitHash,
-      Set<String> modifiedPaths,
-      Set<String> deletedPaths) {}
-
-  public void copyUnchangedFilesFromParentCommit(
-      final Session session, final CopyUnchangedFilesFromParentRequest request) {
-    final Map<String, Object> params =
-        Map.of(
-            "tokenId",
-            request.landscapeTokenId(),
-            "repoName",
-            request.repoName(),
-            "parentHash",
-            request.parentCommitHash(),
-            "childHash",
-            request.childCommitHash(),
-            "modifiedPaths",
-            request.modifiedPaths(),
-            "deletedPaths",
-            request.deletedPaths());
-
-    if (request.modifiedPaths().isEmpty() && request.deletedPaths().isEmpty()) {
-      session.query(
-          """
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-          MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-          MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-            -[:CONTAINS]->(child:Commit {hash: $childHash})
-          MERGE (child)-[:CONTAINS]->(f)
-          """,
-          params);
+  public void persistCommitFileBatch(
+      final Session session,
+      final CommitFilePersistenceContext context,
+      final List<FileIdentifier> fileIdentifiers,
+      final CommitFileLinkType linkType) {
+    if (fileIdentifiers.isEmpty()) {
       return;
     }
-
-    // Use the stored f.filePath property for exclusion instead of reconstructing paths via a
-    // full directory-tree traversal and APOC string join. This reduces the work from O(N × depth)
-    // to O(N) and eliminates the dependency on APOC for the hot path.
-    session.query(
-        """
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(parent:Commit {hash: $parentHash})
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(child:Commit {hash: $childHash})
-        MATCH (parent)-[:CONTAINS]->(f:FileRevision)
-        WHERE NOT f.filePath IN $modifiedPaths AND NOT f.filePath IN $deletedPaths
-        MERGE (child)-[:CONTAINS]->(f)
-        """,
-        params);
+    commitFileStructureBatchWriter.createAndLinkFileStructureBatch(
+        session, context, fileIdentifiers, linkType);
+    session.clear();
   }
 
   public Optional<FileRevision> getFileRevisionFromHashAndPath(
@@ -488,6 +522,30 @@ public class FileRevisionRepository {
                     (String) queryResult.get("filePath"), (FileRevision) queryResult.get("file")));
 
     return filePathToFileRevisionMap;
+  }
+
+  public Optional<FileDetailedContext> findFileDetailedContext(
+      final Session session, final String landscapeToken, final Long fileRevisionId) {
+    final Result result =
+        session.query(
+            FIND_FILE_DETAILED_CONTEXT,
+            Map.of("landscapeToken", landscapeToken, "fileRevId", fileRevisionId));
+
+    final Iterator<Map<String, Object>> resultIterator = result.queryResults().iterator();
+    if (!resultIterator.hasNext()) {
+      return Optional.empty();
+    }
+
+    final Map<String, Object> row = resultIterator.next();
+    final Long loadedFileRevisionId = (Long) row.get("fileRevisionId");
+    final FileRevision fileRevision = session.load(FileRevision.class, loadedFileRevisionId, 3);
+    return Optional.of(
+        new FileDetailedContext(
+            fileRevision,
+            (String) row.get("remoteUrl"),
+            (String) row.get("repositoryName"),
+            (String) row.get("commitHash"),
+            (String) row.get("fqn")));
   }
 
   private void validateFqn(final String[] splitFqn) {

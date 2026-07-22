@@ -28,6 +28,7 @@ final class BuildingCommitDiffApplier {
         idMap.get(parentCityId),
         parentDistrictId != null ? idMap.get(parentDistrictId) : null,
         current != null ? current.language() : other.language(),
-        metrics);
+        metrics,
+        current != null ? current.fileHash() : other.fileHash());
   }
 }

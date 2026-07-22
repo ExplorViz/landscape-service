@@ -18,8 +18,10 @@ import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.StateDataService;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
+import net.explorviz.landscape.repository.CommitFileRevisionCache;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.DirectoryRepository;
+import net.explorviz.landscape.repository.FileRevisionIdCache;
 import net.explorviz.landscape.repository.LandscapeRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
@@ -36,9 +38,13 @@ public class StateDataServiceImpl implements StateDataService {
 
   @Inject BranchRepository branchRepository;
 
+  @Inject CommitFileRevisionCache commitFileRevisionCache;
+
   @Inject CommitRepository commitRepository;
 
   @Inject DirectoryRepository directoryRepository;
+
+  @Inject FileRevisionIdCache fileRevisionIdCache;
 
   @Inject LandscapeRepository landscapeRepository;
 
@@ -52,18 +58,23 @@ public class StateDataServiceImpl implements StateDataService {
       saveStateData(session, request);
       tx.commit();
 
+      fileRevisionIdCache.clear();
+      commitFileRevisionCache.clear();
+
       final StateData.Builder stateDataBuilder = StateData.newBuilder();
-      final String commitId =
-          commitRepository
-              .findLatestFullyPersistedCommit(
-                  session,
-                  request.getRepositoryName(),
-                  request.getLandscapeToken(),
-                  request.getBranchName(),
-                  new ArrayList<>(request.getApplicationPathsMap().keySet()))
-              .map(Commit::getHash)
-              .orElse("");
-      stateDataBuilder.setCommitId(commitId);
+      if (!request.getSkipLatestCommitLookup()) {
+        final String commitId =
+            commitRepository
+                .findLatestFullyPersistedCommit(
+                    session,
+                    request.getRepositoryName(),
+                    request.getLandscapeToken(),
+                    request.getBranchName(),
+                    new ArrayList<>(request.getApplicationPathsMap().keySet()))
+                .map(Commit::getHash)
+                .orElse("");
+        stateDataBuilder.setCommitId(commitId);
+      }
 
       return Uni.createFrom().item(stateDataBuilder.build());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
@@ -91,6 +102,10 @@ public class StateDataServiceImpl implements StateDataService {
 
     repository.addBranch(branch);
 
+    if (!stateData.getRepositoryUrl().isBlank()) {
+      repository.setRemoteUrl(stateData.getRepositoryUrl());
+    }
+
     if (repository.getRootDirectory() == null) {
       final Directory repoRootDirectory = new Directory(stateData.getRepositoryName());
       repository.setRootDirectory(repoRootDirectory);
@@ -109,27 +124,23 @@ public class StateDataServiceImpl implements StateDataService {
                       .orElse(new Application(applicationName));
               landscape.addApplication(application);
 
-              final Directory applicationRootDirectory =
-                  directoryRepository.createDirectoryStructureAndReturnLastDirStaticData(
-                      session,
-                      (repository.getName() + "/" + applicationPath).split("/"),
-                      stateData.getRepositoryName(),
-                      stateData.getLandscapeToken());
-
               final Directory existingAppRoot = application.getRootDirectory();
+              final Directory applicationRootDirectory;
               if (existingAppRoot != null
-                  && !Objects.equals(existingAppRoot.getId(), applicationRootDirectory.getId())) {
+                  && !Application.ROOT_NAME_PLACEHOLDER_RUNTIME.equals(existingAppRoot.getName())) {
+                applicationRootDirectory = existingAppRoot;
+              } else {
+                applicationRootDirectory =
+                    directoryRepository.createDirectoryStructureAndReturnLastDirStaticData(
+                        session,
+                        (repository.getName() + "/" + applicationPath).split("/"),
+                        stateData.getRepositoryName(),
+                        stateData.getLandscapeToken());
 
-                if (Application.ROOT_NAME_PLACEHOLDER_RUNTIME.equals(existingAppRoot.getName())) {
+                if (existingAppRoot != null
+                    && !Objects.equals(existingAppRoot.getId(), applicationRootDirectory.getId())) {
                   directoryRepository.mergeDirectories(
                       session, existingAppRoot.getId(), applicationRootDirectory.getId());
-                } else {
-                  throw new IllegalArgumentException(
-                      "Application \""
-                          + applicationName
-                          + "\" already exists with different root directory path. ID of existing "
-                          + "application root: "
-                          + existingAppRoot.getId());
                 }
               }
 

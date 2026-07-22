@@ -21,8 +21,8 @@ public class RepositoryRepository {
         session.queryForObject(
             Repository.class,
             """
-            MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: $name})
-            MATCH (r)-[rel]->(n)
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: $name})
+            OPTIONAL MATCH (r)-[rel:HAS_ROOT]->(n)
             RETURN r, rel, n;
             """,
             Map.of("tokenId", tokenId, "name", name)));

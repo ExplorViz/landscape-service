@@ -22,6 +22,10 @@ import org.neo4j.ogm.model.Result;
 @ApplicationScoped
 public class StructureMapper {
 
+  private static final String LABEL_APPLICATION = "Application";
+  private static final String LABEL_DIRECTORY = "Directory";
+  private static final String LABEL_FILE_REVISION = "FileRevision";
+
   public FlatLandscapeDto buildFlatLandscape(
       final String landscapeToken,
       final Result result,
@@ -34,7 +38,7 @@ public class StructureMapper {
         row -> {
           final NodeData nodeData = parseNodeData(row);
           nodesById.put(nodeData.id, nodeData);
-          if (nodeData.labels.contains("Application")) {
+          if (nodeData.labels.contains(LABEL_APPLICATION)) {
             applicationIds.add(nodeData.id);
           }
         });
@@ -44,7 +48,7 @@ public class StructureMapper {
 
     for (final Long appId : applicationIds) {
       final NodeData appNode = nodesById.get(appId);
-      traverse(appNode, repositoryName != null ? repositoryName : "", null, context);
+      traverse(appNode, repositoryName != null ? repositoryName : "", null, null, context);
     }
 
     return new FlatLandscapeDto(
@@ -62,6 +66,7 @@ public class StructureMapper {
       final NodeData node,
       final String parentFqn,
       final String parentCityId,
+      final String parentDistrictId,
       final TraversalContext context) {
 
     final String name = (String) node.properties.get("name");
@@ -73,13 +78,22 @@ public class StructureMapper {
 
     final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null);
 
-    if (node.labels.contains("Application")) {
+    if (node.labels.contains(LABEL_APPLICATION)) {
       handleApplication(node, id, name, context, containedDistrictIds, containedBuildingIds);
-    } else if (node.labels.contains("Directory")) {
+    } else if (isDirectory(node)) {
       handleDirectory(
-          node, id, fqn, parentCityId, base, context, containedDistrictIds, containedBuildingIds);
-    } else if (node.labels.contains("FileRevision")) {
-      handleFileRevision(node, id, parentCityId, base, context, containedBuildingIds);
+          node,
+          id,
+          fqn,
+          parentCityId,
+          parentDistrictId,
+          base,
+          context,
+          containedDistrictIds,
+          containedBuildingIds);
+    } else if (isFileRevision(node)) {
+      handleFileRevision(
+          node, id, parentCityId, parentDistrictId, base, context, containedBuildingIds);
     }
 
     return new TraversalResult(containedDistrictIds, containedBuildingIds);
@@ -96,17 +110,14 @@ public class StructureMapper {
     final List<String> directBuildingIds = new ArrayList<>();
 
     for (final Long childId : node.childrenIds) {
-      final NodeData child = context.nodesById().get(childId);
-      if (child != null) {
-        if (child.labels.contains("Directory")) {
-          directDistrictIds.add(String.valueOf(child.id));
-        } else if (child.labels.contains("FileRevision")) {
-          directBuildingIds.add(String.valueOf(child.id));
-        }
-        final TraversalResult res = traverse(child, "", id, context);
-        containedDistrictIds.addAll(res.districtIds);
-        containedBuildingIds.addAll(res.buildingIds);
-      }
+      collectDirectCityContentFromChild(
+          context.nodesById().get(childId),
+          id,
+          context,
+          directDistrictIds,
+          directBuildingIds,
+          containedDistrictIds,
+          containedBuildingIds);
     }
 
     final CityDto city =
@@ -119,11 +130,70 @@ public class StructureMapper {
     context.cities().put(id, city);
   }
 
+  private void collectDirectCityContentFromChild(
+      final NodeData child,
+      final String cityId,
+      final TraversalContext context,
+      final List<String> directDistrictIds,
+      final List<String> directBuildingIds,
+      final Set<String> containedDistrictIds,
+      final Set<String> containedBuildingIds) {
+    if (child == null) {
+      return;
+    }
+    if (isDirectory(child)) {
+      // Application root directory is not exposed as a district; its children belong to the city.
+      for (final Long grandChildId : child.childrenIds) {
+        final NodeData grandChild = context.nodesById().get(grandChildId);
+        if (grandChild == null) {
+          continue;
+        }
+        registerDirectCityChild(grandChild, directDistrictIds, directBuildingIds);
+        applyTraversalResult(
+            traverse(grandChild, "", cityId, null, context),
+            containedDistrictIds,
+            containedBuildingIds);
+      }
+    } else if (isFileRevision(child)) {
+      registerDirectCityChild(child, directDistrictIds, directBuildingIds);
+      applyTraversalResult(
+          traverse(child, "", cityId, null, context), containedDistrictIds, containedBuildingIds);
+    }
+  }
+
+  private void registerDirectCityChild(
+      final NodeData node,
+      final List<String> directDistrictIds,
+      final List<String> directBuildingIds) {
+    if (isDirectory(node)) {
+      directDistrictIds.add(String.valueOf(node.id));
+    } else if (isFileRevision(node)) {
+      directBuildingIds.add(String.valueOf(node.id));
+    }
+  }
+
+  private void applyTraversalResult(
+      final TraversalResult result,
+      final Set<String> containedDistrictIds,
+      final Set<String> containedBuildingIds) {
+    containedDistrictIds.addAll(result.districtIds);
+    containedBuildingIds.addAll(result.buildingIds);
+  }
+
+  private boolean isDirectory(final NodeData node) {
+    return node.labels.contains(LABEL_DIRECTORY);
+  }
+
+  private boolean isFileRevision(final NodeData node) {
+    return node.labels.contains(LABEL_FILE_REVISION);
+  }
+
   private void handleDirectory(
       final NodeData node,
       final String id,
       final String fqn,
       final String parentCityId,
+      final String parentDistrictId,
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedDistrictIds,
@@ -136,20 +206,19 @@ public class StructureMapper {
     for (final Long childId : node.childrenIds) {
       final NodeData child = context.nodesById().get(childId);
       if (child != null) {
-        if (child.labels.contains("Directory")) {
+        if (isDirectory(child)) {
           childDistrictIds.add(String.valueOf(child.id));
-        } else if (child.labels.contains("FileRevision")) {
+        } else if (isFileRevision(child)) {
           childBuildingIds.add(String.valueOf(child.id));
         }
-        final TraversalResult res = traverse(child, fqn, parentCityId, context);
+        final TraversalResult res = traverse(child, fqn, parentCityId, id, context);
         containedDistrictIds.addAll(res.districtIds);
         containedBuildingIds.addAll(res.buildingIds);
       }
     }
 
     final DistrictDto district =
-        new DistrictDto(
-            base, parentCityId, String.valueOf(node.parentId), childDistrictIds, childBuildingIds);
+        new DistrictDto(base, parentCityId, parentDistrictId, childDistrictIds, childBuildingIds);
     context.districts().put(id, district);
   }
 
@@ -157,6 +226,7 @@ public class StructureMapper {
       final NodeData node,
       final String id,
       final String parentCityId,
+      final String parentDistrictId,
       final FlatBaseModel base,
       final TraversalContext context,
       final Set<String> containedBuildingIds) {
@@ -166,9 +236,10 @@ public class StructureMapper {
         new BuildingDto(
             base,
             parentCityId,
-            String.valueOf(node.parentId),
+            parentDistrictId,
             (String) node.properties.get("language"),
-            extractMetrics(node.properties));
+            extractMetrics(node.properties),
+            (String) node.properties.get("hash"));
     context.buildings().put(id, building);
   }
 

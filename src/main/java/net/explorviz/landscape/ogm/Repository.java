@@ -15,6 +15,7 @@ public class Repository {
   @Id @GeneratedValue private Long id;
 
   private String name;
+  private String remoteUrl;
   private static final String CONTAINS = "CONTAINS";
 
   @Relationship(type = CONTAINS, direction = Relationship.Direction.OUTGOING)
@@ -49,6 +50,14 @@ public class Repository {
 
   public String getName() {
     return name;
+  }
+
+  public String getRemoteUrl() {
+    return remoteUrl;
+  }
+
+  public void setRemoteUrl(final String remoteUrl) {
+    this.remoteUrl = remoteUrl;
   }
 
   public Directory getRootDirectory() {

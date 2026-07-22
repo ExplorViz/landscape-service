@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "net.explorviz.proto";
+option java_outer_classname = "TokenEventProto";
+
+message TokenEvent {
+  EventType type = 1;
+  LandscapeToken token = 2;
+  optional string cloned_token_id = 3;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_CREATED = 1;
+  EVENT_TYPE_DELETED = 2;
+  EVENT_TYPE_CLONED = 3;
+  EVENT_TYPE_ACCESS_GRANTED = 4;
+  EVENT_TYPE_ACCESS_REVOKED = 5;
+}
+
+message LandscapeToken {
+  string id = 1;
+  string secret = 2;
+  string alias = 3;
+  string owner_id = 4;
+  uint64 created = 5;
+}

@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
@@ -28,36 +29,61 @@ class CommitFileStructureBatchWriter {
       MERGE (commit)-[:CONTAINS]->(f)
       """;
 
+  private static final String LINK_FILE_REVISIONS_RETURN =
+      """
+      RETURN file.filePath AS filePath, file.hash AS hash, id(f) AS fileRevId
+      """;
+
   @Inject DirectoryRepository directoryRepository;
+  @Inject FileRevisionIdCache fileRevisionIdCache;
+  @Inject CommitFileRevisionCache commitFileRevisionCache;
 
   void createAndLinkFileStructureBatch(
       final Session session,
+      final CommitFilePersistenceContext context,
       final List<FileIdentifier> fileIdentifiers,
-      final String repoName,
-      final String landscapeTokenId,
-      final String commitHash,
-      final CommitFileLinkType linkType,
-      final Long rootDirectoryId,
-      final Map<String, Long> directoryLeafCache) {
+      final CommitFileLinkType linkType) {
     if (fileIdentifiers.isEmpty()) {
       return;
     }
 
-    final Map<String, String[]> uniqueDirPaths =
-        collectUniqueDirectoryPaths(fileIdentifiers, repoName);
-    directoryRepository.batchMergeDirectoryPaths(
-        session, rootDirectoryId, repoName, uniqueDirPaths, directoryLeafCache);
+    final long batchStart = System.nanoTime();
+    long stepStart = batchStart;
 
+    final Map<String, String[]> uniqueDirPaths =
+        collectUniqueDirectoryPaths(fileIdentifiers, context.repoName());
+    directoryRepository.batchMergeDirectoryPaths(
+        session,
+        context.rootDirectoryId(),
+        context.repoName(),
+        uniqueDirPaths,
+        context.directoryLeafCache());
+    final long mergeDirectoriesMs = elapsedMillis(stepStart);
+
+    stepStart = System.nanoTime();
     final List<Map<String, Object>> filesToLink =
-        buildFilesToLinkPayload(fileIdentifiers, repoName, directoryLeafCache);
+        buildFilesToLinkPayload(fileIdentifiers, context.repoName(), context.directoryLeafCache());
     linkFileRevisionsBatch(
         session,
         Map.of(
-            "tokenId", landscapeTokenId,
-            "repoName", repoName,
-            "commitHash", commitHash,
+            "tokenId", context.landscapeTokenId(),
+            "repoName", context.repoName(),
+            "commitHash", context.commitHash(),
             "files", filesToLink),
-        linkType);
+        linkType,
+        context);
+    final long linkFileRevisionsMs = elapsedMillis(stepStart);
+
+    populateCommitFileRevisionCache(context, fileIdentifiers);
+
+    Log.infof(
+        "linkCommitFileBatch(%d files, %s): mergeDirectories=%dms, linkFileRevisions=%dms, "
+            + "total=%dms",
+        fileIdentifiers.size(),
+        linkType,
+        mergeDirectoriesMs,
+        linkFileRevisionsMs,
+        elapsedMillis(batchStart));
   }
 
   private Map<String, String[]> collectUniqueDirectoryPaths(
@@ -103,14 +129,57 @@ class CommitFileStructureBatchWriter {
   }
 
   private void linkFileRevisionsBatch(
-      final Session session, final Map<String, Object> params, final CommitFileLinkType linkType) {
-    final String commitLinkClause =
+      final Session session,
+      final Map<String, Object> params,
+      final CommitFileLinkType linkType,
+      final CommitFilePersistenceContext context) {
+    final String typedCommitLinkClause =
         switch (linkType) {
           case ADDED -> "MERGE (commit)-[:ADDED]->(f)";
           case MODIFIED -> "MERGE (commit)-[:MODIFIED]->(f)";
           case CONTAINS -> "";
         };
-    session.query(LINK_FILE_REVISIONS_BASE + commitLinkClause, params);
+    session
+        .query(
+            LINK_FILE_REVISIONS_BASE + typedCommitLinkClause + LINK_FILE_REVISIONS_RETURN, params)
+        .queryResults()
+        .forEach(
+            row -> {
+              final String filePath = (String) row.get("filePath");
+              final String hash = (String) row.get("hash");
+              final Long fileRevId = (Long) row.get("fileRevId");
+              final String lookupKey =
+                  new FileRevisionLookupKey(
+                          context.landscapeTokenId(), context.repoName(), filePath, hash)
+                      .cacheKey();
+              fileRevisionIdCache.put(lookupKey, fileRevId);
+            });
+  }
+
+  private void populateCommitFileRevisionCache(
+      final CommitFilePersistenceContext context, final List<FileIdentifier> fileIdentifiers) {
+    final Map<String, CommitFileRevisionCache.FileRevEntry> entries =
+        new HashMap<>(fileIdentifiers.size());
+    for (final FileIdentifier fi : fileIdentifiers) {
+      final String lookupKey =
+          new FileRevisionLookupKey(
+                  context.landscapeTokenId(),
+                  context.repoName(),
+                  fi.getFilePath(),
+                  fi.getFileHash())
+              .cacheKey();
+      final Long fileRevId = fileRevisionIdCache.get(lookupKey);
+      if (fileRevId != null) {
+        entries.put(
+            fi.getFilePath(),
+            new CommitFileRevisionCache.FileRevEntry(fi.getFileHash(), fileRevId));
+      }
+    }
+    commitFileRevisionCache.putAll(context.commitInternalId(), entries);
+  }
+
+  private static long elapsedMillis(final long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
   }
 
   private String[] buildDirectorySegments(final String repoName, final String[] pathSegments) {

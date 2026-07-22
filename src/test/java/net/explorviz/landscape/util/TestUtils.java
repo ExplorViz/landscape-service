@@ -2,8 +2,11 @@ package net.explorviz.landscape.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import io.quarkus.arc.Arc;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.repository.CommitFileRevisionCache;
+import net.explorviz.landscape.repository.FileRevisionIdCache;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -15,19 +18,15 @@ public class TestUtils {
               + " IS UNIQUE",
           "CREATE INDEX trace_trace_id IF NOT EXISTS FOR (t:Trace) ON (t.traceId)",
           "CREATE INDEX span_span_id IF NOT EXISTS FOR (s:Span) ON (s.spanId)",
-          "CREATE INDEX application_name IF NOT EXISTS FOR (a:Application) ON (a.name)",
           "CREATE INDEX directory_name IF NOT EXISTS FOR (d:Directory) ON (d.name)",
-          "CREATE INDEX file_revision_name IF NOT EXISTS FOR (f:FileRevision) ON (f.name)",
           "CREATE INDEX file_revision_hash_name IF NOT EXISTS FOR (f:FileRevision) ON (f.hash,"
               + " f.name)",
-          "CREATE INDEX file_revision_file_path IF NOT EXISTS FOR (f:FileRevision) ON (f.filePath)",
-          "CREATE INDEX file_revision_repo_file_path IF NOT EXISTS FOR (f:FileRevision) ON"
-              + " (f.repoName, f.filePath)",
-          "CREATE INDEX clazz_name IF NOT EXISTS FOR (c:Clazz) ON (c.name)",
+          "CREATE INDEX file_revision_repo_file_path_hash IF NOT EXISTS FOR (f:FileRevision) ON"
+              + " (f.repoName, f.filePath, f.hash)",
+          "CREATE INDEX file_revision_lookup_key IF NOT EXISTS FOR (f:FileRevision) ON"
+              + " (f.lookupKey)",
           "CREATE INDEX function_name IF NOT EXISTS FOR (f:Function) ON (f.name)",
-          "CREATE INDEX repository_name IF NOT EXISTS FOR (r:Repository) ON (r.name)",
-          "CREATE INDEX commit_hash IF NOT EXISTS FOR (c:Commit) ON (c.hash)",
-          "CREATE INDEX branch_name IF NOT EXISTS FOR (b:Branch) ON (b.name)");
+          "CREATE INDEX commit_hash IF NOT EXISTS FOR (c:Commit) ON (c.hash)");
 
   private TestUtils() {}
 
@@ -38,6 +37,21 @@ public class TestUtils {
   public static void resetDatabase(final Session session) {
     clearDatabase(session);
     ensureSchema(session);
+    clearFileRevisionIdCache();
+  }
+
+  private static void clearFileRevisionIdCache() {
+    final var container = Arc.container();
+    if (container != null && container.isRunning()) {
+      final var cache = container.instance(FileRevisionIdCache.class);
+      if (cache.isAvailable()) {
+        cache.get().clear();
+      }
+      final var commitCache = container.instance(CommitFileRevisionCache.class);
+      if (commitCache.isAvailable()) {
+        commitCache.get().clear();
+      }
+    }
   }
 
   public static void clearDatabase(final Session session) {

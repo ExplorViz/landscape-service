@@ -24,6 +24,7 @@ import net.explorviz.landscape.proto.Language;
  *     determined
  * @param metrics Metrics for this unit, i.e. numerical measurements gathered through analysis, such
  *     as cyclomatic complexity or lines of code
+ * @param fileHash Git blob hash of the file revision, when available from static analysis
  */
 @RegisterForReflection
 public record BuildingDto(
@@ -31,7 +32,17 @@ public record BuildingDto(
     String parentCityId,
     @JsonInclude(Include.NON_NULL) String parentDistrictId,
     @JsonInclude(Include.NON_NULL) String language,
-    @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics) {
+    @JsonInclude(Include.NON_EMPTY) Map<String, MetricValue> metrics,
+    @JsonInclude(Include.NON_NULL) String fileHash) {
+
+  public BuildingDto(
+      final FlatBaseModel flatBaseModel,
+      final String parentCityId,
+      final String parentDistrictId,
+      final String language,
+      final Map<String, MetricValue> metrics) {
+    this(flatBaseModel, parentCityId, parentDistrictId, language, metrics, null);
+  }
 
   public BuildingDto {
     Objects.requireNonNull(flatBaseModel);
