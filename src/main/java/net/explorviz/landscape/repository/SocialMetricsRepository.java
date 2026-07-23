@@ -144,7 +144,6 @@ public class SocialMetricsRepository {
             """
             MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
                   -[:CONTAINS]->(pr:PullRequest)-[:REFERENCES]->(i:Issue)
-            WHERE any(l IN i.labels WHERE toLower(l) CONTAINS 'bug')
             MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
             RETURN f.filePath AS path, count(DISTINCT i) AS bugCount
             """,
