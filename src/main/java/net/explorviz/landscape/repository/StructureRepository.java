@@ -22,8 +22,6 @@ import org.neo4j.ogm.session.Session;
 public class StructureRepository {
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
-  private static final String TOKEN_ID = "tokenId";
-  private static final String REPO_NAME = "repoName";
 
   @Inject StructureMapper mapper;
 
@@ -62,7 +60,7 @@ public class StructureRepository {
           [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
         """;
 
-    final Result result = session.query(query, Map.of("TOKEN_ID", landscapeToken));
+    final Result result = session.query(query, Map.of("tokenId", landscapeToken));
     return mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME, null);
   }
 
@@ -95,9 +93,9 @@ public class StructureRepository {
         session.query(
             query,
             Map.of(
-                "TOKEN_ID",
+                "tokenId",
                 request.landscapeToken(),
-                "REPO_NAME",
+                "repoName",
                 request.repositoryName(),
                 "commitHash",
                 request.commitHash()));
@@ -228,7 +226,7 @@ public class StructureRepository {
         """;
 
     final Result result =
-        session.query(query, Map.of("TOKEN_ID", landscapeToken, "REPO_NAME", repositoryName));
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
 
     final List<CommitMeta> commits = new ArrayList<>();
     result.forEach(
@@ -311,7 +309,7 @@ public class StructureRepository {
         RETURN apoc.text.join([node IN nodes(p)[2..] | node.name], "/") AS fqn, c.hash AS hash
         """;
     final Result result =
-        session.query(query, Map.of("TOKEN_ID", landscapeToken, "REPO_NAME", repositoryName));
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
 
     final Map<String, Integer> fqnToFirstOrdinal = new HashMap<>();
     result.forEach(
@@ -351,7 +349,7 @@ public class StructureRepository {
         """;
 
     final Result result =
-        session.query(query, Map.of("TOKEN_ID", landscapeToken, "REPO_NAME", repositoryName));
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
     final FlatLandscapeDto landscape =
         deduplicateBuildingsByFqn(
             mapper.buildFlatLandscape(
