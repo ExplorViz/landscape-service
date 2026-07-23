@@ -3,6 +3,7 @@ package net.explorviz.landscape.repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.neo4j.ogm.session.Session;
@@ -135,26 +136,25 @@ public class SocialMetricsRepository {
     return rows;
   }
 
-  // on hold
-  //  public Map<String, Long> getBugIssueCountByPath(Session session, String token, String repo) {
-  //    final Map<String, Long> bugIssueCountByPath = new HashMap<>();
-  //    session.query(
-  //        """
-  //        MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
-  //              -[:CONTAINS]->(pr:PullRequest)-[:REFERENCES]->(i:Issue)
-  //        WHERE any(l IN i.labels WHERE toLower(l) CONTAINS 'bug')
-  //        MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
-  //        RETURN f.filePath AS path, count(DISTINCT i) AS bugCount
-  //        """,
-  //        Map.of("token", token, "repo", repo))
-  //        .queryResults()
-  //        .forEach( r ->
-  //            bugIssueCountByPath.put(
-  //                ((String) r.get("path")),
-  //                ((Number) r.get("bugCount")).longValue()));
-  //
-  //    return bugIssueCountByPath;
-  //  }
-  //
+  public Map<String, Long> getIssueCountByPath(
+      final Session session, final String token, final String repo) {
+    final Map<String, Long> issueCountByPath = new HashMap<>();
+    session
+        .query(
+            """
+            MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
+                  -[:CONTAINS]->(pr:PullRequest)-[:REFERENCES]->(i:Issue)
+            WHERE any(l IN i.labels WHERE toLower(l) CONTAINS 'bug')
+            MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
+            RETURN f.filePath AS path, count(DISTINCT i) AS bugCount
+            """,
+            Map.of("token", token, "repo", repo))
+        .queryResults()
+        .forEach(
+            r ->
+                issueCountByPath.put(
+                    (String) r.get("path"), ((Number) r.get("bugCount")).longValue()));
 
+    return issueCountByPath;
+  }
 }

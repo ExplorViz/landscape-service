@@ -18,6 +18,7 @@ public abstract class SocialMetric {
       Set<Long> contributorIds,
       Set<Long> coreContributorIds,
       RepoTimeBounds repoTimeBounds,
+      Map<String, Long> issueCountByPath,
       List<MergedPrStats> mergedPrStats,
       NormalizationOptions normalizationOpts) {}
 

@@ -31,6 +31,7 @@ public class CommitActivityTest {
             contributorIds,
             coreIds,
             new SocialMetricsRepository.RepoTimeBounds(0, 0),
+            Map.of(),
             List.of(),
             new NormalizationOptions(
                 NormalizationOptions.LEGACY.logScale(), NormalizationOptions.LEGACY.quantile())));
@@ -116,7 +117,8 @@ public class CommitActivityTest {
 
     assertEquals(List.of(101L, 102L), List.copyOf(scoreByFileRevisionId.keySet()));
 
-    // V = {3, 1} -> p95 = 3. If D's 5 leaked in, V = {3, 1, 5} -> p95 = 5 and A would be 0.6.
+    // V = {3, 1} -> p95 = 3. If D's 5 leaked in, V = {3, 1, 5} -> p95 = 5 and A
+    // would be 0.6.
     assertEquals(3d, scoreByFileRevisionId.get(101L).raw());
     assertEquals(1.0, scoreByFileRevisionId.get(101L).normalized());
 
@@ -178,7 +180,8 @@ public class CommitActivityTest {
     Map<Long, MetricScore> scoreByFileRevisionId =
         compute(fileActivitiesFixture(), snapshotFilesFixture(), Set.of(ALICE, BOB), Set.of(BOB));
 
-    // Every snapshot file gets an entry, keyed by its revision id, in snapshot order.
+    // Every snapshot file gets an entry, keyed by its revision id, in snapshot
+    // order.
     assertEquals(List.of(101L, 102L, 103L), List.copyOf(scoreByFileRevisionId.keySet()));
   }
 
@@ -203,7 +206,8 @@ public class CommitActivityTest {
     Map<Long, MetricScore> scoreByFileRevisionId =
         compute(fileActivities, snapshotFiles, Set.of(ALICE), Set.of(BOB));
 
-    // Documents merge-sum. The Cypher groups by (path, aid), so this shouldn't arise in practice.
+    // Documents merge-sum. The Cypher groups by (path, aid), so this shouldn't
+    // arise in practice.
     assertEquals(5d, scoreByFileRevisionId.get(101L).raw());
     assertEquals(1.0, scoreByFileRevisionId.get(101L).normalized());
   }

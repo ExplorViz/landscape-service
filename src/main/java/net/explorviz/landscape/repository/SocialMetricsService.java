@@ -19,6 +19,7 @@ import net.explorviz.landscape.repository.metrics.AbandonedKnowledgeSilo;
 import net.explorviz.landscape.repository.metrics.CommitActivity;
 import net.explorviz.landscape.repository.metrics.CommitCount;
 import net.explorviz.landscape.repository.metrics.CoreContributorActivity;
+import net.explorviz.landscape.repository.metrics.IssueActivity;
 import net.explorviz.landscape.repository.metrics.KnowledgeSilo;
 import net.explorviz.landscape.repository.metrics.KnowledgeStaleness;
 import net.explorviz.landscape.repository.metrics.ReviewFriction;
@@ -42,7 +43,8 @@ public class SocialMetricsService {
           new KnowledgeSilo(),
           new KnowledgeStaleness(),
           new AbandonedKnowledgeSilo(),
-          new ReviewFriction());
+          new ReviewFriction(),
+          new IssueActivity());
 
   public List<SocialMetricDto> calculateMetrics(
       final Session session,
@@ -64,6 +66,9 @@ public class SocialMetricsService {
         socialMetricsRepository.getRepoTimeBounds(session, token, repo);
     final List<MergedPrStats> mergedPrStats =
         socialMetricsRepository.getMergedPrStats(session, token, repo);
+    final Map<String, Long> issueCountByPath =
+        socialMetricsRepository.getIssueCountByPath(session, token, repo);
+
     final MetricInput metricInput =
         new MetricInput(
             base,
@@ -71,6 +76,7 @@ public class SocialMetricsService {
             contributorIds,
             coreIds,
             repoTimeBounds,
+            issueCountByPath,
             mergedPrStats,
             normalizationOpts);
 
