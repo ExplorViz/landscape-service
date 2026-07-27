@@ -6,12 +6,9 @@ import static net.explorviz.landscape.util.FlatLandscapeComparator.assertLandsca
 import static org.awaitility.Awaitility.await;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.common.http.TestHTTPEndpoint;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
-import io.quarkus.test.kafka.InjectKafkaCompanion;
-import io.quarkus.test.kafka.KafkaCompanionResource;
 import io.restassured.response.Response;
 import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import java.time.Duration;
@@ -23,17 +20,20 @@ import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.FlatLandscapeComparator;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
-@QuarkusTestResource(KafkaCompanionResource.class)
 public class CodeTelemetryServiceIntegrationTest {
 
-  @InjectKafkaCompanion KafkaCompanion companion;
+  @AutoClose KafkaCompanion companion;
 
   @ConfigProperty(name = "mp.messaging.incoming.telemetry-entities.topic")
   String entitiesTopic;
+
+  @ConfigProperty(name = "kafka.bootstrap.servers")
+  String kafkaBootstrapServer;
 
   private static final String DEFAULT_LANDSCAPE_ID = "mytokenvalue";
   private static final String DEFAULT_LANDSCAPE_SECRET = "mytokensecret";
@@ -44,6 +44,7 @@ public class CodeTelemetryServiceIntegrationTest {
 
   @BeforeEach
   void setup() {
+    companion = new KafkaCompanion(kafkaBootstrapServer);
     given().get("/example/purge").then().statusCode(200);
   }
 
