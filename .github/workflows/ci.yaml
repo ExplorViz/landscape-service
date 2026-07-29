@@ -79,7 +79,11 @@ jobs:
         image: neo4j:5
         env:
           NEO4J_AUTH: none
-          NEO4J_PLUGINS: '["apoc"]'
+          NEO4J_PLUGINS: '["apoc", "apoc-extended"]'
+          NEO4J_dbms_usage__report_enabled: false
+          NEO4J_db_query_default__language: CYPHER_25
+          NEO4J_apoc_import_file_enabled: true
+          NEO4J_apoc_initializer_neo4j_0: CALL apoc.cypher.runSchemaFile("init.cypher")
         ports:
           - 7687:7687
           - 7474:7474

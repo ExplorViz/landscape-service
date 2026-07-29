@@ -141,7 +141,6 @@ public class CodeTelemetryService {
             ON CREATE SET appRoot.name = "*"
 
             // Find longest file path match
-            WITH *
             MATCH p = (appRoot)-[:CONTAINS]->*(deepestNode:Directory|FileRevision)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $filePath[j-1])
@@ -167,7 +166,6 @@ public class CodeTelemetryService {
             }
             WITH coalesce(lastCreated, deepestNode) AS file
             SET file.telemetryKey = $fileTelemetryKey
-            WITH file
 
             // Find longest class path match, if a class was specified
             OPTIONAL CALL (file) {
