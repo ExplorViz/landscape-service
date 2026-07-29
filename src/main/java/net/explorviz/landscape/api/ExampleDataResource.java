@@ -1,6 +1,6 @@
 package net.explorviz.landscape.api;
 
-import io.quarkus.arc.profile.IfBuildProfile;
+import io.quarkus.arc.profile.UnlessBuildProfile;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.InternalServerErrorException;
@@ -24,8 +24,6 @@ import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.ogm.Landscape;
 import net.explorviz.landscape.ogm.Repository;
-import net.explorviz.landscape.ogm.Span;
-import net.explorviz.landscape.ogm.Trace;
 import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
@@ -35,60 +33,12 @@ import org.neo4j.ogm.session.SessionFactory;
  * Contains dev-exclusive endpoints for populating the database with testing data without having to
  * run other ExplorViz services. Simply cURL endpoints or access them via browser.
  */
-@IfBuildProfile("dev")
+@UnlessBuildProfile("prod")
 @Path("/example")
 @SuppressWarnings({"PMD.NcssCount", "PMD.TooManyMethods"})
 public class ExampleDataResource {
 
   @Inject SessionFactory sessionFactory;
-
-  @GET
-  @Path("/trace")
-  public String createTestingDynamicData() {
-    final Session session = sessionFactory.openSession();
-    session.query(
-        """
-        MERGE (l:Landscape {tokenId: "mytokenvalue"})
-        MERGE (l)-[:CONTAINS]->(t1:Trace {traceId: "trace1"})
-        MERGE (l)-[:CONTAINS]->(t2:Trace {traceId: "trace2"})
-        SET t1.startTime = 1000000000, t1.endTime = 1001000000
-        SET t2.startTime = 2000000000, t2.endTime = 4002800000
-        MERGE (t1)-[:CONTAINS]->(s1:Span {spanId: "span1"})
-        MERGE (t2)-[:CONTAINS]->(s2:Span {spanId: "span2"})
-        MERGE (t2)-[:CONTAINS]->(s3:Span {spanId: "span3"})-[:HAS_PARENT]->(s2)
-        MERGE (t2)-[:CONTAINS]->(s4:Span {spanId: "span4"})-[:HAS_PARENT]->(s3)
-
-        SET s1.startTime = 1000000000, s1.endTime = 1001000000
-        SET s2.startTime = 2000000000, s2.endTime = 2003000000
-        SET s3.startTime = 2500000000, s3.endTime = 3002900000
-        SET s4.startTime = 3000000000, s4.endTime = 4002800000
-
-        MERGE (l)-[:CONTAINS]->(app:Application {name: "hello-world"})
-        MERGE (app)-[:HAS_ROOT]->(appRoot:Directory {name: "hello-world"})
-
-        MERGE (appRoot)-[:CONTAINS]->(d1:Directory {name: "net"})
-        MERGE (d1)-[:CONTAINS]->(d2:Directory {name: "explorviz"})
-        MERGE (d2)-[:CONTAINS]->(outerDir:Directory {name: "helloworld"})
-        MERGE (outerDir)-[:CONTAINS]->(innerDir:Directory {name: "innerpackage"})
-        MERGE (outerDir)-[:CONTAINS]->(file1:FileRevision {name: "File1.java"})
-        MERGE (outerDir)-[:CONTAINS]->(file2:FileRevision {name: "File2.java"})
-        MERGE (innerDir)-[:CONTAINS]->(file3:FileRevision {name: "File3.java"})
-        MERGE (file1)-[:CONTAINS]->(func1:Function {name: "function1"})
-        MERGE (file2)-[:CONTAINS]->(func2:Function {name: "function2"})
-        MERGE (file3)-[:CONTAINS]->(func3:Function {name: "function3"})
-
-        MERGE (l)-[:CONTAINS]->(r1:Repository {name: "hello-world"})
-        MERGE (r1)-[:CONTAINS]->(c1:Commit {hash: "commit1"})
-        MERGE (c1)-[:CONTAINS]->(file1)
-        MERGE (r1)-[:HAS_ROOT]->(appRoot)
-
-        MERGE (s1)-[:REPRESENTS]->(func1)
-        MERGE (s2)-[:REPRESENTS]->(func2)
-        MERGE (s3)-[:REPRESENTS]->(func3)<-[:REPRESENTS]-(s4);
-        """,
-        Map.of());
-    return "Successfully created example \"trace\"";
-  }
 
   @GET
   @Path("/repo")
@@ -345,24 +295,6 @@ public class ExampleDataResource {
     return "Successfully created example \"petclinic-static\"";
   }
 
-  /** Trace-generator result using the "petclinic" preset. */
-  @GET
-  @Path("/petclinic-runtime")
-  public String createPetclinicRuntime() {
-    final String resourceFilePath = "example-data/petclinic-runtime.cypher";
-    executeCypherFile(resourceFilePath);
-    return "Successfully created example \"petclinic-runtime\"";
-  }
-
-  /** Combined result of code-agent and trace-generator for spring-petclinic. */
-  @GET
-  @Path("/petclinic")
-  public String createPetclinicCombined() {
-    final String resourceFilePath = "example-data/petclinic-combined.cypher";
-    executeCypherFile(resourceFilePath);
-    return "Successfully created example \"petclinic\"";
-  }
-
   @GET
   @Path("/purge")
   public String purgeDatabase() {
@@ -429,36 +361,6 @@ public class ExampleDataResource {
       throw new InternalServerErrorException(
           "Failed to load example cypher file: " + e.getMessage(), e);
     }
-  }
-
-  private void addRandomSpan(final Trace trace, final String name) {
-    final Span span = new Span(name);
-    final long randNumb = (long) (Math.random() * 100_000_000_000.0);
-    span.setStartTime(randNumb);
-    span.setEndTime(randNumb + 1);
-    trace.addSpan(span);
-  }
-
-  @GET
-  @Path("/timestamp")
-  public String createTestingTimestamps() {
-    final Landscape landscape = new Landscape("mytokenvalue");
-
-    final Trace trace1 = new Trace("trace1");
-    final Trace trace2 = new Trace("trace2");
-
-    for (int i = 0; i < 5; i++) {
-      addRandomSpan(trace1, "trace1_span" + i);
-      addRandomSpan(trace2, "trace2_span" + i);
-    }
-
-    landscape.addTrace(trace1);
-    landscape.addTrace(trace2);
-
-    final Session session = sessionFactory.openSession();
-    session.save(List.of(landscape));
-
-    return "Successfully created testing timestamps";
   }
 
   @GET

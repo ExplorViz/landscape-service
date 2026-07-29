@@ -1,6 +1,7 @@
-package net.explorviz.landscape;
+package net.explorviz.landscape.messaging.telemetry;
 
 import static net.explorviz.landscape.util.TestUtils.assertNodeCounts;
+import static net.explorviz.landscape.util.TestUtils.createLandscape;
 import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,7 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.explorviz.landscape.messaging.SpanConsumer;
+import net.explorviz.landscape.messaging.TelemetryConsumer;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Clazz;
@@ -27,10 +28,7 @@ import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.ogm.Landscape;
 import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.proto.CodeDescriptor;
-import net.explorviz.landscape.proto.ParsedSpan;
-import net.explorviz.landscape.repository.CommitRepository;
-import net.explorviz.landscape.repository.FileRevisionRepository;
-import net.explorviz.landscape.repository.LandscapeRepository;
+import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.ExpectedCounts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -40,35 +38,24 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @QuarkusTest
-class SpanConsumerTest {
+class CodeTelemetryServiceTest {
 
-  @Inject SpanConsumer spanConsumer;
-
-  @Inject CommitRepository commitRepository;
-
-  @Inject FileRevisionRepository fileRevisionRepository;
-
-  @Inject LandscapeRepository landscapeRepository;
+  @Inject TelemetryConsumer telemetryConsumer;
 
   @Inject SessionFactory sessionFactory;
 
   private Session session;
   private String landscapeToken;
-  private String baseTraceId;
-  private String baseSpanId;
   private String baseAppName;
-  private String baseEntityId;
 
   @BeforeEach
   void cleanup() {
+    landscapeToken = "mytokenvalue";
+    baseAppName = "myApp";
+
     session = sessionFactory.openSession();
     resetDatabase(session);
-
-    landscapeToken = "mytokenvalue";
-    baseTraceId = "myTrace";
-    baseSpanId = "mySpan";
-    baseAppName = "myApp";
-    baseEntityId = "testEntityId";
+    createLandscape(session, landscapeToken);
   }
 
   @Nested
@@ -86,31 +73,25 @@ class SpanConsumerTest {
       baseFunctionName = "myMethod";
     }
 
-    ParsedSpan.Builder baseSpanBuilder() {
-      return ParsedSpan.newBuilder()
-          .setSpanId(baseSpanId)
-          .setTraceId(baseTraceId)
-          .setApplicationName(baseAppName)
+    TelemetryEntity.Builder baseEntityBuilder() {
+      return TelemetryEntity.newBuilder()
           .setLandscapeTokenId(landscapeToken)
           .setCodeDescriptor(
               CodeDescriptor.newBuilder()
+                  .setApplicationName(baseAppName)
                   .setFilePath(String.join("/", baseFilePath))
-                  .setFunctionName(baseFunctionName))
-          .setStartTime(1)
-          .setEndTime(5);
+                  .setFunctionName(baseFunctionName));
     }
 
     @Test
-    void testPersistSpan() {
-      ParsedSpan testSpan = baseSpanBuilder().build();
+    void testPersistEntity() {
+      TelemetryEntity testEntity = baseEntityBuilder().build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -121,17 +102,14 @@ class SpanConsumerTest {
           session.queryForObject(
               Application.class,
               """
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Function {name: $funName})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+              MATCH (:Landscape {tokenId: $landscapeToken})
+                -[:CONTAINS]->(app:Application {name: $appName})
+                -[:HAS_ROOT]->(:Directory)
+                -[:CONTAINS]->(:Directory {name: $dirOne})
+                -[:CONTAINS]->(:Directory {name: $dirTwo})
+                -[:CONTAINS]->(:Directory {name: $dirThree})
+                -[:CONTAINS]->(:FileRevision {name: $fileName})
+                -[:CONTAINS]->(:Function {name: $funName})
               RETURN app;
               """,
               params);
@@ -141,8 +119,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(1)
               .applications(1)
               .directories(4)
               .files(1)
@@ -150,25 +126,22 @@ class SpanConsumerTest {
               .build());
     }
 
-    /** Persisting the same span twice should create no additional nodes. */
+    /** Persisting the same entity twice should create no additional nodes. */
     @Test
-    void testPersistSpanIdempotent() {
-      ParsedSpan testSpan = baseSpanBuilder().build();
+    void testPersistEntityIdempotent() {
+      TelemetryEntity testEntity = baseEntityBuilder().build();
 
       String dbStructureQuery =
           """
           RETURN EXISTS {
-            MATCH (app:Application {name: $appName})
+            MATCH (:Landscape {tokenId: $landscapeToken})
+              -[:CONTAINS]->(app:Application {name: $appName})
               -[:HAS_ROOT]->(:Directory)
               -[:CONTAINS]->(:Directory {name: $dirOne})
               -[:CONTAINS]->(:Directory {name: $dirTwo})
               -[:CONTAINS]->(:Directory {name: $dirThree})
               -[:CONTAINS]->(:FileRevision {name: $fileName})
               -[:CONTAINS]->(:Function {name: $funName})
-              <-[:REPRESENTS]-(:Span {spanId: $spanId})
-              <-[:CONTAINS]-(:Trace {traceId: $traceId})
-              <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-              -[:CONTAINS]->(app)
           } as exists;
           """;
 
@@ -180,22 +153,20 @@ class SpanConsumerTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
       params.put("fileName", baseFileName);
       params.put("funName", baseFunctionName);
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Boolean dbIsCorrectAfterFirstConsumeCall =
           session.queryForObject(Boolean.class, dbStructureQuery, params);
       Long nodeCountAfterFirstConsumeCall =
           session.queryForObject(Long.class, dbNodeCountQuery, Map.of());
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Boolean dbIsCorrectAfterSecondConsumeCall =
           session.queryForObject(Boolean.class, dbStructureQuery, params);
@@ -209,8 +180,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(1)
               .applications(1)
               .directories(4)
               .files(1)
@@ -219,106 +188,30 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithMultipleTraces() {
-      String traceIdTwo = "trace2";
-      String spanIdTwo = "span2";
-
-      ParsedSpan testSpan = baseSpanBuilder().build();
-
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder().setSpanId(spanIdTwo).setTraceId(traceIdTwo).build();
-
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
-
-      Map<String, Object> params = new HashMap<>();
-      params.put("landscapeToken", landscapeToken);
-      params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("traceIdTwo", traceIdTwo);
-      params.put("spanId", baseSpanId);
-      params.put("spanIdTwo", spanIdTwo);
-      params.put("dirOne", baseFilePath.get(0));
-      params.put("dirTwo", baseFilePath.get(1));
-      params.put("dirThree", baseFilePath.get(2));
-      params.put("fileName", baseFileName);
-      params.put("funName", baseFunctionName);
-
-      Boolean databaseIsCorrect =
-          session.queryForObject(
-              Boolean.class,
-              """
-              RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(fun:Function {name: $funName})
-                    <-[:REPRESENTS]-(span1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(trace1:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(l:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
-
-              MATCH (l)-[:CONTAINS]->(trace2:Trace {traceId: $traceIdTwo})
-                    -[:CONTAINS]->(span2:Span {spanId: $spanIdTwo})
-                    -[:REPRESENTS]->(fun)
-
-              WHERE trace1 <> trace2
-                AND span1 <> span2
-                AND NOT EXISTS { MATCH (trace1)-[:CONTAINS]->(span2) }
-                AND NOT EXISTS { MATCH (trace2)-[:CONTAINS]->(span1) }
-              } as exists;
-              """,
-              params);
-
-      assertNotNull(databaseIsCorrect);
-      assertNodeCounts(
-          session,
-          ExpectedCounts.builder()
-              .landscapes(1)
-              .traces(2)
-              .spans(2)
-              .applications(1)
-              .directories(4)
-              .files(1)
-              .functions(1)
-              .build());
-    }
-
-    @Test
-    void testPersistSpanMultipleSpans() {
-      String spanIdTwo = "span2";
+    void testPersistEntitiesMultipleFiles() {
       String functionNameTwo = "yourMethod";
       String fileNameTwo = "YourClass.java";
       List<String> filePathTwo =
           ImmutableList.<String>builder().addAll(baseDirNames).add(fileNameTwo).build();
 
-      ParsedSpan testSpan = baseSpanBuilder().build();
+      TelemetryEntity testEntity = baseEntityBuilder().build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
-              .setParentId(baseSpanId)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePathTwo)))
-              .setStartTime(2)
-              .setEndTime(4)
               .build();
 
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanId2", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -332,24 +225,19 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileNameOne})
-                    -[:CONTAINS]->(fun1:Function {name: $funName})
-                    <-[:REPRESENTS]-(span1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(d3:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileNameOne})
+                  -[:CONTAINS]->(fun1:Function {name: $funName})
 
-              MATCH (file2:FileRevision {name: $fileNameTwo})-[:CONTAINS]->(fun2:Function {name: $funName2})
-              MATCH (fun2)<-[:REPRESENTS]-(span2:Span {spanId: $spanId2})
-                    <-[:CONTAINS]-(t)
-              MATCH (span2)-[:HAS_PARENT]->(span1)
-
-              WHERE fun1 <> fun2
+                MATCH (d3)
+                  -[:CONTAINS]->(file2:FileRevision {name: $fileNameTwo})
+                  -[:CONTAINS]->(fun2:Function {name: $funName2})
+                WHERE fun1 <> fun2
               } AS exists
               """,
               params);
@@ -359,8 +247,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(4)
               .files(2)
@@ -369,33 +255,26 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanMultipleFunctionsFromOneFileRevision() {
-      String spanIdTwo = "span2";
+    void testPersistEntityMultipleFunctions() {
       String functionNameTwo = "yourMethod";
 
-      ParsedSpan testSpan = baseSpanBuilder().build();
+      TelemetryEntity testEntity = baseEntityBuilder().build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
-              .setParentId(baseSpanId)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", baseFilePath)))
-              .setStartTime(2)
-              .setEndTime(4)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanId2", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -408,24 +287,17 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(fun1:Function {name: $funName})
-                    <-[:REPRESENTS]-(span1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(fun1:Function {name: $funName})
 
-              MATCH (file)-[:CONTAINS]->(fun2:Function {name: $funName2})
-              MATCH (fun2)<-[:REPRESENTS]-(span2:Span {spanId: $spanId2})
-                    <-[:CONTAINS]-(t)
-              MATCH (span2)-[:HAS_PARENT]->(span1)
-
-              WHERE fun1 <> fun2
+                MATCH (file)-[:CONTAINS]->(fun2:Function {name: $funName2})
+                WHERE fun1 <> fun2
               } AS exists
               """,
               params);
@@ -435,8 +307,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(4)
               .files(1)
@@ -445,29 +315,28 @@ class SpanConsumerTest {
     }
 
     /**
-     * If span with commit is persisted and no static data are present, then the span should be
-     * treated as if no commit id was attached
+     * If entity with commit is persisted and no static data is present, then the entity should be
+     * treated as if no commit hash was attached
      */
     @Test
-    void testPersistSpanWithCommitWithoutStaticData() {
+    void testPersistEntityWithCommitWithoutStaticData() {
       String commitHash = "commit1";
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFilePath(String.join("/", baseFilePath))
-                      .setFunctionName(baseFunctionName)
-                      .setGitCommitHash(commitHash))
+                      .setFunctionName(baseFunctionName))
+              .setGitCommitHash(commitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -478,17 +347,14 @@ class SpanConsumerTest {
           session.queryForObject(
               Application.class,
               """
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Function {name: $funName})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+              MATCH (:Landscape {tokenId: $landscapeToken})
+                -[:CONTAINS]->(app:Application {name: $appName})
+                -[:HAS_ROOT]->(:Directory)
+                -[:CONTAINS]->(:Directory {name: $dirOne})
+                -[:CONTAINS]->(:Directory {name: $dirTwo})
+                -[:CONTAINS]->(:Directory {name: $dirThree})
+                -[:CONTAINS]->(:FileRevision {name: $fileName})
+                -[:CONTAINS]->(:Function {name: $funName})
               RETURN app;
               """,
               params);
@@ -508,8 +374,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(1)
               .applications(1)
               .directories(4)
               .files(1)
@@ -519,7 +383,7 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithPartOfFunctionPathAlreadyExisting() {
+    void testPersistEntityWithPartOfFunctionPathAlreadyExisting() {
       String functionNameTwo = "acting";
       String fileNameTwo = "TheClass.java";
       List<String> filePathTwo =
@@ -528,28 +392,24 @@ class SpanConsumerTest {
               .add("inner")
               .add(fileNameTwo)
               .build();
-      String spanIdTwo = "span2";
 
-      ParsedSpan testSpan = baseSpanBuilder().build();
+      TelemetryEntity testEntity = baseEntityBuilder().build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePathTwo)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanIdTwo", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -564,23 +424,18 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(sharedDir:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileNameOne})
-                    -[:CONTAINS]->(fun1:Function {name: $funName})
-                    <-[:REPRESENTS]-(span1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(sharedDir:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileNameOne})
+                  -[:CONTAINS]->(fun1:Function {name: $funName})
 
-              MATCH (sharedDir)-[:CONTAINS]->(:Directory {name: $dirFour})
-                    -[:CONTAINS]->(file2:FileRevision {name: $fileNameTwo})
-                    -[:CONTAINS]->(fun2:Function {name: $funNameTwo})
-                    <-[:REPRESENTS]-(span2:Span {spanId: $spanIdTwo})
-                    <-[:CONTAINS]-(t)
+                MATCH (sharedDir)-[:CONTAINS]->(:Directory {name: $dirFour})
+                  -[:CONTAINS]->(file2:FileRevision {name: $fileNameTwo})
+                  -[:CONTAINS]->(fun2:Function {name: $funNameTwo})
               } AS exists
               """,
               params);
@@ -605,8 +460,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(5)
               .files(2)
@@ -616,25 +469,24 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithClassPathWithoutCommitHashWithNoClassesExisting() {
+    void testPersistEntityWithClassPathWithoutCommitHashWithNoClassesExisting() {
       String[] classPath = {"A", "B", "C"};
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", baseFilePath))
                       .setClassName(String.join(".", classPath)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -649,20 +501,17 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $classNameOne})
-                    -[:CONTAINS]->(:Clazz {name: $classNameTwo})
-                    -[:CONTAINS]->(:Clazz {name: $classNameThree})
-                    -[:CONTAINS]->(:Function {name: $funName})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $classNameOne})
+                  -[:CONTAINS]->(:Clazz {name: $classNameTwo})
+                  -[:CONTAINS]->(:Clazz {name: $classNameThree})
+                  -[:CONTAINS]->(:Function {name: $funName})
               } as exists;
               """,
               params);
@@ -672,8 +521,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(1)
               .applications(1)
               .directories(4)
               .files(1)
@@ -683,39 +530,36 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithClassPathWithoutCommitHashWithAllClassesExisting() {
+    void testPersistEntityWithClassPathWithoutCommitHashWithAllClassesExisting() {
       String[] classPath = {"A", "B", "C"};
-      String spanIdTwo = "span2";
       String functionNameTwo = "function2";
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", baseFilePath))
                       .setClassName(String.join(".", classPath)))
               .build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", baseFilePath))
                       .setClassName(String.join(".", classPath)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanIdTwo", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -731,27 +575,20 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $classNameOne})
-                    -[:CONTAINS]->(:Clazz {name: $classNameTwo})
-                    -[:CONTAINS]->(c:Clazz {name: $classNameThree})
-                    -[:CONTAINS]->(f1:Function {name: $funName})
-                    <-[:REPRESENTS]-(s1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $classNameOne})
+                  -[:CONTAINS]->(:Clazz {name: $classNameTwo})
+                  -[:CONTAINS]->(c:Clazz {name: $classNameThree})
+                  -[:CONTAINS]->(f1:Function {name: $funName})
 
-              MATCH (c)-[:CONTAINS]->(f2:Function {name: $funNameTwo})
-                      <-[:REPRESENTS]-(s2:Span {spanId: $spanIdTwo})
-                      <-[:CONTAINS]-(t)
-
-              WHERE f1 <> f2
-                AND s1 <> s2
+                MATCH (c)-[:CONTAINS]->(f2:Function {name: $funNameTwo})
+                WHERE f1 <> f2
               } as exists;
               """,
               params);
@@ -761,8 +598,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(4)
               .files(1)
@@ -772,40 +607,37 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithClassPathWithoutCommitHashWithSomeClassesExisting() {
+    void testPersistEntityWithClassPathWithoutCommitHashWithSomeClassesExisting() {
       String[] classPath = {"A", "B"};
       String[] classPathTwo = ObjectArrays.concat(classPath, "C");
-      String spanIdTwo = "span2";
       String functionNameTwo = "function2";
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", baseFilePath))
                       .setClassName(String.join(".", classPath)))
               .build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", baseFilePath))
                       .setClassName(String.join(".", classPathTwo)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanIdTwo", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -821,28 +653,23 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $classNameOne})
-                    -[:CONTAINS]->(c2:Clazz {name: $classNameTwo})
-                    -[:CONTAINS]->(f1:Function {name: $funName})
-                    <-[:REPRESENTS]-(s1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $classNameOne})
+                  -[:CONTAINS]->(c2:Clazz {name: $classNameTwo})
+                  -[:CONTAINS]->(f1:Function {name: $funName})
 
-              MATCH (c)-[:CONTAINS]->(c3:Clazz {name: $classNameThree})
-                      -[:CONTAINS]->(f2:Function {name: $funNameTwo})
-                      <-[:REPRESENTS]-(s2:Span {spanId: $spanIdTwo})
-                      <-[:CONTAINS]-(t)
+                MATCH (c)
+                  -[:CONTAINS]->(c3:Clazz {name: $classNameThree})
+                  -[:CONTAINS]->(f2:Function {name: $funNameTwo})
 
-              WHERE f1 <> f2
-                AND s1 <> s2
-                AND c2 <> c3
+                WHERE f1 <> f2
+                  AND c2 <> c3
               } as exists;
               """,
               params);
@@ -852,8 +679,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(4)
               .files(1)
@@ -863,27 +688,26 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithClassPathWithCommitHashWithNoClassesExisting() {
+    void testPersistEntityWithClassPathWithCommitHashWithNoClassesExisting() {
       String[] classPath = {"A", "B", "C"};
       String commitHash = "commit1";
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", baseFilePath))
-                      .setClassName(String.join(".", classPath))
-                      .setGitCommitHash(commitHash))
+                      .setClassName(String.join(".", classPath)))
+              .setGitCommitHash(commitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -898,21 +722,18 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $classNameOne})
-                    -[:CONTAINS]->(:Clazz {name: $classNameTwo})
-                    -[:CONTAINS]->(:Clazz {name: $classNameThree})
-                    -[:CONTAINS]->(:Function {name: $funName})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
-              } as exists;
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $classNameOne})
+                  -[:CONTAINS]->(:Clazz {name: $classNameTwo})
+                  -[:CONTAINS]->(:Clazz {name: $classNameThree})
+                  -[:CONTAINS]->(:Function {name: $funName})
+                } as exists;
               """,
               params);
 
@@ -921,8 +742,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(1)
               .applications(1)
               .directories(4)
               .files(1)
@@ -932,42 +751,39 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithClassPathWithCommitHashWithAllClassesExisting() {
+    void testPersistEntityWithClassPathWithCommitHashWithAllClassesExisting() {
       String[] classPath = {"A", "B", "C"};
-      String spanIdTwo = "span2";
       String functionNameTwo = "function2";
       String commitHash = "commit1";
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", baseFilePath))
-                      .setClassName(String.join(".", classPath))
-                      .setGitCommitHash(commitHash))
+                      .setClassName(String.join(".", classPath)))
+              .setGitCommitHash(commitHash)
               .build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
-              .setSpanId(spanIdTwo)
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", baseFilePath))
-                      .setClassName(String.join(".", classPath))
-                      .setGitCommitHash(commitHash))
+                      .setClassName(String.join(".", classPath)))
+              .setGitCommitHash(commitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
-      params.put("spanIdTwo", spanIdTwo);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -983,27 +799,20 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $classNameOne})
-                    -[:CONTAINS]->(:Clazz {name: $classNameTwo})
-                    -[:CONTAINS]->(c:Clazz {name: $classNameThree})
-                    -[:CONTAINS]->(f1:Function {name: $funName})
-                    <-[:REPRESENTS]-(s1:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(t:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $classNameOne})
+                  -[:CONTAINS]->(:Clazz {name: $classNameTwo})
+                  -[:CONTAINS]->(c:Clazz {name: $classNameThree})
+                  -[:CONTAINS]->(f1:Function {name: $funName})
 
-              MATCH (c)-[:CONTAINS]->(f2:Function {name: $funNameTwo})
-                      <-[:REPRESENTS]-(s2:Span {spanId: $spanIdTwo})
-                      <-[:CONTAINS]-(t)
-
-              WHERE f1 <> f2
-                AND s1 <> s2
+                MATCH (c)-[:CONTAINS]->(f2:Function {name: $funNameTwo})
+                WHERE f1 <> f2
               } as exists;
               """,
               params);
@@ -1013,8 +822,6 @@ class SpanConsumerTest {
           session,
           ExpectedCounts.builder()
               .landscapes(1)
-              .traces(1)
-              .spans(2)
               .applications(1)
               .directories(4)
               .files(1)
@@ -1081,18 +888,14 @@ class SpanConsumerTest {
       buildDefaultStaticData(session);
     }
 
-    ParsedSpan.Builder baseSpanBuilder() {
-      return ParsedSpan.newBuilder()
-          .setSpanId(baseSpanId)
-          .setTraceId(baseTraceId)
-          .setApplicationName(baseAppName)
+    TelemetryEntity.Builder baseEntityBuilder() {
+      return TelemetryEntity.newBuilder()
           .setLandscapeTokenId(landscapeToken)
           .setCodeDescriptor(
               CodeDescriptor.newBuilder()
+                  .setApplicationName(baseAppName)
                   .setFilePath(String.join("/", baseFilePath))
-                  .setFunctionName(baseFunctionName))
-          .setStartTime(1)
-          .setEndTime(5);
+                  .setFunctionName(baseFunctionName));
     }
 
     @Test
@@ -1116,22 +919,22 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (l:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(repo:Repository {name: $repoName})
-                    -[:CONTAINS]->(:Commit {hash: $commitHash})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(:Function {name: $funName})
+                MATCH (l:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(repo:Repository {name: $repoName})
+                  -[:CONTAINS]->(:Commit {hash: $commitHash})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(:Function {name: $funName})
 
-              MATCH (repo)-[:CONTAINS]->(:Branch {name: $branchName})
-                    <-[:BELONGS_TO]-(commit)
+                MATCH (repo)-[:CONTAINS]->(:Branch {name: $branchName})<-[:BELONGS_TO]-(commit)
 
-              MATCH (repo)-[:HAS_ROOT]->(root:Directory {name: $repoRoot})
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file)
+                MATCH (repo)
+                  -[:HAS_ROOT]->(root:Directory {name: $repoRoot})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file)
 
-              MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
+                MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
               } as exists;
               """,
               params);
@@ -1152,25 +955,24 @@ class SpanConsumerTest {
     }
 
     @Test
-    void testPersistSpanWithoutCommitId() {
+    void testPersistEntityWithoutCommitId() {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", filePath)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("repoRoot", filePath.get(0));
       params.put("dirOne", filePath.get(1));
       params.put("dirTwo", filePath.get(2));
@@ -1184,24 +986,19 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory {name: $repoRoot})
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(d:Directory {name: $dirThree})
-                    -[:CONTAINS]->(fileD:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(funD:Function {name: $funName})
-                    <-[:REPRESENTS]-(span:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory {name: $repoRoot})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(d:Directory {name: $dirThree})
+                  -[:CONTAINS]->(fileD:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(funD:Function {name: $funName})
 
-              MATCH (d)-[:CONTAINS]->(fileS:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(funS:Function {name: $funName})
-
-              WHERE NOT EXISTS { MATCH (:Span)-[:REPRESENTS]->(funS) }
-                AND fileD.hash IS NULL
-                AND funS <> funD
+                MATCH (d)
+                  -[:CONTAINS]->(fileS:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(funS:Function {name: $funName})
+                WHERE fileD.hash IS NULL AND funS <> funD
               } as exists;
               """,
               params);
@@ -1218,36 +1015,33 @@ class SpanConsumerTest {
               .applications(1)
               .directories(4)
               .functions(2)
-              .spans(1)
-              .traces(1)
               .build());
     }
 
     /**
-     * If a commit hash is included in the span and the corresponding commit, file and function
-     * nodes exist, then the span should be connected to the existing function node.
+     * If a commit hash is included in the entity and the corresponding commit, file and function
+     * nodes exist, then no new nodes should be created.
      */
     @Test
-    void testPersistSpanWithCommitAndStaticDataExists() {
+    void testPersistEntityWithCommitAndStaticDataExists() {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
-                      .setFilePath(String.join("/", filePath))
-                      .setGitCommitHash(baseCommitHash))
+                      .setFilePath(String.join("/", filePath)))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1260,17 +1054,14 @@ class SpanConsumerTest {
           session.queryForObject(
               Commit.class,
               """
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(:Function {name: $funName})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+              MATCH (:Landscape {tokenId: $landscapeToken})
+                -[:CONTAINS]->(app:Application {name: $appName})
+                -[:HAS_ROOT]->(:Directory)
+                -[:CONTAINS]->(:Directory {name: $dirOne})
+                -[:CONTAINS]->(:Directory {name: $dirTwo})
+                -[:CONTAINS]->(:Directory {name: $dirThree})
+                -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                -[:CONTAINS]->(:Function {name: $funName})
               MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
               RETURN commit;
               """,
@@ -1287,32 +1078,29 @@ class SpanConsumerTest {
               .applications(1)
               .directories(4)
               .functions(1)
-              .spans(1)
-              .traces(1)
               .build());
       assertNotNull(foundCommit);
     }
 
     @Test
-    void testPersistSpanWithoutCommitIdForExistingFileRevision() {
+    void testPersistEntityWithoutCommitIdForExistingFileRevision() {
       List<String> filePath = new ArrayList<>(baseDirNames);
       Collections.addAll(filePath, baseFileName);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
                       .setFilePath(String.join("/", filePath)))
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1326,28 +1114,26 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(fun:Function {name: $funName})
-              MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(fun:Function {name: $funName})
 
-              MATCH (dir)-[:CONTAINS]->(fileDyn:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(funDyn:Function {name: $funName})
-                    <-[:REPRESENTS]-(span:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
 
-              WHERE NOT EXISTS { MATCH (commit)-[:CONTAINS]->(fileDyn) }
-                AND NOT EXISTS { MATCH (file)-[:CONTAINS]->(funDyn) }
-                AND NOT EXISTS { MATCH (fileDyn)-[:CONTAINS]->(fun) }
-                AND fileDyn.hash IS NULL
-                AND file <> fileDyn
-                AND fun <> funDyn
+                MATCH (dir)
+                  -[:CONTAINS]->(fileDyn:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(funDyn:Function {name: $funName})
+                WHERE NOT (commit)-[:CONTAINS]->(fileDyn)
+                  AND NOT (file)-[:CONTAINS]->(funDyn)
+                  AND NOT (fileDyn)-[:CONTAINS]->(fun)
+                  AND fileDyn.hash IS NULL
+                  AND file <> fileDyn
+                  AND fun <> funDyn
               } as exists;
               """,
               params);
@@ -1363,14 +1149,12 @@ class SpanConsumerTest {
               .applications(1)
               .directories(4)
               .functions(2)
-              .spans(1)
-              .traces(1)
               .build());
       assertNotNull(databaseIsCorrect);
     }
 
     @Test
-    void testPersistSpanWithCommitIdForNonExistingFile() {
+    void testPersistEntityWithCommitIdForNonExistingFile() {
       String unknownFunctionName = "unknownFunction";
       String unknownFileName = "unknownFile.java";
       List<String> filePath = new ArrayList<>(baseDirNames);
@@ -1378,32 +1162,32 @@ class SpanConsumerTest {
       List<String> filePathTwo = new ArrayList<>(baseDirNames);
       Collections.addAll(filePathTwo, unknownFileName);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(unknownFunctionName)
-                      .setFilePath(String.join("/", filePath))
-                      .setGitCommitHash(baseCommitHash))
+                      .setFilePath(String.join("/", filePath)))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
-      ParsedSpan testSpanTwo =
-          baseSpanBuilder()
+      TelemetryEntity testEntityTwo =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
-                      .setFilePath(String.join("/", filePathTwo))
-                      .setGitCommitHash(baseCommitHash))
+                      .setFilePath(String.join("/", filePathTwo)))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
-      spanConsumer.consume(testSpanTwo.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
+      telemetryConsumer.consume(testEntityTwo.toByteArray());
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1419,33 +1203,31 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(fun1:Function {name: $funName})
-              MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(fun1:Function {name: $funName})
 
-              MATCH (dir)-[:CONTAINS]->(file2:FileRevision {name: $fileName})
-                    <-[:REPRESENTS]-(span:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
-              MATCH (file2)-[:CONTAINS]->(fun2:Function {name: $unknownFunName})
+                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
 
-              MATCH (dir)-[:CONTAINS]->(file3:FileRevision {name: $unknownFileName})
-                    <-[:REPRESENTS]-(span)
-              MATCH (file3)-[:CONTAINS]->(fun3:Function {name: $funName})
+                MATCH (dir)
+                  -[:CONTAINS]->(file2:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(fun2:Function {name: $unknownFunName})
 
-              WHERE NOT EXISTS { MATCH (commit)-[:CONTAINS]->(file2) }
-                AND NOT EXISTS { MATCH (commit)-[:CONTAINS]->(file3) }
-                AND fun1 <> fun2
-                AND fun1 <> fun3
-                AND fun2 <> fun3
-                AND file2.hash IS NULL
-                AND file <> file2
+                MATCH (dir)
+                  -[:CONTAINS]->(file3:FileRevision {name: $unknownFileName})
+                  -[:CONTAINS]->(fun3:Function {name: $funName})
+                WHERE NOT (commit)-[:CONTAINS]->(file2)
+                  AND NOT (commit)-[:CONTAINS]->(file3)
+                  AND fun1 <> fun2
+                  AND fun1 <> fun3
+                  AND fun2 <> fun3
+                  AND file2.hash IS NULL
+                  AND file <> file2
               } as exists;
               """,
               params);
@@ -1462,33 +1244,30 @@ class SpanConsumerTest {
               .applications(1)
               .directories(4)
               .functions(3)
-              .spans(1)
-              .traces(1)
               .build());
     }
 
     @Test
-    void testPersistSpanWithPartOfFunctionPathAlreadyExisting() {
+    void testPersistEntityWithPartOfFunctionPathAlreadyExisting() {
       List<String> filePath = new ArrayList<>(baseDirNames);
       String innerDir = "inner";
       String innerFileName = "Inner.java";
       String innerFunctionName = "innerFun";
       Collections.addAll(filePath, innerDir, innerFileName);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(innerFunctionName)
-                      .setFilePath(String.join("/", filePath))
-                      .setGitCommitHash(baseCommitHash))
+                      .setFilePath(String.join("/", filePath)))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1505,53 +1284,50 @@ class SpanConsumerTest {
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(fun:Function {name: $funName})
-              MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                MATCH (:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(fun:Function {name: $funName})
 
-              WHERE NOT EXISTS { MATCH (dir)-[:CONTAINS]->(:Directory {name: $innerDir}) }
-                AND NOT EXISTS { MATCH (:Span)-[:REPRESENTS]->(file) }
-                AND NOT EXISTS { MATCH (:FileRevision {name: $innerFile}) }
-                AND NOT EXISTS { MATCH (:Function {name: $innerFunction}) }
+                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                WHERE NOT (dir)-[:CONTAINS]->(:Directory {name: $innerDir})
+                  AND NOT EXISTS { MATCH (:FileRevision {name: $innerFile}) }
+                  AND NOT EXISTS { MATCH (:Function {name: $innerFunction}) }
               } as exists;
               """,
               params);
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (app:Application {name: $appName})
-                    -[:HAS_ROOT]->(:Directory)
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(fun:Function {name: $funName})
-              MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
+                MATCH (:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(app:Application {name: $appName})
+                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(fun:Function {name: $funName})
 
-              MATCH (dir)-[:CONTAINS]->(:Directory {name: $innerDir})
-                    -[:CONTAINS]->(innerFile:FileRevision {name: $innerFile})
-                    -[:CONTAINS]->(innerFun:Function {name: $innerFunction})
-                    <-[:REPRESENTS]-(span:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(app)
+                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
 
-              WHERE NOT EXISTS { MATCH (commit)-[:CONTAINS]->(innerFile) }
-                AND NOT EXISTS { MATCH (file)-[:CONTAINS]->(innerFun) }
-                AND NOT EXISTS { MATCH (innerFile)-[:CONTAINS]->(fun) }
-                AND innerFile.hash IS NULL
-                AND file <> innerFile
-                AND fun <> innerFun
+                MATCH (dir)
+                  -[:CONTAINS]->(:Directory {name: $innerDir})
+                  -[:CONTAINS]->(innerFile:FileRevision {name: $innerFile})
+                  -[:CONTAINS]->(innerFun:Function {name: $innerFunction})
+                WHERE NOT (commit)-[:CONTAINS]->(innerFile)
+                  AND NOT (file)-[:CONTAINS]->(innerFun)
+                  AND NOT (innerFile)-[:CONTAINS]->(fun)
+                  AND innerFile.hash IS NULL
+                  AND file <> innerFile
+                  AND fun <> innerFun
               } as exists;
               """,
               params);
@@ -1568,19 +1344,17 @@ class SpanConsumerTest {
               .applications(1)
               .directories(5)
               .functions(2)
-              .spans(1)
-              .traces(1)
               .build());
       assertNotNull(databaseIsCorrect);
     }
 
     /*
     For "WithStaticData" the following two tests are enough to test the class path branch of
-    persistSpan with commit hash, since the non-tested case all will fall back to the
+    saveEntity with commit hash, since the non-tested case all will fall back to the
     approach tested in "WithoutStaticData".
      */
     @Test
-    void testPersistSpanWithClassPathWithAllDataAlreadyExisting() {
+    void testPersistEntityWithClassPathWithAllDataAlreadyExisting() {
       String className = "A";
       String functionNameTwo = "function2";
       List<String> filePath = new ArrayList<>(baseDirNames);
@@ -1615,60 +1389,59 @@ class SpanConsumerTest {
       params.put("fileHash", baseFileHash);
       params.put("commitHash", baseCommitHash);
       params.put("className", className);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
 
       Boolean preparedDatabaseIsCorrect =
           session.queryForObject(
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (l:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(repo:Repository {name: $repoName})
-                    -[:CONTAINS]->(:Commit {hash: $commitHash})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(:Function {name: $funName})
+                MATCH (l:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(repo:Repository {name: $repoName})
+                  -[:CONTAINS]->(:Commit {hash: $commitHash})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(:Function {name: $funName})
 
-              MATCH (repo)-[:CONTAINS]->(:Branch {name: $branchName})
-                    <-[:BELONGS_TO]-(commit)
+                MATCH (repo)
+                  -[:CONTAINS]->(:Branch {name: $branchName})
+                  <-[:BELONGS_TO]-(commit)
 
-              MATCH (file)-[:CONTAINS]->(:Clazz {name: $className})
-                    -[:CONTAINS]->(:Function {name: $funNameTwo})
+                MATCH (file)
+                  -[:CONTAINS]->(:Clazz {name: $className})
+                  -[:CONTAINS]->(:Function {name: $funNameTwo})
 
-              MATCH (repo)-[:HAS_ROOT]->(root:Directory {name: $repoRoot})
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file)
+                MATCH (repo)
+                  -[:HAS_ROOT]->(root:Directory {name: $repoRoot})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file)
 
-              MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
+                MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
               } as exists;
               """,
               params);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePath))
-                      .setClassName(className)
-                      .setGitCommitHash(baseCommitHash))
+                      .setClassName(className))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(:Clazz {name: $className})
-                    -[:CONTAINS]->(:Function {name: $funNameTwo})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(:Landscape {tokenId: $landscapeToken})
+                MATCH (file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(:Clazz {name: $className})
+                  -[:CONTAINS]->(:Function {name: $funNameTwo})
               } as exists;
               """,
               params);
@@ -1687,13 +1460,11 @@ class SpanConsumerTest {
               .directories(4)
               .functions(2)
               .classes(1)
-              .spans(1)
-              .traces(1)
               .build());
     }
 
     @Test
-    void testPersistSpanWithClassPathWithOutAllDataAlreadyExisting() {
+    void testPersistEntityWithClassPathWithoutAllDataAlreadyExisting() {
       String className = "A";
       String functionNameTwo = "function2";
       List<String> filePath = new ArrayList<>(baseDirNames);
@@ -1714,51 +1485,49 @@ class SpanConsumerTest {
       params.put("fileHash", baseFileHash);
       params.put("commitHash", baseCommitHash);
       params.put("className", className);
-      params.put("traceId", baseTraceId);
-      params.put("spanId", baseSpanId);
 
-      ParsedSpan testSpan =
-          baseSpanBuilder()
+      TelemetryEntity testEntity =
+          baseEntityBuilder()
               .setCodeDescriptor(
                   CodeDescriptor.newBuilder()
+                      .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePath))
-                      .setClassName(className)
-                      .setGitCommitHash(baseCommitHash))
+                      .setClassName(className))
+              .setGitCommitHash(baseCommitHash)
               .build();
 
-      spanConsumer.consume(testSpan.toByteArray());
+      telemetryConsumer.consume(testEntity.toByteArray());
 
       Boolean databaseIsCorrect =
           session.queryForObject(
               Boolean.class,
               """
               RETURN EXISTS {
-              MATCH (l:Landscape {tokenId: $landscapeToken})
-                    -[:CONTAINS]->(repo:Repository {name: $repoName})
-                    -[:CONTAINS]->(:Commit {hash: $commitHash})
-                    -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                    -[:CONTAINS]->(:Function {name: $funName})
+                MATCH (l:Landscape {tokenId: $landscapeToken})
+                  -[:CONTAINS]->(repo:Repository {name: $repoName})
+                  -[:CONTAINS]->(:Commit {hash: $commitHash})
+                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                  -[:CONTAINS]->(:Function {name: $funName})
 
-              MATCH (repo)-[:CONTAINS]->(:Branch {name: $branchName})
-                    <-[:BELONGS_TO]-(commit)
+                MATCH (repo)
+                  -[:CONTAINS]->(:Branch {name: $branchName})
+                  <-[:BELONGS_TO]-(commit)
 
-              MATCH (repo)-[:HAS_ROOT]->(root:Directory {name: $repoRoot})
-                    -[:CONTAINS]->(:Directory {name: $dirOne})
-                    -[:CONTAINS]->(:Directory {name: $dirTwo})
-                    -[:CONTAINS]->(d:Directory {name: $dirThree})
-                    -[:CONTAINS]->(file)
+                MATCH (repo)
+                  -[:HAS_ROOT]->(root:Directory {name: $repoRoot})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(d:Directory {name: $dirThree})
+                  -[:CONTAINS]->(file)
 
-              MATCH (d)-[:CONTAINS]->(file2:FileRevision {name: $fileName})
-                    -[:CONTAINS]->(:Clazz {name: $className})
-                    -[:CONTAINS]->(:Function {name: $funNameTwo})
-                    <-[:REPRESENTS]-(:Span {spanId: $spanId})
-                    <-[:CONTAINS]-(:Trace {traceId: $traceId})
-                    <-[:CONTAINS]-(l)
+                MATCH (d)
+                  -[:CONTAINS]->(file2:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(:Clazz {name: $className})
+                  -[:CONTAINS]->(:Function {name: $funNameTwo})
 
-              MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
-
-              WHERE file <> file2
+                MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
+                WHERE file <> file2
               } as exists;
               """,
               params);
@@ -1776,8 +1545,6 @@ class SpanConsumerTest {
               .directories(4)
               .functions(2)
               .classes(1)
-              .spans(1)
-              .traces(1)
               .build());
     }
   }

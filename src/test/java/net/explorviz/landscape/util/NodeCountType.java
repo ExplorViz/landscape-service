@@ -12,9 +12,7 @@ public enum NodeCountType {
   CLAZZ("classes"),
   FIELD("fields"),
   FUNCTION("functions"),
-  PARAMETER("parameters"),
-  SPAN("spans"),
-  TRACE("traces");
+  PARAMETER("parameters");
 
   private final String key;
 

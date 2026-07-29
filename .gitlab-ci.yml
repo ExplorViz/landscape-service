@@ -66,6 +66,8 @@ pmd:
   services:
     - name: neo4j:2026.03.1
       alias: neo4j
+    - name: apache/kafka-native:4.3.1
+      alias: kafka
   artifacts:
     paths:
       - build

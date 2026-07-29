@@ -37,6 +37,14 @@ public class FileRevision implements Comparable<FileRevision> {
    */
   private String hash;
 
+  /**
+   * Identifier for looking up telemetry data related to this file (e.g. for communication / spans).
+   * Note that this can be the same value for different revisions of the same file since telemetry
+   * data uses the commit hash, not the file hash, to distinguish revisions. Therefore, this value
+   * is used in combination with a commit hash to find telemetry for a specific file revision.
+   */
+  private String telemetryKey;
+
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final SortedSet<Clazz> classes = new TreeSet<>();
 
@@ -95,6 +103,10 @@ public class FileRevision implements Comparable<FileRevision> {
 
   public void setHash(final String hash) {
     this.hash = hash;
+  }
+
+  public String getTelemetryKey() {
+    return telemetryKey;
   }
 
   public SortedSet<Clazz> getClasses() {

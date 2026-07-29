@@ -72,11 +72,13 @@ public class StructureMapper {
     final String name = (String) node.properties.get("name");
     final String fqn = parentFqn.isEmpty() ? name : parentFqn + "/" + name;
     final String id = String.valueOf(node.id);
+    final String telemetryKey = (String) node.properties.get("telemetryKey");
 
     final Set<String> containedDistrictIds = new HashSet<>();
     final Set<String> containedBuildingIds = new HashSet<>();
 
-    final FlatBaseModel base = new FlatBaseModel(id, name, fqn, context.origin(), null);
+    final FlatBaseModel base =
+        new FlatBaseModel(id, name, fqn, telemetryKey, context.origin(), null);
 
     if (node.labels.contains(LABEL_APPLICATION)) {
       handleApplication(node, id, name, context, containedDistrictIds, containedBuildingIds);
@@ -122,7 +124,7 @@ public class StructureMapper {
 
     final CityDto city =
         new CityDto(
-            new FlatBaseModel(id, name, "", context.origin(), null),
+            new FlatBaseModel(id, name, "", null, context.origin(), null),
             directDistrictIds,
             directBuildingIds,
             new ArrayList<>(containedDistrictIds),

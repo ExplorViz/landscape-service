@@ -33,29 +33,27 @@ public class StructureRepository {
 
   public FlatLandscapeDto fetchFlatLandscapeForRuntimeData(
       final Session session, final String landscapeToken) {
-    final String query =
-        """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (func:Function)
-        WHERE (l)-[:CONTAINS]->(:Trace)-[:CONTAINS]->(:Span)-[:REPRESENTS]->(func)
+    final Result result =
+        session.query(
+            """
+            MATCH (l:Landscape {tokenId: $tokenId})
+            MATCH (l)-[:CONTAINS]->(a:Application)
 
-        MATCH p = (a:Application)-[:HAS_ROOT]->(root:Directory)-[:CONTAINS*0..]->(func)
-        WHERE (l)-[:CONTAINS]->(a)
+            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS]->+(file:FileRevision)
+            WHERE file.telemetryKey IS NOT NULL
 
-        WITH DISTINCT a, nodes(p) AS pathNodes
-
-        UNWIND [a] + pathNodes AS n
-        WITH DISTINCT n, a
-        RETURN
-          id(n) AS id,
-          labels(n) AS labels,
-          properties(n) AS properties,
-          id(a) AS cityId,
-          [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds,
-          [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
-        """;
-
-    final Result result = session.query(query, Map.of("tokenId", landscapeToken));
+            WITH a, nodes(p) AS pathNodes
+            UNWIND pathNodes AS n
+            WITH DISTINCT n, a
+            RETURN
+              id(n) AS id,
+              labels(n) AS labels,
+              properties(n) AS properties,
+              id(a) AS cityId,
+              [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds,
+              [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
+            """,
+            Map.of("tokenId", landscapeToken));
     return mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME, null);
   }
 
