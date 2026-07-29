@@ -167,6 +167,7 @@ public class CodeTelemetryService {
             }
             WITH coalesce(lastCreated, deepestNode) AS file
             SET file.telemetryKey = $fileTelemetryKey
+            WITH file
 
             // Find longest class path match, if a class was specified
             OPTIONAL CALL (file) {
