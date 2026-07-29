@@ -26,19 +26,10 @@ public class CommitFileLinker {
       final CommitData commitData,
       final Commit commit,
       final CommitFilePersistenceContext fileContext) {
-    final boolean metadataOnlyCommit = CommitFileStubPolicy.isMetadataOnlyCommit(commitData);
     final boolean deferFileStubs = CommitFileStubPolicy.defersFileStubCreation(commitData);
     final Set<String> addedPaths = toFilePaths(commitData.getAddedFilesList());
     final Set<String> modifiedPaths = toFilePaths(commitData.getModifiedFilesList());
     final Set<String> deletedPaths = toFilePaths(commitData.getDeletedFilesList());
-
-    if (metadataOnlyCommit) {
-      Log.debugf(
-          "Commit %s for repository '%s': metadata-only commit; skipping file linking and metric"
-              + " accumulation",
-          commitData.getCommitId(), commitData.getRepositoryName());
-      return CommitFileLinkTimings.metadataOnly(deletedPaths);
-    }
 
     if (deferFileStubs) {
       registerDeferredFileStubs(commitData, commit);

@@ -10,20 +10,7 @@ import org.junit.jupiter.api.Test;
 class CommitFileStubPolicyTest {
 
   @Test
-  void metadataOnlyCommitHasNoFilesAndZeroAnalysisFileCount() {
-    final CommitData commitData =
-        CommitData.newBuilder()
-            .setAnalysisFileCount(0)
-            .setParentCommitId("parent")
-            .setMetadataOnly(true)
-            .build();
-
-    assertTrue(CommitFileStubPolicy.isMetadataOnlyCommit(commitData));
-    assertFalse(CommitFileStubPolicy.defersFileStubCreation(commitData));
-  }
-
-  @Test
-  void commitWithModifiedFilesIsNotMetadataOnly() {
+  void commitWithModifiedFilesDoesNotDeferStubCreation() {
     final CommitData commitData =
         CommitData.newBuilder()
             .setAnalysisFileCount(0)
@@ -31,22 +18,21 @@ class CommitFileStubPolicyTest {
                 FileIdentifier.newBuilder().setFilePath("src/A.java").setFileHash("1").build())
             .build();
 
-    assertFalse(CommitFileStubPolicy.isMetadataOnlyCommit(commitData));
+    assertFalse(CommitFileStubPolicy.defersFileStubCreation(commitData));
   }
 
   @Test
-  void unchangedOnlyChildCommitIsNotMetadataOnly() {
+  void unchangedOnlyChildCommitDoesNotDeferStubCreation() {
     final CommitData commitData =
         CommitData.newBuilder().setAnalysisFileCount(0).setParentCommitId("parent").build();
 
-    assertFalse(CommitFileStubPolicy.isMetadataOnlyCommit(commitData));
+    assertFalse(CommitFileStubPolicy.defersFileStubCreation(commitData));
   }
 
   @Test
-  void deferredStubCommitIsNotMetadataOnly() {
+  void deferredStubCommitDefersFileStubCreation() {
     final CommitData commitData = CommitData.newBuilder().setAnalysisFileCount(3).build();
 
-    assertFalse(CommitFileStubPolicy.isMetadataOnlyCommit(commitData));
     assertTrue(CommitFileStubPolicy.defersFileStubCreation(commitData));
   }
 }

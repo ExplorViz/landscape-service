@@ -113,7 +113,7 @@ public class CommitServiceImpl implements CommitService {
     final long unlinkDeletedFilesMs = elapsedMillis(unlinkDeletedStart);
 
     final long verifyCacheStart = System.nanoTime();
-    if (!fileLinkTimings.metadataOnlyCommit()) {
+    if (!fileLinkTimings.deferFileStubs()) {
       verifyCommitFileCacheUnlessDeferred(session, commit, fileLinkTimings.deferFileStubs());
     }
     final long verifyCacheMs = elapsedMillis(verifyCacheStart);

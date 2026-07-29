@@ -13,7 +13,7 @@ public class PersistCommitTimingLogger {
       final CommitFileLinkTimings fileLinkTimings,
       final PersistCommitTimingReport timingReport) {
     Log.infof(
-        "persistCommit(commit=%s, repo='%s', metadataOnly=%s, deferFileStubs=%s):"
+        "persistCommit(commit=%s, repo='%s', deferFileStubs=%s):"
             + " resolveRepository=%dms,"
             + " setupCommit=%dms, createFileContext=%dms, linkAddedFiles(%d)=%dms,"
             + " linkModifiedFiles(%d)=%dms, linkUnchangedFiles(%d)=%dms,"
@@ -22,7 +22,6 @@ public class PersistCommitTimingLogger {
             + " linkParentCommits=%dms, finalizeCommit=%dms, total=%dms",
         commitData.getCommitId(),
         commitData.getRepositoryName(),
-        fileLinkTimings.metadataOnlyCommit(),
         fileLinkTimings.deferFileStubs(),
         timingReport.resolveRepositoryMs(),
         timingReport.setupCommitMs(),
