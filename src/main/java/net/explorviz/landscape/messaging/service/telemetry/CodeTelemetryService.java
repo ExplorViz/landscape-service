@@ -1,6 +1,7 @@
 package net.explorviz.landscape.messaging.service.telemetry;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import java.util.Locale;
 import java.util.Map;
 import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.proto.CodeDescriptor;
@@ -47,7 +48,8 @@ public class CodeTelemetryService {
         splitClassPath,
         descriptor.getFunctionName(),
         descriptor.getFileId(),
-        descriptor.getFunctionId());
+        descriptor.getFunctionId(),
+        descriptor.getLanguage());
   }
 
   private boolean updateTelemetryIdForExistingFileAndFunction(
@@ -110,16 +112,18 @@ public class CodeTelemetryService {
    * must already exist. If the landscape node is missing, an exception is thrown. For the file and
    * function node, a telemetry key is set regardless of whether the node previously existed or not.
    *
-   * @param session OMG session object
+   * @param session OGM session object
    * @param landscapeToken String identifier of the software landscape
-   * @param applicationName name of the application within which to search / create function
-   * @param filePath path of the file relative to the application node, where the last array element
+   * @param applicationName Name of the application within which to search / create function
+   * @param filePath Path of the file relative to the application node, where the last array element
    *     specifies the file name
-   * @param classPath path of the class within the file. Useful for specifying inner classes, e.g.
+   * @param classPath Path of the class within the file. Useful for specifying inner classes, e.g.
    *     ["MyClass", "MyInnerClass"]
-   * @param functionName name of the function node to search for
-   * @param fileTelemetryKey identifier by which to look up telemetry for the file
-   * @param functionTelemetryKey identifier by which to look up telemetry for the function
+   * @param functionName Name of the function node to search for
+   * @param fileTelemetryKey Identifier by which to look up telemetry for the file
+   * @param functionTelemetryKey Identifier by which to look up telemetry for the function
+   * @param language Programming language to set for the file node. Only applied if no file already
+   *     exists. Null may be passed if no language is given
    */
   private void ensureFunctionPath(
       final Session session,
@@ -129,7 +133,8 @@ public class CodeTelemetryService {
       final String[] classPath,
       final String functionName,
       final String fileTelemetryKey,
-      final String functionTelemetryKey) {
+      final String functionTelemetryKey,
+      final String language) {
 
     final Function result =
         session.queryForObject(
@@ -162,6 +167,7 @@ public class CodeTelemetryService {
               WITH last(nodes) AS lastCreated
               REMOVE lastCreated:Directory
               SET lastCreated:FileRevision
+              SET lastCreated.language = $language
               RETURN lastCreated
             }
             WITH coalesce(lastCreated, deepestNode) AS file
@@ -200,6 +206,7 @@ public class CodeTelemetryService {
                 "classPath", classPath,
                 "funcName", functionName,
                 "fileTelemetryKey", fileTelemetryKey,
+                "language", language.toUpperCase(Locale.US),
                 "funcTelemetryKey", functionTelemetryKey));
 
     if (result == null) {
