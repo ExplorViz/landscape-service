@@ -8,6 +8,7 @@ import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.repository.SocialMetricsRepository.MergedPrStats;
 import net.explorviz.landscape.util.MetricNormalizer;
 
+/** The Review Friction social metric. */
 public class ReviewFriction extends SocialMetric {
 
   private static final double LIFETIME_WEIGHT = 0.5d;

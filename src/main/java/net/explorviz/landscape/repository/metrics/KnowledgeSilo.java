@@ -6,6 +6,7 @@ import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 
+/** The Knowledge Silo social metric. */
 public class KnowledgeSilo extends SocialMetric {
 
   private static final int MIN_COMMITS = 5;

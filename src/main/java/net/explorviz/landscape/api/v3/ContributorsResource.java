@@ -11,6 +11,7 @@ import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
+/** Contains endpoints concerning contributors used by social metrics. */
 @Path("/v3/landscapes/{landscapeToken}/contributors/{repositoryName}")
 public class ContributorsResource {
 

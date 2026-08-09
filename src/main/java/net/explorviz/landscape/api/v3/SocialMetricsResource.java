@@ -17,6 +17,7 @@ import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
+/** Contains endpoints for social metrics. */
 @Path("/v3/landscapes/{landscapeToken}/social-metrics/{repositoryName}")
 public class SocialMetricsResource {
 

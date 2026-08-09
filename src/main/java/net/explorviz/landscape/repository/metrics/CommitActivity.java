@@ -7,6 +7,7 @@ import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.MetricNormalizer;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
+/** The Commit Activity social metric. */
 public class CommitActivity extends SocialMetric {
 
   @Override

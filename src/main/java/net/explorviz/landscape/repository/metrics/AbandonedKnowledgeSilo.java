@@ -6,6 +6,7 @@ import java.util.Set;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.FileSnapshot;
 
+/** The Abandoned Knowledge Silo social metric. */
 public class AbandonedKnowledgeSilo extends SocialMetric {
 
   @Override

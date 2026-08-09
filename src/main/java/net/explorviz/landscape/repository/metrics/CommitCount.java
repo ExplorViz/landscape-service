@@ -6,6 +6,7 @@ import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
+/** The Commit Count social metric. */
 public class CommitCount extends SocialMetric {
 
   @Override

@@ -7,7 +7,7 @@ import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
-// possibly add simple inverse?
+/** The Core Contributor Activity social metric. */
 public class CoreContributorActivity extends SocialMetric {
 
   @Override

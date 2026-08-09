@@ -7,6 +7,7 @@ import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
+/** The Knowledge Staleness social metric. */
 public class KnowledgeStaleness extends SocialMetric {
 
   @Override

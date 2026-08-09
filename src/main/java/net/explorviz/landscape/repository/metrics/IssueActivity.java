@@ -7,6 +7,7 @@ import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.MetricNormalizer;
 
+/** The Issue Activity social metric. */
 public class IssueActivity extends SocialMetric {
 
   @Override
