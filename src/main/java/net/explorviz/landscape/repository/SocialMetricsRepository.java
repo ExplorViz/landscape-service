@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.repository.ContributorRepository.ContributorActivity;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
@@ -60,8 +61,6 @@ public class SocialMetricsRepository {
                     new ContributorFileActivity(
                         (String) r.get("path"),
                         ((Number) r.get("aid")).longValue(),
-                        (String) r.get("githubLogin"),
-                        (String) r.get("gitUsername"),
                         ((Number) r.get("commits")).longValue(),
                         ((Number) r.get("lastDate")).longValue())));
     return rows;
@@ -145,15 +144,35 @@ public class SocialMetricsRepository {
             MATCH (:Landscape {tokenId:$token})-[:CONTAINS]->(:Repository {name:$repo})
                   -[:CONTAINS]->(pr:PullRequest)-[:REFERENCES]->(i:Issue)
             MATCH (pr)-[:CONTAINS]->(:Commit)-[:ADDED|MODIFIED]->(f:FileRevision)
-            RETURN f.filePath AS path, count(DISTINCT i) AS bugCount
+            RETURN f.filePath AS path, count(DISTINCT i) AS issueCount
             """,
             Map.of("token", token, "repo", repo))
         .queryResults()
         .forEach(
             r ->
                 issueCountByPath.put(
-                    (String) r.get("path"), ((Number) r.get("bugCount")).longValue()));
+                    (String) r.get("path"), ((Number) r.get("issueCount")).longValue()));
 
     return issueCountByPath;
+  }
+
+  public List<ContributorActivity> getContributorData(
+      final Session session, final String token, final String repo) {
+    return session.queryDto(
+        """
+        MATCH (:Landscape {tokenId: $token})-[:CONTAINS]->(:Repository {name: $repo})
+                    -[:CONTAINS]->(c:Commit)<-[:AUTHORED]-(a:Contributor)
+        RETURN id(a)             AS contributorId,
+               a.gitUsername     AS gitUsername,
+               a.githubLogin     AS githubLogin,
+               a.email           AS email,
+               a.avatarUrl       AS avatarUrl,
+               count(DISTINCT c) AS commitCount,
+               min(c.commitDate) AS minDate,
+               max(c.commitDate) AS maxDate
+        ORDER BY commitCount DESC, contributorId ASC
+        """,
+        Map.of("token", token, "repo", repo),
+        ContributorActivity.class);
   }
 }

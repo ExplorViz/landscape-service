@@ -33,7 +33,6 @@ import org.neo4j.ogm.session.Session;
 public class SocialMetricsService {
 
   @Inject SocialMetricsRepository socialMetricsRepository;
-  @Inject ContributorRepository contributorRepository;
 
   private final List<SocialMetric> metrics =
       List.of(
@@ -60,7 +59,7 @@ public class SocialMetricsService {
     final List<FileSnapshot> snapshot =
         socialMetricsRepository.getFileSnapshots(session, token, repo, commit);
     final List<ContributorActivity> contributorActivities =
-        contributorRepository.getContributorData(session, token, repo);
+        socialMetricsRepository.getContributorData(session, token, repo);
     final Set<Long> coreIds = SocialMetricsHelper.computeCoreContributorIds(contributorActivities);
     final RepoTimeBounds repoTimeBounds =
         socialMetricsRepository.getRepoTimeBounds(session, token, repo);
@@ -100,7 +99,7 @@ public class SocialMetricsService {
   public ContributorsDto getContributorsDto(
       final String token, final String repo, final Session session) {
     final List<ContributorActivity> rows =
-        contributorRepository.getContributorData(session, token, repo);
+        socialMetricsRepository.getContributorData(session, token, repo);
 
     if (rows.isEmpty()) {
       return new ContributorsDto(List.of(), new TimeRange(0L, 0L));

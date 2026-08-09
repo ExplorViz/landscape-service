@@ -7,7 +7,6 @@ import net.explorviz.landscape.repository.ContributorFileActivity;
 import net.explorviz.landscape.repository.FileSnapshot;
 import net.explorviz.landscape.util.SocialMetricsHelper;
 
-// inverse could also be interesting
 public class KnowledgeStaleness extends SocialMetric {
 
   @Override
@@ -24,7 +23,7 @@ public class KnowledgeStaleness extends SocialMetric {
       }
     }
 
-    final long tEnd = input.repoTimeBounds().lastDate(); // differs from thesis definition!!!
+    final long tEnd = input.repoTimeBounds().lastDate();
     final long tInit = input.repoTimeBounds().initDate();
     final long timespan = tEnd - tInit;
 
@@ -35,7 +34,7 @@ public class KnowledgeStaleness extends SocialMetric {
       if (tLast == null) {
         score = 1d;
       } else if (timespan > 0) {
-        score = Math.max(0d, Math.min(1d, (double) (tEnd - tLast) / timespan));
+        score = (double) (tEnd - tLast) / timespan;
       } else {
         score = 0d;
       }

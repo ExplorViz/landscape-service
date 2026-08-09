@@ -1,7 +1,6 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.explorviz.landscape.ogm.Contributor;
@@ -57,26 +56,6 @@ public class ContributorRepository {
       long commitCount,
       long minDate,
       long maxDate) {}
-
-  public List<ContributorActivity> getContributorData(
-      final Session session, final String token, final String repo) {
-    return session.queryDto(
-        """
-        MATCH (:Landscape {tokenId: $token})-[:CONTAINS]->(:Repository {name: $repo})
-                    -[:CONTAINS]->(c:Commit)<-[:AUTHORED]-(a:Contributor)
-        RETURN id(a)             AS contributorId,
-               a.gitUsername     AS gitUsername,
-               a.githubLogin     AS githubLogin,
-               a.email           AS email,
-               a.avatarUrl       AS avatarUrl,
-               count(DISTINCT c) AS commitCount,
-               min(c.commitDate) AS minDate,
-               max(c.commitDate) AS maxDate
-        ORDER BY commitCount DESC, contributorId ASC
-        """,
-        Map.of("token", token, "repo", repo),
-        ContributorActivity.class);
-  }
 
   public Optional<Contributor> findExistingContributor(
       final Session session, final ContributorData data) {

@@ -9,11 +9,6 @@ public class MetricNormalizer {
 
   public record NormalizationOptions(boolean logScale, double quantile) {
     public static final NormalizationOptions DEFAULT = new NormalizationOptions(true, 0.99);
-    public static final NormalizationOptions LEGACY = new NormalizationOptions(false, 0.95);
-  }
-
-  public MetricNormalizer(final double[] rawValues) {
-    this(rawValues, NormalizationOptions.LEGACY);
   }
 
   public MetricNormalizer(final double[] rawValues, final NormalizationOptions opts) {

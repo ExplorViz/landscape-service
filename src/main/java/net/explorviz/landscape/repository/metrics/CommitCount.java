@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.FileSnapshot;
+import net.explorviz.landscape.util.SocialMetricsHelper;
 
 public class CommitCount extends SocialMetric {
 
@@ -15,7 +16,7 @@ public class CommitCount extends SocialMetric {
   @Override
   public Map<Long, MetricScore> computeMetric(final MetricInput input) {
     final Map<String, Long> countByPath =
-        CommitActivity.getCommitCountByPath(input.base(), input.contributorIds());
+        SocialMetricsHelper.getCommitCountByPath(input.base(), input.contributorIds());
 
     final Map<Long, MetricScore> scoreByFileRevisionId = new LinkedHashMap<>();
     for (final FileSnapshot file : input.snapshot()) {

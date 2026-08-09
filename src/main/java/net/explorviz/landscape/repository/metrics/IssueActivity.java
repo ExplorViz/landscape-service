@@ -17,20 +17,22 @@ public class IssueActivity extends SocialMetric {
   @Override
   public Map<Long, MetricScore> computeMetric(final MetricInput input) {
     final List<FileSnapshot> snapshot = input.snapshot();
-    final double[] bdRaw = new double[snapshot.size()];
+    final double[] issueActivityRaw = new double[snapshot.size()];
     for (int i = 0; i < snapshot.size(); i++) {
       final FileSnapshot file = snapshot.get(i);
       final long issueCount = input.issueCountByPath().getOrDefault(file.path(), 0L);
-      bdRaw[i] = file.loc() > 0 ? issueCount / file.loc() : 0;
+      issueActivityRaw[i] = file.loc() > 0 ? issueCount / file.loc() : 0;
     }
 
-    final MetricNormalizer normalizer = new MetricNormalizer(bdRaw, input.normalizationOpts());
+    final MetricNormalizer normalizer =
+        new MetricNormalizer(issueActivityRaw, input.normalizationOpts());
 
     final Map<Long, MetricScore> scoreByFileRevisionId = new LinkedHashMap<>();
     for (int i = 0; i < snapshot.size(); i++) {
       final FileSnapshot file = snapshot.get(i);
       scoreByFileRevisionId.put(
-          file.fileRevisionId(), new MetricScore(bdRaw[i], normalizer.normalize(bdRaw[i])));
+          file.fileRevisionId(),
+          new MetricScore(issueActivityRaw[i], normalizer.normalize(issueActivityRaw[i])));
     }
     return scoreByFileRevisionId;
   }
