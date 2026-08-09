@@ -25,8 +25,6 @@ public class SocialMetricsRepository {
       MATCH (c)-[:ADDED|MODIFIED]->(f:FileRevision)
       RETURN f.filePath   AS path,
              id(a)        AS aid,
-             a.githubLogin AS githubLogin,
-             a.gitUsername AS gitUsername,
              count(DISTINCT c) AS commits,
              max(c.commitDate) AS lastDate
       """;
