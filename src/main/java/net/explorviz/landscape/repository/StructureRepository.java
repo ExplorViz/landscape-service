@@ -6,14 +6,20 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDeltaDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
+import net.explorviz.landscape.api.v3.model.landscape.BuildingChangeDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
+import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
+import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
@@ -213,6 +219,31 @@ public class StructureRepository {
     return frames;
   }*/
 
+  public List<FileHistoryDto> fetchFileHistory(final Session session, final long fileRevisionId) {
+    final String query =
+        """
+        MATCH (clicked:FileRevision) WHERE id(clicked) = $id
+        MATCH (dir:Directory)-[:CONTAINS]->(clicked)
+        MATCH (dir)-[:CONTAINS]->(rev:FileRevision) WHERE rev.name = clicked.name
+        MATCH (c:Commit)-[r:ADDED|MODIFIED|DELETED]->(rev)
+        RETURN c.hash AS hash, coalesce(c.authorDate, 0) AS date, type(r) AS action
+        ORDER BY date ASC
+        """;
+    final Result result = session.query(query, Map.of("id", fileRevisionId));
+
+    final List<FileHistoryDto> entries = new ArrayList<>();
+    result.forEach(
+        row -> {
+          final Object date = row.get("date");
+          entries.add(
+              new FileHistoryDto(
+                  (String) row.get("hash"),
+                  date instanceof Number n ? n.longValue() : 0L,
+                  (String) row.get("action")));
+        });
+    return entries;
+  }
+
   private List<CommitMeta> fetchOrderedCommits(
       final Session session, final String landscapeToken, final String repositoryName) {
     final String query =
@@ -222,7 +253,7 @@ public class StructureRepository {
           -[:CONTAINS]->(c:Commit)
         WHERE coalesce(c.authorDate, 0) <> 0
         RETURN c.hash AS hash, c.authorDate AS authorDate
-        ORDER BY coalesce(c.commitDate, c.authorDate) ASC, c.hash ASC
+        ORDER BY c.authorDate ASC, c.hash ASC
         """;
 
     final Result result =
@@ -244,16 +275,23 @@ public class StructureRepository {
       final String repositoryName,
       final int start,
       final int count,
-      final int granularity) {
+      final int granularity,
+      final String groupBy,
+      final long bucketSize) {
 
-    final int granul = Math.max(1, granularity);
     final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
 
     final int commitCount = commits.size();
     if (commitCount == 0) {
       return new AnimationWindowDto(0, 0, List.of());
     }
-    final int totalFrames = (commitCount + granul - 1) / granul;
+    // final int granul = Math.max(1, granularity);
+    final List<Integer> targets =
+        "time".equals(groupBy)
+            ? timeBucketTargets(commits, Math.max(1, bucketSize))
+            : commitBucketTargets(commitCount, Math.max(1, granularity));
+
+    final int totalFrames = targets.size();
 
     final int from = Math.max(0, start);
     if (from >= totalFrames) {
@@ -263,8 +301,7 @@ public class StructureRepository {
 
     final List<AnimationFrameDto> frames = new ArrayList<>();
     for (int i = from; i < to; i++) {
-      final int lastId = Math.min((i + 1) * granul, commitCount) - 1;
-      final CommitMeta target = commits.get(lastId);
+      final CommitMeta target = commits.get(targets.get(i));
       final FlatLandscapeDto landscape;
       if (i == 0) {
         final FlatLandscapeDto snapshot =
@@ -276,7 +313,7 @@ public class StructureRepository {
                 new FlatLandscapeDto(landscapeToken, Map.of(), Map.of(), Map.of()),
                 snapshot);
       } else {
-        final CommitMeta prevLast = commits.get(i * granul - 1);
+        final CommitMeta prevLast = commits.get(targets.get(i - 1));
         landscape =
             fetchCombinedFlatLandscape(
                 session,
@@ -286,6 +323,144 @@ public class StructureRepository {
       frames.add(new AnimationFrameDto(target.hash(), target.authorDate(), i, landscape));
     }
     return new AnimationWindowDto(totalFrames, from, frames);
+  }
+
+  public AnimationWindowDeltaDto fetchAnimationDeltaWindow(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final int start,
+      final int count,
+      final int granularity,
+      final String groupBy,
+      final long bucketSize) {
+
+    final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
+    final int commitCount = commits.size();
+    if (commitCount == 0) {
+      return new AnimationWindowDeltaDto(0, 0, List.of());
+    }
+
+    final List<Integer> targets =
+        "time".equals(groupBy)
+            ? timeBucketTargets(commits, Math.max(1, bucketSize))
+            : commitBucketTargets(commitCount, Math.max(1, granularity));
+
+    final int totalFrames = targets.size();
+    final int from = Math.max(0, start);
+    if (from >= totalFrames) {
+      return new AnimationWindowDeltaDto(totalFrames, totalFrames, List.of());
+    }
+    final int to = count < 0 ? totalFrames : Math.min(totalFrames, from + count);
+
+    final Map<String, Map<String, String>> presentByCommit =
+        fetchPresentSets(session, landscapeToken, repositoryName);
+
+    final List<AnimationFrameDeltaDto> frames = new ArrayList<>();
+    final Map<String, Integer> lastChangeOrdinal = new HashMap<>();
+    final Map<String, Long> lastChangeDate = new HashMap<>();
+    Map<String, String> prevPresent = Map.of();
+
+    for (int i = 0; i < to; i++) {
+      final CommitMeta target = commits.get(targets.get(i));
+      final Map<String, String> curPresent = presentByCommit.getOrDefault(target.hash(), Map.of());
+      final List<BuildingChangeDto> changes = diffPresentSets(prevPresent, curPresent);
+
+      for (final BuildingChangeDto change : changes) {
+        if (CommitComparison.REMOVED.toString().equals(change.action())) {
+          lastChangeOrdinal.remove(change.fqn());
+          lastChangeDate.remove(change.fqn());
+        } else {
+          lastChangeOrdinal.put(change.fqn(), i);
+          lastChangeDate.put(change.fqn(), target.authorDate());
+        }
+      }
+
+      if (i == from) {
+        frames.add(
+            new AnimationFrameDeltaDto(
+                target.hash(),
+                target.authorDate(),
+                i,
+                true,
+                buildKeyframeState(curPresent, lastChangeOrdinal, lastChangeDate),
+                changes));
+      } else if (i > from) {
+        frames.add(
+            new AnimationFrameDeltaDto(
+                target.hash(), target.authorDate(), i, false, null, changes));
+      }
+      prevPresent = curPresent;
+    }
+    return new AnimationWindowDeltaDto(totalFrames, from, frames);
+  }
+
+  private Map<String, Map<String, String>> fetchPresentSets(
+      final Session session, final String landscapeToken, final String repositoryName) {
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c:Commit)
+        MATCH (c)-[:CONTAINS]->(f:FileRevision)
+        RETURN c.hash AS hash, f.filePath AS fqn, f.hash AS fileHash
+        """;
+
+    final Result result =
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+
+    final Map<String, Map<String, String>> presentByCommit = new HashMap<>();
+    result.forEach(
+        row -> {
+          final String hash = (String) row.get("hash");
+          final String fqn = (String) row.get("fqn");
+          if (hash == null || fqn == null) {
+            return;
+          }
+          presentByCommit
+              .computeIfAbsent(hash, key -> new HashMap<>())
+              .put(fqn, (String) row.get("fileHash"));
+        });
+    return presentByCommit;
+  }
+
+  private List<BuildingChangeDto> diffPresentSets(
+      final Map<String, String> prev, final Map<String, String> cur) {
+
+    final List<BuildingChangeDto> changes = new ArrayList<>();
+    cur.forEach(
+        (fqn, fileHash) -> {
+          final String prevHash = prev.get(fqn);
+          if (prevHash == null) {
+            changes.add(new BuildingChangeDto(fqn, CommitComparison.ADDED.toString()));
+          } else if (!prevHash.equals(fileHash)) {
+            changes.add(new BuildingChangeDto(fqn, CommitComparison.MODIFIED.toString()));
+          }
+        });
+    prev.forEach(
+        (fqn, fileHash) -> {
+          if (!cur.containsKey(fqn)) {
+            changes.add(new BuildingChangeDto(fqn, CommitComparison.REMOVED.toString()));
+          }
+        });
+    return changes;
+  }
+
+  private List<BuildingStateDto> buildKeyframeState(
+      final Map<String, String> present,
+      final Map<String, Integer> lastChangeOrdinal,
+      final Map<String, Long> lastChangeDate) {
+    final List<BuildingStateDto> state = new ArrayList<>();
+    present
+        .keySet()
+        .forEach(
+            fqn ->
+                state.add(
+                    new BuildingStateDto(
+                        fqn,
+                        lastChangeOrdinal.getOrDefault(fqn, 0),
+                        lastChangeDate.getOrDefault(fqn, 0L))));
+    return state;
   }
 
   private Map<String, Integer> computeFqnFirstOrdinals(
@@ -356,10 +531,13 @@ public class StructureRepository {
                 landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
     final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
     final List<String> orderedCommitHashes = commits.stream().map(CommitMeta::hash).toList();
+    final List<Long> orderedCommitTimeStamps =
+        commits.stream().map(CommitMeta::authorDate).toList();
     final Map<String, Integer> fqnToFirstOrdinal =
         computeFqnFirstOrdinals(session, landscapeToken, repositoryName, commits);
 
-    return new AnimationSkeletonDto(landscape, fqnToFirstOrdinal, orderedCommitHashes);
+    return new AnimationSkeletonDto(
+        landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
   }
 
   private FlatLandscapeDto deduplicateBuildingsByFqn(final FlatLandscapeDto raw) {
@@ -410,5 +588,29 @@ public class StructureRepository {
                         c.allContainedBuildingIds().stream().map(canonical).distinct().toList())));
 
     return new FlatLandscapeDto(raw.landscapeToken(), cities, districts, buildings);
+  }
+
+  // Helper Functions
+  private List<Integer> commitBucketTargets(final int commitCount, final int granul) {
+    final int totalFrames = (commitCount + granul - 1) / granul;
+    final List<Integer> targets = new ArrayList<>();
+    for (int i = 0; i < totalFrames; i++) {
+      targets.add(Math.min((i + 1) * granul, commitCount) - 1);
+    }
+    return targets;
+  }
+
+  private List<Integer> timeBucketTargets(final List<CommitMeta> commits, final long bucketSize) {
+    final long t0 = commits.get(0).authorDate();
+    final List<Integer> targets = new ArrayList<>();
+    for (int i = 0; i < commits.size(); i++) {
+      final long bucket = (commits.get(i).authorDate() - t0) / bucketSize;
+      final boolean lastOfBucket =
+          i == commits.size() - 1 || (commits.get(i + 1).authorDate() - t0) / bucketSize != bucket;
+      if (lastOfBucket) {
+        targets.add(i);
+      }
+    }
+    return targets;
   }
 }

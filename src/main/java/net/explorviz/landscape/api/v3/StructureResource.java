@@ -15,7 +15,9 @@ import net.explorviz.landscape.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
+import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.repository.FileDetailedMapper;
 import net.explorviz.landscape.repository.FileRevisionRepository;
@@ -159,10 +161,28 @@ public class StructureResource {
       @RestPath final String repositoryName,
       @RestQuery @DefaultValue("0") final int start,
       @RestQuery @DefaultValue("-1") final int count,
-      @RestQuery @DefaultValue("1") final int granularity) {
+      @RestQuery @DefaultValue("1") final int granularity,
+      @RestQuery @DefaultValue("commit") final String groupBy,
+      @RestQuery @DefaultValue("86400000") final long bucketSize) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationWindow(
-        session, landscapeToken, repositoryName, start, count, granularity);
+        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation/delta")
+  public AnimationWindowDeltaDto getEvolutionAnimationDelta(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery @DefaultValue("0") final int start,
+      @RestQuery @DefaultValue("-1") final int count,
+      @RestQuery @DefaultValue("1") final int granularity,
+      @RestQuery @DefaultValue("commit") final String groupBy,
+      @RestQuery @DefaultValue("86400000") final long bucketSize) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchAnimationDeltaWindow(
+        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize);
   }
 
   @GET
@@ -172,5 +192,16 @@ public class StructureResource {
       @RestPath final String landscapeToken, @RestPath final String repositoryName) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationSkeleton(session, landscapeToken, repositoryName);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/file-history/{fileRevisionId}")
+  public List<FileHistoryDto> getFileHistory(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestPath final long fileRevisionId) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchFileHistory(session, fileRevisionId);
   }
 }

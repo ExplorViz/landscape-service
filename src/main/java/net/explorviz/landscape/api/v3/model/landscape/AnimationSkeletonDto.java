@@ -7,11 +7,13 @@ import java.util.Objects;
 public record AnimationSkeletonDto(
     FlatLandscapeDto landscape,
     Map<String, Integer> fqnToFirstOrdinal,
-    List<String> orderedCommitHashes) {
+    List<String> orderedCommitHashes,
+    List<Long> orderedCommitTimestamps) {
 
   public AnimationSkeletonDto {
     Objects.requireNonNull(landscape);
     Objects.requireNonNull(fqnToFirstOrdinal);
     Objects.requireNonNull(orderedCommitHashes);
+    Objects.requireNonNull(orderedCommitTimestamps);
   }
 }
