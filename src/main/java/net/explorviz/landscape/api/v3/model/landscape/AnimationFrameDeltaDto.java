@@ -11,6 +11,9 @@ public record AnimationFrameDeltaDto(
     long authorDate,
     int ordinal,
     boolean keyframe,
+    long tsFrom,
+    long tsTo,
+    int commitCount,
     List<BuildingStateDto> state,
     List<BuildingChangeDto> changes) {
   public AnimationFrameDeltaDto {

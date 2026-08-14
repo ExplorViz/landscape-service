@@ -218,7 +218,6 @@ public class StructureRepository {
 
     return frames;
   }*/
-
   public List<FileHistoryDto> fetchFileHistory(final Session session, final long fileRevisionId) {
     final String query =
         """
@@ -360,9 +359,24 @@ public class StructureRepository {
     final Map<String, Integer> lastChangeOrdinal = new HashMap<>();
     final Map<String, Long> lastChangeDate = new HashMap<>();
     Map<String, String> prevPresent = Map.of();
+    final boolean timeMode = "time".equals(groupBy);
+    final long bucket = Math.max(1, bucketSize);
+    final long firstTs = commits.get(0).authorDate();
+    final long lastTs = commits.get(commits.size() - 1).authorDate();
+    int prevTargetId = -1;
 
     for (int i = 0; i < to; i++) {
       final CommitMeta target = commits.get(targets.get(i));
+      final int frameCommitCount = targets.get(i) - prevTargetId;
+      final long tsFrom;
+      final long tsTo;
+      if (timeMode) {
+        tsFrom = firstTs + bucket * i;
+        tsTo = Math.min(firstTs + bucket * (i + 1L), lastTs);
+      } else {
+        tsFrom = commits.get(Math.max(0, prevTargetId + 1)).authorDate();
+        tsTo = target.authorDate();
+      }
       final Map<String, String> curPresent = presentByCommit.getOrDefault(target.hash(), Map.of());
       final List<BuildingChangeDto> changes = diffPresentSets(prevPresent, curPresent);
 
@@ -383,14 +397,26 @@ public class StructureRepository {
                 target.authorDate(),
                 i,
                 true,
+                tsFrom,
+                tsTo,
+                frameCommitCount,
                 buildKeyframeState(curPresent, lastChangeOrdinal, lastChangeDate),
                 changes));
       } else if (i > from) {
         frames.add(
             new AnimationFrameDeltaDto(
-                target.hash(), target.authorDate(), i, false, null, changes));
+                target.hash(),
+                target.authorDate(),
+                i,
+                false,
+                tsFrom,
+                tsTo,
+                frameCommitCount,
+                null,
+                changes));
       }
       prevPresent = curPresent;
+      prevTargetId = targets.get(i);
     }
     return new AnimationWindowDeltaDto(totalFrames, from, frames);
   }
@@ -602,14 +628,16 @@ public class StructureRepository {
 
   private List<Integer> timeBucketTargets(final List<CommitMeta> commits, final long bucketSize) {
     final long t0 = commits.get(0).authorDate();
+    final long tEnd = commits.get(commits.size() - 1).authorDate();
+    final int frameCount = (int) Math.max(1, ((tEnd - t0) + bucketSize - 1) / bucketSize);
     final List<Integer> targets = new ArrayList<>();
-    for (int i = 0; i < commits.size(); i++) {
-      final long bucket = (commits.get(i).authorDate() - t0) / bucketSize;
-      final boolean lastOfBucket =
-          i == commits.size() - 1 || (commits.get(i + 1).authorDate() - t0) / bucketSize != bucket;
-      if (lastOfBucket) {
-        targets.add(i);
+    int cursor = 0;
+    for (int i = 0; i < frameCount; i++) {
+      final long intervalEnd = t0 + bucketSize * (i + 1L);
+      while (cursor + 1 < commits.size() && commits.get(cursor + 1).authorDate() <= intervalEnd) {
+        cursor++;
       }
+      targets.add(cursor);
     }
     return targets;
   }
