@@ -16,7 +16,6 @@ default:
 variables:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
   NEO4J_AUTH: "none"
-  NEO4J_db_query_default__language: "CYPHER_25"
   NEO4J_PLUGINS: '["apoc", "apoc-extended"]'
   NEO4J_dbms_usage__report_enabled: "false"
 
@@ -64,7 +63,7 @@ pmd:
 .db-test:
   stage: test
   services:
-    - name: neo4j:2026.03.1
+    - name: neo4j:2026.07.1
       alias: neo4j
     - name: apache/kafka-native:4.3.1
       alias: kafka
