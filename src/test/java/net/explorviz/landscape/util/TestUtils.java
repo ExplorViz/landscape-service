@@ -53,16 +53,23 @@ public class TestUtils {
   }
 
   public static void clearDatabase(final Session session) {
-    session.query(
-        """
-        CALL apoc.periodic.iterate(
-          'MATCH (n) RETURN id(n) AS id',
-          'MATCH (n) WHERE id(n) = id DETACH DELETE n',
-          {batchSize: 10000, parallel: false}
-        ) YIELD batches, total
-        RETURN batches, total
-        """,
-        Map.of());
+    final int batchSize = 10_000;
+    while (true) {
+      final Result result =
+          session.query(
+              """
+              MATCH (n)
+              WITH n LIMIT $batchSize
+              DETACH DELETE n
+              RETURN count(*) AS deleted
+              """,
+              Map.of("batchSize", batchSize));
+      final long deleted =
+          ((Number) result.queryResults().iterator().next().get("deleted")).longValue();
+      if (deleted == 0) {
+        break;
+      }
+    }
     session.clear();
   }
 
