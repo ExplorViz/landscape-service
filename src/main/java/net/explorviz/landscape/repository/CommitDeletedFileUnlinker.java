@@ -44,12 +44,10 @@ public class CommitDeletedFileUnlinker {
               Integer.class,
               """
               MATCH (child) WHERE id(child) = $childCommitId
-              UNWIND $deletedPaths AS deletedPath
               MATCH (child)-[rel:CONTAINS]->(f:FileRevision)
-              WHERE f.filePath = deletedPath
-              WITH collect(rel) AS rels
-              FOREACH (rel IN rels | DELETE rel)
-              RETURN size(rels) AS unlinkedCount
+              WHERE f.filePath IN $deletedPaths
+              DELETE rel
+              RETURN count(rel) AS unlinkedCount
               """,
               Map.of("childCommitId", childCommitInternalId, "deletedPaths", batch));
 
