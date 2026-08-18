@@ -68,9 +68,20 @@ fun registerGitHook(taskName: String, hookFile: String, targetHook: String) =
 registerGitHook("registerPreCommitHook", "pre-commit.sh", "pre-commit")
 registerGitHook("registerPreMergeCommitHook", "pre-commit.sh", "pre-merge-commit")
 
+tasks.register("cleanStaleGrpcGeneratedSources") {
+    doLast {
+        delete(layout.buildDirectory.dir("classes/java/quarkus-generated-sources/grpc"))
+    }
+}
+
 tasks.named("quarkusGenerateCode") {
     dependsOn("registerPreCommitHook")
     dependsOn("registerPreMergeCommitHook")
+    dependsOn("cleanStaleGrpcGeneratedSources")
+}
+
+tasks.named("compileJava") {
+    dependsOn("cleanStaleGrpcGeneratedSources")
 }
 
 pmd {
