@@ -16,10 +16,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v3.model.BranchDto;
 import net.explorviz.landscape.api.v3.model.BranchPointDto;
+import net.explorviz.landscape.api.v3.model.CommitAuthorDto;
 import net.explorviz.landscape.api.v3.model.CommitNodeDto;
 import net.explorviz.landscape.api.v3.model.CommitSampling;
 import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
+import net.explorviz.landscape.ogm.Contributor;
 import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
@@ -97,6 +99,13 @@ public class EvolutionResource {
     final Map<String, BranchPointDto> branchToBranchPointMap = new HashMap<>();
     populateBranchMappings(commits, branchToCommitMap, branchToBranchPointMap);
 
+    final Map<String, CommitRepository.CommitAuthorProjection> authorsByCommitHash =
+        commitRepository.findAuthorsByCommitHashes(
+            session,
+            landscapeToken,
+            repositoryName,
+            commits.stream().map(Commit::getHash).collect(Collectors.toSet()));
+
     final List<BranchDto> branches =
         branchToCommitMap.entrySet().stream()
             .map(
@@ -108,7 +117,8 @@ public class EvolutionResource {
                         to,
                         commitSampling,
                         tagsByCommitHash,
-                        branchToBranchPointMap))
+                        branchToBranchPointMap,
+                        authorsByCommitHash))
             .toList();
 
     return new CommitTreeDto(repositoryName, branches, repository.getRemoteUrl());
@@ -174,7 +184,8 @@ public class EvolutionResource {
       final Long to,
       final CommitSampling commitSampling,
       final Map<String, List<String>> tagsByCommitHash,
-      final Map<String, BranchPointDto> branchToBranchPointMap) {
+      final Map<String, BranchPointDto> branchToBranchPointMap,
+      final Map<String, CommitRepository.CommitAuthorProjection> authorsByCommitHash) {
     List<Commit> branchCommits = CommitBranchOrderer.orderAlongBranch(branchEntry.getValue());
     if (useFirstParentOnly) {
       branchCommits = CommitFirstParentFilter.filterToFirstParentOnly(branchCommits);
@@ -189,8 +200,31 @@ public class EvolutionResource {
                         commit.getCommitDate(),
                         commit.getMetrics(),
                         commit.isHasAccumulatedMetrics(),
-                        tagsByCommitHash.getOrDefault(commit.getHash(), List.of())))
+                        tagsByCommitHash.getOrDefault(commit.getHash(), List.of()),
+                        toAuthorDto(authorsByCommitHash.get(commit.getHash()), commit.getAuthor())))
             .toList(),
         branchToBranchPointMap.get(branchEntry.getKey()));
+  }
+
+  private static CommitAuthorDto toAuthorDto(
+      final CommitRepository.CommitAuthorProjection projection, final Contributor author) {
+    if (projection != null) {
+      return new CommitAuthorDto(
+          projection.contributorId(),
+          projection.gitUsername(),
+          projection.githubLogin(),
+          projection.email());
+    }
+
+    return toAuthorDto(author);
+  }
+
+  private static CommitAuthorDto toAuthorDto(final Contributor author) {
+    if (author == null) {
+      return null;
+    }
+
+    return new CommitAuthorDto(
+        author.getId(), author.getGitUsername(), author.getGithubLogin(), author.getEmail());
   }
 }
