@@ -262,7 +262,7 @@ class CommitServiceTest {
 
             MATCH (r)
               -[:CONTAINS]->(:Commit {hash: $commitHashTwo})
-              -[:HAS_PARENT]->(c1)
+              -[:HAS_FIRST_PARENT]->(c1)
             } AS exists
             """,
             Map.of(
@@ -285,6 +285,82 @@ class CommitServiceTest {
             .directories(1)
             .commits(2)
             .build());
+  }
+
+  @Test
+  void testPersistMergeCommitWithFirstAndMiscParents() {
+    final String baseHash = "base";
+    final String featureHash = "feature";
+    final String mergeHash = "merge";
+
+    persistMinimalCommit(baseHash, 1);
+
+    persistMinimalCommit(featureHash, 2, baseHash);
+
+    final CommitData mergeCommitData =
+        CommitData.newBuilder()
+            .setCommitId(mergeHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setParentCommitId(baseHash)
+            .addAllParentCommitIds(List.of(baseHash, featureHash))
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(3).setNanos(100).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(3).setNanos(100).build())
+            .build();
+
+    commitService
+        .persistCommit(mergeCommitData)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final Boolean hasFirstParent =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $mergeHash})-[:HAS_FIRST_PARENT]->(:Commit {hash: $baseHash})
+            } AS exists
+            """,
+            Map.of("mergeHash", mergeHash, "baseHash", baseHash));
+
+    final Boolean hasMiscParent =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $mergeHash})-[:HAS_MISC_PARENT]->(:Commit {hash: $featureHash})
+            } AS exists
+            """,
+            Map.of("mergeHash", mergeHash, "featureHash", featureHash));
+
+    assertTrue(hasFirstParent);
+    assertTrue(hasMiscParent);
+  }
+
+  private void persistMinimalCommit(final String commitHash, final long epochSeconds) {
+    persistMinimalCommit(commitHash, epochSeconds, null);
+  }
+
+  private void persistMinimalCommit(
+      final String commitHash, final long epochSeconds, final String parentHash) {
+    final CommitData.Builder builder =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(epochSeconds).setNanos(100).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(epochSeconds).setNanos(100).build());
+
+    if (parentHash != null) {
+      builder.setParentCommitId(parentHash).addParentCommitIds(parentHash);
+    }
+
+    commitService
+        .persistCommit(builder.build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
   }
 
   @Test

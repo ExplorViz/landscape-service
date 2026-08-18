@@ -277,7 +277,22 @@
       "id": "n3",
       "fromId": "n4",
       "toId": "n4",
-      "type": "HAS_PARENT",
+      "type": "HAS_FIRST_PARENT",
+      "properties": {},
+      "style": {
+        "type-padding": 5,
+        "margin-peer": 20,
+        "detail-position": "above",
+        "detail-orientation": "horizontal",
+        "type-background-color": "#cccccc",
+        "type-border-width": 2
+      }
+    },
+    {
+      "id": "n3b",
+      "fromId": "n4",
+      "toId": "n4",
+      "type": "HAS_MISC_PARENT",
       "properties": {},
       "style": {
         "type-padding": 5,

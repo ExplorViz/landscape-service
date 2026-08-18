@@ -283,7 +283,7 @@ CREATE (start)-[r:CONTAINS]->(end) SET r += row.properties;
 UNWIND [{start: {_id:260}, end: {_id:283}, properties:{}}] AS row
 MATCH (start:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.start._id})
 MATCH (end:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.end._id})
-CREATE (start)-[r:HAS_PARENT]->(end) SET r += row.properties;
+CREATE (start)-[r:HAS_FIRST_PARENT]->(end) SET r += row.properties;
 UNWIND [{start: {tokenId:"mytokenvalue"}, end: {_id:277}, properties:{}}] AS row
 MATCH (start:Landscape{tokenId: row.start.tokenId})
 MATCH (end:`UNIQUE IMPORT LABEL`{`UNIQUE IMPORT ID`: row.end._id})

@@ -170,10 +170,12 @@ public class CommitRepository {
             """
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
-            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            OPTIONAL MATCH (c)-[fp:HAS_FIRST_PARENT]->(firstParent:Commit)
+            OPTIONAL MATCH (firstParent)-[fpr:BELONGS_TO]->(fpb:Branch)
+            OPTIONAL MATCH (c)-[mp:HAS_MISC_PARENT]->(miscParent:Commit)
+            OPTIONAL MATCH (miscParent)-[mpr:BELONGS_TO]->(mpb:Branch)
             OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
+            RETURN DISTINCT c, r, b, fp, firstParent, fpr, fpb, mp, miscParent, mpr, mpb, tagRel, tag
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
@@ -193,10 +195,12 @@ public class CommitRepository {
             MATCH (repo:Repository)<-[:CONTAINS]-(l)
             WHERE (repo)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(:Directory)<-[:HAS_ROOT]-(a)
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
-            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            OPTIONAL MATCH (c)-[fp:HAS_FIRST_PARENT]->(firstParent:Commit)
+            OPTIONAL MATCH (firstParent)-[fpr:BELONGS_TO]->(fpb:Branch)
+            OPTIONAL MATCH (c)-[mp:HAS_MISC_PARENT]->(miscParent:Commit)
+            OPTIONAL MATCH (miscParent)-[mpr:BELONGS_TO]->(mpb:Branch)
             OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
+            RETURN DISTINCT c, r, b, fp, firstParent, fpr, fpb, mp, miscParent, mpr, mpb, tagRel, tag
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "appName", applicationName)));
@@ -219,8 +223,8 @@ public class CommitRepository {
 
   /**
    * Finds a commit hash scoped to a repository, including commits only reachable from the
-   * repository via {@code HAS_PARENT} (for example git parents created as stubs when linking a
-   * child commit).
+   * repository via {@code HAS_FIRST_PARENT} or {@code HAS_MISC_PARENT} (for example git parents
+   * created as stubs when linking a child commit).
    */
   public Optional<Long> findCommitInternalIdInRepository(
       final Session session, final String commitHash, final String tokenId, final String repoName) {
@@ -231,7 +235,7 @@ public class CommitRepository {
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
             MATCH (c:Commit {hash: $commitHash})
             WHERE EXISTS { MATCH (repo)-[:CONTAINS]->(c) }
-              OR EXISTS { MATCH (repo)-[:CONTAINS]->(:Commit)-[:HAS_PARENT*1..10]->(c) }
+              OR EXISTS { MATCH (repo)-[:CONTAINS]->(:Commit)-[:HAS_FIRST_PARENT|HAS_MISC_PARENT*1..10]->(c) }
             RETURN id(c) LIMIT 1
             """,
             Map.of("tokenId", tokenId, "repoName", repoName, "commitHash", commitHash)));
@@ -361,7 +365,7 @@ public class CommitRepository {
             Long.class,
             """
             MATCH (c:Commit) WHERE id(c) = $commitId
-            MATCH (c)-[:HAS_PARENT]->(parent:Commit)
+            MATCH (c)-[:HAS_FIRST_PARENT]->(parent:Commit)
             RETURN id(parent) AS parentId
             LIMIT 1
             """,

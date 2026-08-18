@@ -59,10 +59,10 @@ public class ExampleDataResource {
             MERGE (commit1)-[:BELONGS_TO]->(main)
             MERGE (repo)-[:CONTAINS]->(commit2:Commit {hash: "commit2", authorDate: 2000})
             MERGE (commit2)-[:BELONGS_TO]->(main)
-            MERGE (commit2)-[:HAS_PARENT]->(commit1)
+            MERGE (commit2)-[:HAS_FIRST_PARENT]->(commit1)
             MERGE (repo)-[:CONTAINS]->(commit3:Commit {hash: "commit3", authorDate: 3000})
             MERGE (commit3)-[:BELONGS_TO]->(feature)
-            MERGE (commit3)-[:HAS_PARENT]->(commit2)
+            MERGE (commit3)-[:HAS_FIRST_PARENT]->(commit2)
 
             MERGE (l)-[:CONTAINS]->(app:Application {name: $repoName})
             MERGE (app)-[:HAS_ROOT]->(rootDir:Directory {name: $repoName})
@@ -135,10 +135,10 @@ public class ExampleDataResource {
             MERGE (commit1)-[:BELONGS_TO]->(main)
             MERGE (repo)-[:CONTAINS]->(commit2:Commit {hash: "commit2", authorDate: 2000})
             MERGE (commit2)-[:BELONGS_TO]->(feature)
-            MERGE (commit2)-[:HAS_PARENT]->(commit1)
+            MERGE (commit2)-[:HAS_FIRST_PARENT]->(commit1)
             MERGE (repo)-[:CONTAINS]->(commit3:Commit {hash: "commit3", authorDate: 3000})
             MERGE (commit3)-[:BELONGS_TO]->(main)
-            MERGE (commit3)-[:HAS_PARENT]->(commit1)
+            MERGE (commit3)-[:HAS_FIRST_PARENT]->(commit1)
 
             MERGE (l)-[:CONTAINS]->(app:Application {name: $repoName})
             MERGE (app)-[:HAS_ROOT]->(rootDir:Directory {name: $repoName})
@@ -211,10 +211,10 @@ public class ExampleDataResource {
     commit1.setBranch(branch1);
     commit1.setAuthorDate(Instant.ofEpochMilli(1000));
     commit2.setBranch(branch1);
-    commit2.addParentCommit(commit1);
+    commit2.setFirstParentCommit(commit1);
     commit2.setAuthorDate(Instant.ofEpochMilli(1000));
     commit3.setBranch(branch2);
-    commit3.addParentCommit(commit1);
+    commit3.setFirstParentCommit(commit1);
     commit1.setAuthorDate(Instant.ofEpochMilli(1500));
     repository.addCommit(commit1);
     repository.addCommit(commit2);

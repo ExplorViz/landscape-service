@@ -3,7 +3,9 @@ package net.explorviz.landscape.ogm;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
@@ -31,8 +33,11 @@ public class Commit {
   @Relationship(type = "BELONGS_TO", direction = Relationship.Direction.OUTGOING)
   private Branch branch;
 
-  @Relationship(type = "HAS_PARENT", direction = Relationship.Direction.OUTGOING)
-  private final Set<Commit> parentCommits = new HashSet<>();
+  @Relationship(type = "HAS_FIRST_PARENT", direction = Relationship.Direction.OUTGOING)
+  private Commit firstParentCommit;
+
+  @Relationship(type = "HAS_MISC_PARENT", direction = Relationship.Direction.OUTGOING)
+  private final Set<Commit> miscParentCommits = new HashSet<>();
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final Set<FileRevision> fileRevisions = new HashSet<>();
@@ -109,12 +114,28 @@ public class Commit {
     this.branch = branch;
   }
 
-  public Set<Commit> getParentCommits() {
-    return Set.copyOf(parentCommits);
+  public Optional<Commit> getFirstParentCommit() {
+    return Optional.ofNullable(firstParentCommit);
   }
 
-  public void addParentCommit(final Commit parentCommit) {
-    parentCommits.add(parentCommit);
+  public void setFirstParentCommit(final Commit firstParentCommit) {
+    this.firstParentCommit = firstParentCommit;
+  }
+
+  public Set<Commit> getMiscParentCommits() {
+    return Set.copyOf(miscParentCommits);
+  }
+
+  public void addMiscParentCommit(final Commit miscParentCommit) {
+    miscParentCommits.add(miscParentCommit);
+  }
+
+  /** Returns all git parents: first parent followed by misc parents. */
+  public Set<Commit> getParentCommits() {
+    final Set<Commit> allParents = new LinkedHashSet<>();
+    getFirstParentCommit().ifPresent(allParents::add);
+    allParents.addAll(miscParentCommits);
+    return Set.copyOf(allParents);
   }
 
   public Set<FileRevision> getFileRevisions() {

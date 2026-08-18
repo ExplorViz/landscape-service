@@ -245,14 +245,23 @@ public class CommitServiceImpl implements CommitService {
     final List<Object> entitiesToSave = new ArrayList<>();
     entitiesToSave.add(repo);
     entitiesToSave.add(commit);
-    for (final String parentCommitId : parentCommitIds) {
-      final Commit parentCommit =
+
+    final Commit firstParent =
+        commitRepository.getOrCreateCommit(
+            session, parentCommitIds.getFirst(), commitData.getLandscapeToken());
+    commit.setFirstParentCommit(firstParent);
+    repo.addCommit(firstParent);
+    entitiesToSave.add(firstParent);
+
+    for (int parentIndex = 1; parentIndex < parentCommitIds.size(); parentIndex++) {
+      final Commit miscParent =
           commitRepository.getOrCreateCommit(
-              session, parentCommitId, commitData.getLandscapeToken());
-      commit.addParentCommit(parentCommit);
-      repo.addCommit(parentCommit);
-      entitiesToSave.add(parentCommit);
+              session, parentCommitIds.get(parentIndex), commitData.getLandscapeToken());
+      commit.addMiscParentCommit(miscParent);
+      repo.addCommit(miscParent);
+      entitiesToSave.add(miscParent);
     }
+
     session.save(entitiesToSave);
   }
 

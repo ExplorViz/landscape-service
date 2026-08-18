@@ -103,21 +103,20 @@ public class CommitFileLinker {
     long unlinkStaleRevisionsMs = 0;
     if (ParentCommitInheritancePolicy.hasPersistedParentReference(commitData)) {
       stepStart = System.nanoTime();
-      final int copiedFromParent =
-          fileRevisionRepository.copyUnchangedFilesFromParentCommit(
-              session,
-              new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
-                  commitData.getLandscapeToken(),
-                  commitData.getRepositoryName(),
-                  commitData.getParentCommitId(),
-                  commit.getId(),
-                  addedPaths,
-                  modifiedPaths,
-                  deletedPaths,
-                  ParentCommitInheritancePolicy.requiresPersistedParent(commitData)));
+      fileRevisionRepository.copyUnchangedFilesFromParentCommit(
+          session,
+          new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
+              commitData.getLandscapeToken(),
+              commitData.getRepositoryName(),
+              commitData.getParentCommitId(),
+              commit.getId(),
+              addedPaths,
+              modifiedPaths,
+              deletedPaths,
+              ParentCommitInheritancePolicy.requiresPersistedParent(commitData)));
       copyUnchangedFromParentMs = elapsedMillis(stepStart);
 
-      if (copiedFromParent > 0 && (!addedPaths.isEmpty() || !modifiedPaths.isEmpty())) {
+      if (!addedPaths.isEmpty() || !modifiedPaths.isEmpty()) {
         stepStart = System.nanoTime();
         commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
             session, commit.getId(), commitData.getRepositoryName(), modifiedPaths, addedPaths);
