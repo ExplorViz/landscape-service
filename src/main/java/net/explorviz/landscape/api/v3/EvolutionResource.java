@@ -2,6 +2,7 @@ package net.explorviz.landscape.api.v3;
 
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v3.model.BranchDto;
 import net.explorviz.landscape.api.v3.model.BranchPointDto;
 import net.explorviz.landscape.api.v3.model.CommitNodeDto;
+import net.explorviz.landscape.api.v3.model.CommitSampling;
 import net.explorviz.landscape.api.v3.model.CommitTreeDto;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Repository;
@@ -24,7 +26,9 @@ import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TagRepository;
 import net.explorviz.landscape.util.CommitBranchOrderer;
+import net.explorviz.landscape.util.CommitTreeFilterer;
 import org.jboss.resteasy.reactive.RestPath;
+import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
@@ -57,7 +61,17 @@ public class EvolutionResource {
   @Path("/commit-tree/{repositoryName}")
   @Produces(MediaType.APPLICATION_JSON)
   public CommitTreeDto getCommitTreeForRepositoryAndLandscape(
-      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery final Long from,
+      @RestQuery final Long to,
+      @RestQuery final String sampling) {
+
+    if (from != null && to != null && from > to) {
+      throw new BadRequestException("'from' timestamp must be less than or equal to 'to'.");
+    }
+
+    final CommitSampling commitSampling = CommitSampling.fromQueryParam(sampling);
     final Session session = sessionFactory.openSession();
 
     final Repository repository =
@@ -136,7 +150,12 @@ public class EvolutionResource {
                 e ->
                     new BranchDto(
                         e.getKey(),
-                        CommitBranchOrderer.orderAlongBranch(e.getValue()).stream()
+                        CommitTreeFilterer.applyFilters(
+                                CommitBranchOrderer.orderAlongBranch(e.getValue()),
+                                from,
+                                to,
+                                commitSampling)
+                            .stream()
                             .map(
                                 commit ->
                                     new CommitNodeDto(
