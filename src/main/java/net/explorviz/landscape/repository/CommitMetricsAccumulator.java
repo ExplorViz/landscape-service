@@ -79,7 +79,7 @@ public class CommitMetricsAccumulator {
   private static final String FIND_ACCUMULATED_PARENT =
       """
       MATCH (c:Commit) WHERE id(c) = $commitId
-      MATCH (c)-[:HAS_PARENT]->(p:Commit)
+      MATCH (c)-[:HAS_FIRST_PARENT]->(p:Commit)
       WHERE coalesce(p.hasAccumulatedMetrics, false) = true
       WITH p, [k IN keys(p) WHERE k STARTS WITH 'metrics.'] AS metricKeys
       RETURN
@@ -205,10 +205,9 @@ public class CommitMetricsAccumulator {
   }
 
   /**
-   * Derives the commit's totals from an already-accumulated parent: the parent's sums, minus the
-   * file revisions the parent had and this commit does not, plus the ones this commit added. Any
-   * accumulated parent works — including an arbitrary one of a merge commit's parents — because the
-   * {@code CONTAINS} set difference is exact; the parent only supplies a starting point.
+   * Derives the commit's totals from an already-accumulated first parent: the parent's sums, minus
+   * the file revisions the parent had and this commit does not, plus the ones this commit added.
+   * The first parent is used because file inheritance and diffs are based on it.
    *
    * <p>Empty when there is no accumulated parent, or when the two commits share so few files that
    * summing this commit's own files outright is the cheaper option.

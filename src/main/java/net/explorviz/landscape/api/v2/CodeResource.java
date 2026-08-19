@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v2.model.BranchDto;
@@ -138,13 +137,14 @@ public class CodeResource {
           parentCommits.stream().anyMatch(pc -> branchName.equals(pc.getBranch().getName()));
 
       if (!hasParentInSameBranch) {
-        final Optional<Commit> parentCommitOptional = parentCommits.stream().findAny();
-        parentCommitOptional.ifPresent(
-            parentCommit ->
-                branchToBranchPointMap.putIfAbsent(
-                    branchName,
-                    new BranchPointDto(
-                        parentCommit.getBranch().getName(), parentCommit.getHash())));
+        commit
+            .getFirstParentCommit()
+            .ifPresent(
+                parentCommit ->
+                    branchToBranchPointMap.putIfAbsent(
+                        branchName,
+                        new BranchPointDto(
+                            parentCommit.getBranch().getName(), parentCommit.getHash())));
       }
     }
 

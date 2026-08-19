@@ -40,7 +40,7 @@ public class LandscapeRepository {
         """
         MATCH (l:Landscape {tokenId: $tokenId})
         CALL apoc.path.subgraphAll(l, {
-          relationshipFilter: "CONTAINS>|HAS_ROOT>|HAS_PARENT>|REPRESENTS>|BELONGS_TO>|IS_TAGGED_WITH>|INHERITS>|ADDED>|DELETED>|MODIFIED>|HAS_VERSION>|GENERATES>|USED>|DERIVED_FROM>|REFERENCES>"
+          relationshipFilter: "CONTAINS>|HAS_ROOT>|HAS_FIRST_PARENT>|HAS_MISC_PARENT>|REPRESENTS>|BELONGS_TO>|IS_TAGGED_WITH>|INHERITS>|ADDED>|DELETED>|MODIFIED>|HAS_VERSION>|GENERATES>|USED>|DERIVED_FROM>|REFERENCES>"
         })
         YIELD nodes
         UNWIND nodes AS n

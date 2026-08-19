@@ -8,10 +8,10 @@ import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
 import org.junit.jupiter.api.Test;
 
-class CommitBranchOrdererTest {
+class CommitFirstParentFilterTest {
 
   @Test
-  void orderAlongBranch_followsParentChildRelationship() {
+  void filterToFirstParentOnly_keepsLinearHistory() {
     final Branch branch = new Branch("main");
 
     final Commit commit1 = commit("c1", branch, Instant.ofEpochSecond(1));
@@ -21,14 +21,14 @@ class CommitBranchOrdererTest {
     final Commit commit3 = commit("c3", branch, Instant.ofEpochSecond(3));
     commit3.setFirstParentCommit(commit2);
 
-    final List<Commit> ordered =
-        CommitBranchOrderer.orderAlongBranch(List.of(commit3, commit1, commit2));
+    final List<Commit> filtered =
+        CommitFirstParentFilter.filterToFirstParentOnly(List.of(commit1, commit2, commit3));
 
-    assertEquals(List.of("c1", "c2", "c3"), ordered.stream().map(Commit::getHash).toList());
+    assertEquals(List.of("c1", "c2", "c3"), filtered.stream().map(Commit::getHash).toList());
   }
 
   @Test
-  void orderAlongBranch_ordersMergeCommitsAfterBothParents() {
+  void filterToFirstParentOnly_excludesMergedSideBranchCommits() {
     final Branch branch = new Branch("main");
 
     final Commit base = commit("base", branch, Instant.ofEpochSecond(1));
@@ -40,16 +40,15 @@ class CommitBranchOrdererTest {
     merge.setFirstParentCommit(mainTip);
     merge.addMiscParentCommit(feature);
 
-    final List<Commit> ordered =
-        CommitBranchOrderer.orderAlongBranch(List.of(merge, feature, mainTip, base));
+    final List<Commit> filtered =
+        CommitFirstParentFilter.filterToFirstParentOnly(List.of(base, feature, mainTip, merge));
 
     assertEquals(
-        List.of("base", "feature", "main-tip", "merge"),
-        ordered.stream().map(Commit::getHash).toList());
+        List.of("base", "main-tip", "merge"), filtered.stream().map(Commit::getHash).toList());
   }
 
   @Test
-  void orderAlongBranch_startsAtBranchRootWhenParentIsOnAnotherBranch() {
+  void filterToFirstParentOnly_keepsFeatureBranchTipWhenParentIsOnAnotherBranch() {
     final Branch main = new Branch("main");
     final Branch feature = new Branch("feature");
 
@@ -57,9 +56,10 @@ class CommitBranchOrdererTest {
     final Commit featureTip = commit("feature-tip", feature, Instant.ofEpochSecond(2));
     featureTip.setFirstParentCommit(base);
 
-    final List<Commit> ordered = CommitBranchOrderer.orderAlongBranch(List.of(featureTip));
+    final List<Commit> filtered =
+        CommitFirstParentFilter.filterToFirstParentOnly(List.of(featureTip));
 
-    assertEquals(List.of("feature-tip"), ordered.stream().map(Commit::getHash).toList());
+    assertEquals(List.of("feature-tip"), filtered.stream().map(Commit::getHash).toList());
   }
 
   private static Commit commit(final String hash, final Branch branch, final Instant commitDate) {
