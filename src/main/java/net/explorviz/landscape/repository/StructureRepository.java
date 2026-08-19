@@ -343,7 +343,8 @@ public class StructureRepository {
       final int count,
       final int granularity,
       final String groupBy,
-      final long bucketSize) {
+      final long bucketSize,
+      final long agingWindow) {
 
     final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
     final int commitCount = commits.size();
@@ -369,7 +370,8 @@ public class StructureRepository {
     final long lastTs = commits.get(commits.size() - 1).authorDate();
 
     final String cacheKey =
-        landscapeToken + '|' + repositoryName + '|' + groupBy + '|' + granularity + '|' + bucket;
+        landscapeToken + '|' + repositoryName + '|' + groupBy + '|' + granularity + '|' + bucket
+        + '|' + agingWindow;
     final WalkState cached = walkStateCache.get(cacheKey);
 
     final int walkFrom;
@@ -377,19 +379,21 @@ public class StructureRepository {
     final Map<String, Long> lastChangeDate;
     Map<String, String> prevPresent;
     int prevTargetId;
+    final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode,agingWindow));
+    final int minStart = Math.max(0, from - lookback);
 
-    if (cached != null && cached.frameIndex() < from) {
+    if (cached != null && cached.frameIndex() < from && cached.frameIndex() + 1 >= minStart) {
       walkFrom = cached.frameIndex() + 1;
       lastChangeOrdinal = new HashMap<>(cached.lastChangeOrdinal());
       lastChangeDate = new HashMap<>(cached.lastChangeDate());
       prevPresent = cached.present();
       prevTargetId = cached.targetId();
     } else {
-      walkFrom = 0;
+      walkFrom = minStart;
       lastChangeOrdinal = new HashMap<>();
       lastChangeDate = new HashMap<>();
       prevPresent = Map.of();
-      prevTargetId = -1;
+      prevTargetId = minStart > 0 ? targets.get(minStart -1) : -1;
     }
 
     final List<String> neededHashes = new ArrayList<>();
@@ -460,6 +464,24 @@ public class StructureRepository {
         cacheKey,
         new WalkState(to - 1, lastChangeOrdinal, lastChangeDate, prevPresent, prevTargetId));
     return new AnimationWindowDeltaDto(totalFrames, from, frames);
+  }
+
+  private int lookbackFrames(
+      final List<CommitMeta> commits,
+      final List<Integer> targets,
+      final int from,
+      final boolean timeMode,
+      final long agingWindow) {
+    if (!timeMode) {
+      return (int) Math.min(agingWindow, Integer.MAX_VALUE);
+    }
+    final long cutoff = commits.get(targets.get(from)).authorDate() - agingWindow;
+    for (int i = from; i >= 0; i--) {
+      if (commits.get(targets.get(i)).authorDate() <= cutoff) {
+        return from - i;
+      }
+    }
+    return from;
   }
 
   private Map<String, Map<String, String>> fetchPresentSets(

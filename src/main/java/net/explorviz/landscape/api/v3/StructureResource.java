@@ -179,10 +179,12 @@ public class StructureResource {
       @RestQuery @DefaultValue("-1") final int count,
       @RestQuery @DefaultValue("1") final int granularity,
       @RestQuery @DefaultValue("commit") final String groupBy,
-      @RestQuery @DefaultValue("86400000") final long bucketSize) {
+      @RestQuery @DefaultValue("86400000") final long bucketSize,
+      @RestQuery @DefaultValue("1") final long agingWindow) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationDeltaWindow(
-        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize);
+        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize,
+        agingWindow);
   }
 
   @GET
