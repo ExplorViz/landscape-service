@@ -34,10 +34,10 @@ public class ContributorRepository {
             .orElseGet(
                 () ->
                     new Contributor(
-                        data.getGitUsername(),
-                        data.getEmail(),
-                        data.getGithubLogin(),
-                        data.getAvatarUrl()));
+                        emptyToNull(data.getGitUsername()),
+                        emptyToNull(data.getEmail()),
+                        emptyToNull(data.getGithubLogin()),
+                        emptyToNull(data.getAvatarUrl())));
 
     final boolean isUpdated = updateContributorFields(contributor, data);
 
@@ -46,6 +46,16 @@ public class ContributorRepository {
     }
     return contributor;
   }
+
+  public record ContributorActivity(
+      long contributorId,
+      String gitUsername,
+      String githubLogin,
+      String email,
+      String avatarUrl,
+      long commitCount,
+      long minDate,
+      long maxDate) {}
 
   public Optional<Contributor> findExistingContributor(
       final Session session, final ContributorData data) {
@@ -101,5 +111,9 @@ public class ContributorRepository {
 
   private boolean isUsable(final String str) {
     return isPresent(str) && !"unknown".equals(str);
+  }
+
+  private static String emptyToNull(final String value) {
+    return (value == null || value.isBlank()) ? null : value;
   }
 }

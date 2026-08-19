@@ -19,6 +19,14 @@ public class Function implements Comparable<Function> {
 
   private String name;
 
+  /**
+   * Identifier for looking up telemetry data related to this function (e.g. for detailed spans).
+   * Note that this can be the same value for different revisions of the same function since
+   * telemetry data uses the commit hash, not the file hash, to distinguish revisions. Therefore,
+   * this value is used in combination with a commit hash to find telemetry for a specific revision.
+   */
+  private String telemetryKey;
+
   private String returnType;
 
   private boolean constructor;
@@ -65,6 +73,10 @@ public class Function implements Comparable<Function> {
 
   public String getName() {
     return name;
+  }
+
+  public String getTelemetryKey() {
+    return telemetryKey;
   }
 
   public String getReturnType() {

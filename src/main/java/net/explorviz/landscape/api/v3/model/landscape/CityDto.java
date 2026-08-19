@@ -2,12 +2,8 @@ package net.explorviz.landscape.api.v3.model.landscape;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import net.explorviz.landscape.api.v3.model.landscape.BuildingDto.BuildingConvertible;
-import net.explorviz.landscape.api.v3.model.landscape.DistrictDto.DistrictConvertible;
-import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
 
 /**
  * Outermost grouping container for all objects which are visualized inside a landscape. Cities
@@ -38,12 +34,5 @@ public record CityDto(
     Objects.requireNonNull(buildingIds);
     Objects.requireNonNull(allContainedDistrictIds);
     Objects.requireNonNull(allContainedBuildingIds);
-  }
-
-  /** Must be implemented by any object which can be represented as a city during flattening. */
-  public interface CityConvertible extends FlatConvertible {
-    Collection<? extends DistrictConvertible> getDistricts();
-
-    Collection<? extends BuildingConvertible> getBuildings();
   }
 }

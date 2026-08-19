@@ -16,10 +16,12 @@ import java.util.Map;
  * @param hasAccumulatedMetrics Whether all file revisions have been analyzed and metrics were
  *     aggregated
  * @param tags Git tag names associated with this commit
+ * @param author Commit author identity when available
  */
 public record CommitNodeDto(
     String hash,
     @JsonInclude(Include.NON_NULL) Instant commitDate,
     @JsonInclude(Include.NON_EMPTY) Map<String, Double> metrics,
     boolean hasAccumulatedMetrics,
-    @JsonInclude(Include.NON_EMPTY) List<String> tags) {}
+    @JsonInclude(Include.NON_EMPTY) List<String> tags,
+    @JsonInclude(Include.NON_NULL) CommitAuthorDto author) {}

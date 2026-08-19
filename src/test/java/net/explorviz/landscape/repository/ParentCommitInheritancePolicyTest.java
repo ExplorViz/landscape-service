@@ -47,7 +47,7 @@ class ParentCommitInheritancePolicyTest {
   }
 
   @Test
-  void metadataOnlyCommitDoesNotRequirePersistedParent() {
+  void commitWithoutFileChangesDoesNotRequirePersistedParent() {
     final CommitData commitData = CommitData.newBuilder().setParentCommitId("parent").build();
 
     assertTrue(ParentCommitInheritancePolicy.hasPersistedParentReference(commitData));

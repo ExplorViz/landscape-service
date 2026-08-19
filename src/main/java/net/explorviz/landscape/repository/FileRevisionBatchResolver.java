@@ -5,8 +5,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.grpc.FileDataBatchWriter;
 import net.explorviz.landscape.grpc.FileDataInsertProperties;
@@ -33,6 +35,7 @@ public class FileRevisionBatchResolver {
 
   @Inject FileRevisionIdCache fileRevisionIdCache;
   @Inject FileDataInsertProperties fileDataInsertProperties;
+  @Inject CommitMetricNameRegistry metricNameRegistry;
 
   public Map<String, Long> lookupFileRevisions(final Session session, final List<FileData> files) {
     final Map<String, Long> result = new LinkedHashMap<>();
@@ -84,6 +87,31 @@ public class FileRevisionBatchResolver {
         FileDataBatchWriter.partition(rows, fileDataInsertProperties.getChunkSize())) {
       session.query(UPDATE_FILE_REVISIONS, Map.of("rows", chunk));
     }
+
+    recordMetricNames(session, files);
+  }
+
+  /**
+   * Publishes the metric names just written so commit accumulation can sum those properties by
+   * name. Grouped by repository because nothing guarantees a batch covers only one.
+   */
+  private void recordMetricNames(final Session session, final List<FileData> files) {
+    final Map<String, Set<String>> namesByRepository = new LinkedHashMap<>();
+    for (final FileData file : files) {
+      if (!file.getMetricsMap().isEmpty()) {
+        namesByRepository
+            .computeIfAbsent(
+                file.getLandscapeToken() + "\u0000" + file.getRepositoryName(),
+                ignored -> new LinkedHashSet<>())
+            .addAll(file.getMetricsMap().keySet());
+      }
+    }
+
+    namesByRepository.forEach(
+        (repositoryKey, metricNames) -> {
+          final String[] parts = repositoryKey.split("\u0000", 2);
+          metricNameRegistry.record(session, parts[0], parts[1], metricNames);
+        });
   }
 
   private void lookupFileRevisionsFromDatabase(

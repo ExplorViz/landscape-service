@@ -1,6 +1,6 @@
 services:
   neo4j:
-    image: neo4j:2026.03.1
+    image: neo4j:2026.07.1
     hostname: ${NEO4J_HOSTNAME}
     ports:
       - ${NEO4J_BROWSER_PORT}:7474
@@ -11,7 +11,6 @@ services:
     environment:
       - NEO4J_AUTH=none
       - NEO4J_dbms_usage__report_enabled=false
-      - NEO4J_db_query_default__language=CYPHER_25
       - NEO4J_PLUGINS=["apoc", "apoc-extended"]
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_initializer_neo4j_0=CALL apoc.cypher.runSchemaFile("init.cypher")

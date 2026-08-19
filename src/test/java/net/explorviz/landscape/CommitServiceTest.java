@@ -3,7 +3,6 @@ package net.explorviz.landscape;
 import static net.explorviz.landscape.util.TestUtils.assertNodeCounts;
 import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -263,7 +262,7 @@ class CommitServiceTest {
 
             MATCH (r)
               -[:CONTAINS]->(:Commit {hash: $commitHashTwo})
-              -[:HAS_PARENT]->(c1)
+              -[:HAS_FIRST_PARENT]->(c1)
             } AS exists
             """,
             Map.of(
@@ -286,6 +285,82 @@ class CommitServiceTest {
             .directories(1)
             .commits(2)
             .build());
+  }
+
+  @Test
+  void testPersistMergeCommitWithFirstAndMiscParents() {
+    final String baseHash = "base";
+    final String featureHash = "feature";
+    final String mergeHash = "merge";
+
+    persistMinimalCommit(baseHash, 1);
+
+    persistMinimalCommit(featureHash, 2, baseHash);
+
+    final CommitData mergeCommitData =
+        CommitData.newBuilder()
+            .setCommitId(mergeHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setParentCommitId(baseHash)
+            .addAllParentCommitIds(List.of(baseHash, featureHash))
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(3).setNanos(100).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(3).setNanos(100).build())
+            .build();
+
+    commitService
+        .persistCommit(mergeCommitData)
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+
+    final Boolean hasFirstParent =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $mergeHash})-[:HAS_FIRST_PARENT]->(:Commit {hash: $baseHash})
+            } AS exists
+            """,
+            Map.of("mergeHash", mergeHash, "baseHash", baseHash));
+
+    final Boolean hasMiscParent =
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Commit {hash: $mergeHash})-[:HAS_MISC_PARENT]->(:Commit {hash: $featureHash})
+            } AS exists
+            """,
+            Map.of("mergeHash", mergeHash, "featureHash", featureHash));
+
+    assertTrue(hasFirstParent);
+    assertTrue(hasMiscParent);
+  }
+
+  private void persistMinimalCommit(final String commitHash, final long epochSeconds) {
+    persistMinimalCommit(commitHash, epochSeconds, null);
+  }
+
+  private void persistMinimalCommit(
+      final String commitHash, final long epochSeconds, final String parentHash) {
+    final CommitData.Builder builder =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(epochSeconds).setNanos(100).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(epochSeconds).setNanos(100).build());
+
+    if (parentHash != null) {
+      builder.setParentCommitId(parentHash).addParentCommitIds(parentHash);
+    }
+
+    commitService
+        .persistCommit(builder.build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
   }
 
   @Test
@@ -1019,83 +1094,8 @@ class CommitServiceTest {
   }
 
   @Test
-  void testMetadataOnlyCommitDoesNotInheritParentFilesOrMetrics() {
-    final String parentHash = "parent-commit";
-    final String childHash = "metadata-child";
-    final String filePath = "src/Example.java";
-
-    commitService
-        .persistCommit(
-            CommitData.newBuilder()
-                .setCommitId(parentHash)
-                .setRepositoryName(repoName)
-                .setBranchName(branchName)
-                .setLandscapeToken(landscapeToken)
-                .setAuthorDate(Timestamp.newBuilder().setSeconds(1).build())
-                .setCommitDate(Timestamp.newBuilder().setSeconds(1).build())
-                .setAnalysisFileCount(1)
-                .addAddedFiles(
-                    FileIdentifier.newBuilder()
-                        .setFileHash("file-hash")
-                        .setFilePath(filePath)
-                        .build())
-                .build())
-        .await()
-        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
-
-    commitService
-        .persistCommit(
-            CommitData.newBuilder()
-                .setCommitId(childHash)
-                .setParentCommitId(parentHash)
-                .setRepositoryName(repoName)
-                .setBranchName(branchName)
-                .setLandscapeToken(landscapeToken)
-                .setAuthorDate(Timestamp.newBuilder().setSeconds(2).build())
-                .setCommitDate(Timestamp.newBuilder().setSeconds(2).build())
-                .setAnalysisFileCount(0)
-                .setMetadataOnly(true)
-                .build())
-        .await()
-        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
-
-    final Long childFileCount =
-        session.queryForObject(
-            Long.class,
-            """
-            MATCH (:Commit {hash: $childHash})
-            OPTIONAL MATCH (:Commit {hash: $childHash})-[:CONTAINS]->(f:FileRevision)
-            RETURN count(f) AS fileCount
-            """,
-            Map.of("childHash", childHash));
-
-    final Boolean childHasAccumulatedMetrics =
-        session.queryForObject(
-            Boolean.class,
-            """
-            MATCH (c:Commit {hash: $childHash})
-            RETURN coalesce(c.hasAccumulatedMetrics, false) AS hasAccumulatedMetrics
-            """,
-            Map.of("childHash", childHash));
-
-    final Long childMetricPropertyCount =
-        session.queryForObject(
-            Long.class,
-            """
-            MATCH (c:Commit {hash: $childHash})
-            RETURN size([k IN keys(c) WHERE k STARTS WITH 'metrics.']) AS metricPropertyCount
-            """,
-            Map.of("childHash", childHash));
-
-    assertEquals(0L, childFileCount);
-    assertFalse(childHasAccumulatedMetrics);
-    assertEquals(0L, childMetricPropertyCount);
-  }
-
-  @Test
   void testIncrementalCommitWithExplicitUnchangedFilesSkipsParentInheritance() {
     final String parentHash = "parent-commit";
-    final String metadataHash = "metadata-child";
     final String childHash = "incremental-child";
     final String unchangedPath = "src/Unchanged.java";
     final String modifiedPath = "src/Modified.java";
@@ -1122,24 +1122,8 @@ class CommitServiceTest {
     commitService
         .persistCommit(
             CommitData.newBuilder()
-                .setCommitId(metadataHash)
-                .setParentCommitId(parentHash)
-                .setRepositoryName(repoName)
-                .setBranchName(branchName)
-                .setLandscapeToken(landscapeToken)
-                .setAuthorDate(Timestamp.newBuilder().setSeconds(2).build())
-                .setCommitDate(Timestamp.newBuilder().setSeconds(2).build())
-                .setAnalysisFileCount(0)
-                .setMetadataOnly(true)
-                .build())
-        .await()
-        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
-
-    commitService
-        .persistCommit(
-            CommitData.newBuilder()
                 .setCommitId(childHash)
-                .setParentCommitId(metadataHash)
+                .setParentCommitId(parentHash)
                 .setRepositoryName(repoName)
                 .setBranchName(branchName)
                 .setLandscapeToken(landscapeToken)

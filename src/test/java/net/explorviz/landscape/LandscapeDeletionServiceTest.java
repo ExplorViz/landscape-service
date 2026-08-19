@@ -10,7 +10,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.util.List;
 import java.util.Map;
-import net.explorviz.landscape.messaging.SpanConsumer;
+import net.explorviz.landscape.messaging.TelemetryConsumer;
 import net.explorviz.landscape.messaging.service.LandscapeDeletionService;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
@@ -23,7 +23,7 @@ import net.explorviz.landscape.ogm.Landscape;
 import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.proto.CodeDescriptor;
 import net.explorviz.landscape.proto.ContributorData;
-import net.explorviz.landscape.proto.ParsedSpan;
+import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.repository.ContributorRepository;
 import net.explorviz.landscape.util.ExpectedCounts;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +39,7 @@ class LandscapeDeletionServiceTest {
 
   @Inject LandscapeDeletionService landscapeDeletionService;
 
-  @Inject SpanConsumer spanConsumer;
+  @Inject TelemetryConsumer telemetryConsumer;
 
   @Inject ContributorRepository contributorRepository;
 
@@ -55,7 +55,7 @@ class LandscapeDeletionServiceTest {
 
   @Test
   void deleteLandscapeDataRemovesRuntimeData() {
-    persistRuntimeSpan(TOKEN_TO_DELETE);
+    persistRuntimeCodeEntity(TOKEN_TO_DELETE);
 
     assertTrue(landscapeExists(TOKEN_TO_DELETE));
 
@@ -91,7 +91,7 @@ class LandscapeDeletionServiceTest {
 
   @Test
   void deleteLandscapeDataDoesNotAffectOtherLandscapes() {
-    persistRuntimeSpan(TOKEN_TO_DELETE);
+    persistRuntimeCodeEntity(TOKEN_TO_DELETE);
     persistStaticLandscape(TOKEN_TO_KEEP);
 
     landscapeDeletionService.deleteLandscapeData(TOKEN_TO_DELETE);
@@ -150,26 +150,22 @@ class LandscapeDeletionServiceTest {
     assertTrue(contributorExists("shared@test.com"));
   }
 
-  private void persistRuntimeSpan(final String landscapeToken) {
+  private void persistRuntimeCodeEntity(final String landscapeToken) {
     final List<String> dirNames = List.of("net", "explorviz", "myApp");
     final List<String> filePath =
         ImmutableList.<String>builder().addAll(dirNames).add("MyClass.java").build();
 
-    final ParsedSpan span =
-        ParsedSpan.newBuilder()
-            .setSpanId("span1")
-            .setTraceId("trace1")
-            .setApplicationName("myApp")
+    final TelemetryEntity entity =
+        TelemetryEntity.newBuilder()
             .setLandscapeTokenId(landscapeToken)
             .setCodeDescriptor(
                 CodeDescriptor.newBuilder()
+                    .setApplicationName("myApp")
                     .setFilePath(String.join("/", filePath))
                     .setFunctionName("myMethod"))
-            .setStartTime(1)
-            .setEndTime(5)
             .build();
 
-    spanConsumer.consume(span.toByteArray());
+    telemetryConsumer.consume(entity.toByteArray());
   }
 
   private void persistStaticLandscape(final String landscapeToken) {

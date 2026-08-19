@@ -4,7 +4,6 @@ import java.util.Set;
 
 /** Timing and state produced while linking file revisions to a commit. */
 public record CommitFileLinkTimings(
-    boolean metadataOnlyCommit,
     boolean deferFileStubs,
     Set<String> deletedPaths,
     long linkAddedFilesMs,
@@ -13,12 +12,8 @@ public record CommitFileLinkTimings(
     long copyUnchangedFromParentMs,
     long unlinkStaleRevisionsMs) {
 
-  public static CommitFileLinkTimings metadataOnly(final Set<String> deletedPaths) {
-    return new CommitFileLinkTimings(true, false, deletedPaths, 0, 0, 0, 0, 0);
-  }
-
   public static CommitFileLinkTimings deferred(final Set<String> deletedPaths) {
-    return new CommitFileLinkTimings(false, true, deletedPaths, 0, 0, 0, 0, 0);
+    return new CommitFileLinkTimings(true, deletedPaths, 0, 0, 0, 0, 0);
   }
 
   public static CommitFileLinkTimings analyzed(
@@ -30,7 +25,6 @@ public record CommitFileLinkTimings(
       final long unlinkStaleRevisionsMs) {
     return new CommitFileLinkTimings(
         false,
-        false,
         deletedPaths,
         linkAddedFilesMs,
         linkModifiedFilesMs,
@@ -40,10 +34,10 @@ public record CommitFileLinkTimings(
   }
 
   public boolean shouldUnlinkDeletedFiles() {
-    return !metadataOnlyCommit && !deferFileStubs;
+    return !deferFileStubs;
   }
 
   public boolean shouldUpdatePendingMetrics() {
-    return !deferFileStubs && !metadataOnlyCommit;
+    return !deferFileStubs;
   }
 }

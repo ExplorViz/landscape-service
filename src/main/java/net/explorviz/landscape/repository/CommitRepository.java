@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -170,13 +171,68 @@ public class CommitRepository {
             """
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
-            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            OPTIONAL MATCH (c)-[fp:HAS_FIRST_PARENT]->(firstParent:Commit)
+            OPTIONAL MATCH (firstParent)-[fpr:BELONGS_TO]->(fpb:Branch)
+            OPTIONAL MATCH (c)-[mp:HAS_MISC_PARENT]->(miscParent:Commit)
+            OPTIONAL MATCH (miscParent)-[mpr:BELONGS_TO]->(mpb:Branch)
             OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
+            OPTIONAL MATCH (author:Contributor)-[authRel:AUTHORED]->(c)
+            RETURN DISTINCT c, r, b, fp, firstParent, fpr, fpb, mp, miscParent, mpr, mpb, tagRel, tag, authRel, author
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repositoryName)));
+  }
+
+  public record CommitAuthorProjection(
+      String commitHash,
+      Long contributorId,
+      String gitUsername,
+      String githubLogin,
+      String email) {}
+
+  public Map<String, CommitAuthorProjection> findAuthorsByCommitHashes(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final Collection<String> commitHashes) {
+    if (commitHashes == null || commitHashes.isEmpty()) {
+      return Map.of();
+    }
+
+    final Map<String, CommitAuthorProjection> authorsByHash = new HashMap<>();
+    session
+        .query(
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+                  -[:CONTAINS]->(c:Commit)<-[:AUTHORED]-(author:Contributor)
+            WHERE c.hash IN $hashes
+            RETURN c.hash AS hash,
+                   id(author) AS contributorId,
+                   author.gitUsername AS gitUsername,
+                   author.githubLogin AS githubLogin,
+                   author.email AS email
+            """,
+            Map.of("tokenId", landscapeToken, "repoName", repositoryName, "hashes", commitHashes))
+        .queryResults()
+        .forEach(
+            row -> {
+              final String hash = (String) row.get("hash");
+              if (hash == null) {
+                return;
+              }
+
+              final Object contributorIdValue = row.get("contributorId");
+              authorsByHash.put(
+                  hash,
+                  new CommitAuthorProjection(
+                      hash,
+                      contributorIdValue == null ? null : ((Number) contributorIdValue).longValue(),
+                      (String) row.get("gitUsername"),
+                      (String) row.get("githubLogin"),
+                      (String) row.get("email")));
+            });
+
+    return authorsByHash;
   }
 
   /**
@@ -193,10 +249,13 @@ public class CommitRepository {
             MATCH (repo:Repository)<-[:CONTAINS]-(l)
             WHERE (repo)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(:Directory)<-[:HAS_ROOT]-(a)
             MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[h:HAS_PARENT]->(parent:Commit)
-            OPTIONAL MATCH (parent)-[pr:BELONGS_TO]->(pb:Branch)
+            OPTIONAL MATCH (c)-[fp:HAS_FIRST_PARENT]->(firstParent:Commit)
+            OPTIONAL MATCH (firstParent)-[fpr:BELONGS_TO]->(fpb:Branch)
+            OPTIONAL MATCH (c)-[mp:HAS_MISC_PARENT]->(miscParent:Commit)
+            OPTIONAL MATCH (miscParent)-[mpr:BELONGS_TO]->(mpb:Branch)
             OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
-            RETURN DISTINCT c, r, b, h, parent, pr, pb, tagRel, tag
+            OPTIONAL MATCH (author:Contributor)-[authRel:AUTHORED]->(c)
+            RETURN DISTINCT c, r, b, fp, firstParent, fpr, fpb, mp, miscParent, mpr, mpb, tagRel, tag, authRel, author
             ORDER BY c.authorDate ASC;
             """,
             Map.of("tokenId", landscapeToken, "appName", applicationName)));
@@ -219,8 +278,8 @@ public class CommitRepository {
 
   /**
    * Finds a commit hash scoped to a repository, including commits only reachable from the
-   * repository via {@code HAS_PARENT} (for example git parents created as stubs when linking a
-   * child commit).
+   * repository via {@code HAS_FIRST_PARENT} or {@code HAS_MISC_PARENT} (for example git parents
+   * created as stubs when linking a child commit).
    */
   public Optional<Long> findCommitInternalIdInRepository(
       final Session session, final String commitHash, final String tokenId, final String repoName) {
@@ -231,7 +290,7 @@ public class CommitRepository {
             MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository {name: $repoName})
             MATCH (c:Commit {hash: $commitHash})
             WHERE EXISTS { MATCH (repo)-[:CONTAINS]->(c) }
-              OR EXISTS { MATCH (repo)-[:CONTAINS]->(:Commit)-[:HAS_PARENT*1..10]->(c) }
+              OR EXISTS { MATCH (repo)-[:CONTAINS]->(:Commit)-[:HAS_FIRST_PARENT|HAS_MISC_PARENT*1..10]->(c) }
             RETURN id(c) LIMIT 1
             """,
             Map.of("tokenId", tokenId, "repoName", repoName, "commitHash", commitHash)));
@@ -361,7 +420,7 @@ public class CommitRepository {
             Long.class,
             """
             MATCH (c:Commit) WHERE id(c) = $commitId
-            MATCH (c)-[:HAS_PARENT]->(parent:Commit)
+            MATCH (c)-[:HAS_FIRST_PARENT]->(parent:Commit)
             RETURN id(parent) AS parentId
             LIMIT 1
             """,

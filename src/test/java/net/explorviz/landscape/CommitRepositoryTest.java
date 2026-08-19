@@ -54,7 +54,7 @@ class CommitRepositoryTest {
     commit1.setHasAccumulatedMetrics(true);
 
     Commit commit2 = new Commit("commit2");
-    commit2.addParentCommit(commit1);
+    commit2.setFirstParentCommit(commit1);
     commit2.addFileRevision(file1);
     commit2.addFileRevision(file2);
     commit2.setCommitDate(Instant.ofEpochMilli(2000));
@@ -62,7 +62,7 @@ class CommitRepositoryTest {
     commit2.setHasAccumulatedMetrics(true);
 
     Commit commit3 = new Commit("commit3");
-    commit3.addParentCommit(commit2);
+    commit3.setFirstParentCommit(commit2);
     commit3.addFileRevision(file1);
     commit3.addFileRevision(file2);
     commit3.addFileRevision(file3);

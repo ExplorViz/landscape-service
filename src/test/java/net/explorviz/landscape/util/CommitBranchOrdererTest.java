@@ -16,10 +16,10 @@ class CommitBranchOrdererTest {
 
     final Commit commit1 = commit("c1", branch, Instant.ofEpochSecond(1));
     final Commit commit2 = commit("c2", branch, Instant.ofEpochSecond(2));
-    commit2.addParentCommit(commit1);
+    commit2.setFirstParentCommit(commit1);
 
     final Commit commit3 = commit("c3", branch, Instant.ofEpochSecond(3));
-    commit3.addParentCommit(commit2);
+    commit3.setFirstParentCommit(commit2);
 
     final List<Commit> ordered =
         CommitBranchOrderer.orderAlongBranch(List.of(commit3, commit1, commit2));
@@ -33,12 +33,12 @@ class CommitBranchOrdererTest {
 
     final Commit base = commit("base", branch, Instant.ofEpochSecond(1));
     final Commit feature = commit("feature", branch, Instant.ofEpochSecond(2));
-    feature.addParentCommit(base);
+    feature.setFirstParentCommit(base);
     final Commit mainTip = commit("main-tip", branch, Instant.ofEpochSecond(3));
-    mainTip.addParentCommit(base);
+    mainTip.setFirstParentCommit(base);
     final Commit merge = commit("merge", branch, Instant.ofEpochSecond(4));
-    merge.addParentCommit(mainTip);
-    merge.addParentCommit(feature);
+    merge.setFirstParentCommit(mainTip);
+    merge.addMiscParentCommit(feature);
 
     final List<Commit> ordered =
         CommitBranchOrderer.orderAlongBranch(List.of(merge, feature, mainTip, base));
@@ -55,7 +55,7 @@ class CommitBranchOrdererTest {
 
     final Commit base = commit("base", main, Instant.ofEpochSecond(1));
     final Commit featureTip = commit("feature-tip", feature, Instant.ofEpochSecond(2));
-    featureTip.addParentCommit(base);
+    featureTip.setFirstParentCommit(base);
 
     final List<Commit> ordered = CommitBranchOrderer.orderAlongBranch(List.of(featureTip));
 

@@ -26,19 +26,10 @@ public class CommitFileLinker {
       final CommitData commitData,
       final Commit commit,
       final CommitFilePersistenceContext fileContext) {
-    final boolean metadataOnlyCommit = CommitFileStubPolicy.isMetadataOnlyCommit(commitData);
     final boolean deferFileStubs = CommitFileStubPolicy.defersFileStubCreation(commitData);
     final Set<String> addedPaths = toFilePaths(commitData.getAddedFilesList());
     final Set<String> modifiedPaths = toFilePaths(commitData.getModifiedFilesList());
     final Set<String> deletedPaths = toFilePaths(commitData.getDeletedFilesList());
-
-    if (metadataOnlyCommit) {
-      Log.debugf(
-          "Commit %s for repository '%s': metadata-only commit; skipping file linking and metric"
-              + " accumulation",
-          commitData.getCommitId(), commitData.getRepositoryName());
-      return CommitFileLinkTimings.metadataOnly(deletedPaths);
-    }
 
     if (deferFileStubs) {
       registerDeferredFileStubs(commitData, commit);
@@ -112,21 +103,20 @@ public class CommitFileLinker {
     long unlinkStaleRevisionsMs = 0;
     if (ParentCommitInheritancePolicy.hasPersistedParentReference(commitData)) {
       stepStart = System.nanoTime();
-      final int copiedFromParent =
-          fileRevisionRepository.copyUnchangedFilesFromParentCommit(
-              session,
-              new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
-                  commitData.getLandscapeToken(),
-                  commitData.getRepositoryName(),
-                  commitData.getParentCommitId(),
-                  commit.getId(),
-                  addedPaths,
-                  modifiedPaths,
-                  deletedPaths,
-                  ParentCommitInheritancePolicy.requiresPersistedParent(commitData)));
+      fileRevisionRepository.copyUnchangedFilesFromParentCommit(
+          session,
+          new FileRevisionRepository.CopyUnchangedFilesFromParentRequest(
+              commitData.getLandscapeToken(),
+              commitData.getRepositoryName(),
+              commitData.getParentCommitId(),
+              commit.getId(),
+              addedPaths,
+              modifiedPaths,
+              deletedPaths,
+              ParentCommitInheritancePolicy.requiresPersistedParent(commitData)));
       copyUnchangedFromParentMs = elapsedMillis(stepStart);
 
-      if (copiedFromParent > 0 && (!addedPaths.isEmpty() || !modifiedPaths.isEmpty())) {
+      if (!addedPaths.isEmpty() || !modifiedPaths.isEmpty()) {
         stepStart = System.nanoTime();
         commitStaleFileRevisionUnlinker.unlinkStaleRevisionsAtChangedPaths(
             session, commit.getId(), commitData.getRepositoryName(), modifiedPaths, addedPaths);

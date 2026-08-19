@@ -23,12 +23,12 @@ public class CommitStaleFileRevisionUnlinker {
   /**
    * Keeps only the {@code ADDED} / {@code MODIFIED} revision at each explicitly changed path.
    *
-   * <p>Finds candidate stale file revisions via the {@code (repoName, filePath, hash)} index —
-   * scoped to just the changed paths — rather than by fetching every file revision linked to the
-   * child commit, which for large commits (tens of thousands of files) made this step scale with
-   * the commit's total size instead of with the (usually much smaller) number of changed paths.
-   * Only the resulting small candidate set is then checked against the child's actual {@code
-   * CONTAINS} links, batched by id.
+   * <p>Finds candidate stale file revisions via the {@code (repoName, filePath)} index — scoped to
+   * just the changed paths — rather than by fetching every file revision linked to the child
+   * commit, which for large commits (tens of thousands of files) made this step scale with the
+   * commit's total size instead of with the (usually much smaller) number of changed paths. The
+   * candidate set is then intersected with the child's actual {@code CONTAINS} targets, and only
+   * the surviving ids — normally none — are deleted.
    *
    * @return number of stale {@code CONTAINS} relationships removed
    */
@@ -88,10 +88,12 @@ public class CommitStaleFileRevisionUnlinker {
           session.query(
               """
               MATCH (child) WHERE id(child) = $childCommitId
-              UNWIND $paths AS filePath
               MATCH (child)-[:%s]->(canonical:FileRevision)
-              WHERE canonical.filePath = filePath
-              RETURN filePath AS filePath, id(canonical) AS fileRevId, canonical.name AS name
+              WHERE canonical.filePath IN $paths
+              RETURN
+                canonical.filePath AS filePath,
+                id(canonical) AS fileRevId,
+                canonical.name AS name
               """
                   .formatted(changeRelationshipType),
               Map.of("childCommitId", childCommitInternalId, "paths", batch));
@@ -128,7 +130,11 @@ public class CommitStaleFileRevisionUnlinker {
     return candidates;
   }
 
-  /** Uses the {@code (repoName, filePath, hash)} index to seek candidates, not a label scan. */
+  /**
+   * Uses the {@code (repoName, filePath)} index to seek candidates, not a label scan. A composite
+   * index is only used when every indexed property is constrained, so the wider {@code (repoName,
+   * filePath, hash)} index cannot serve this hash-less lookup.
+   */
   private Set<Long> findFileRevIdsAtPaths(
       final Session session, final String repoName, final Set<String> paths) {
     if (paths.isEmpty()) {
@@ -197,7 +203,8 @@ public class CommitStaleFileRevisionUnlinker {
       final Session session,
       final long childCommitInternalId,
       final Set<Long> candidateFileRevIds) {
-    final List<Long> idList = new ArrayList<>(candidateFileRevIds);
+    final List<Long> idList =
+        new ArrayList<>(retainLinkedToChild(session, childCommitInternalId, candidateFileRevIds));
     int totalUnlinked = 0;
     for (int offset = 0;
         offset < idList.size();
@@ -211,9 +218,8 @@ public class CommitStaleFileRevisionUnlinker {
               Integer.class,
               """
               MATCH (child) WHERE id(child) = $childCommitId
-              UNWIND $fileRevIds AS fId
-              MATCH (f:FileRevision) WHERE id(f) = fId
-              MATCH (child)-[rel:CONTAINS]->(f)
+              MATCH (child)-[rel:CONTAINS]->(f:FileRevision)
+              WHERE id(f) IN $fileRevIds
               DELETE rel
               RETURN count(rel) AS unlinkedCount
               """,
@@ -221,5 +227,38 @@ public class CommitStaleFileRevisionUnlinker {
       totalUnlinked += unlinked != null ? unlinked : 0;
     }
     return totalUnlinked;
+  }
+
+  /**
+   * Narrows the candidates to those the child commit really links, via a single traversal anchored
+   * at the child. The candidate set spans every revision ever recorded at the changed paths, so in
+   * a long-lived repository it is dominated by revisions belonging to other commits. Testing each
+   * candidate against the child instead (a bound-both-ends {@code (child)-[:CONTAINS]->(f)} match)
+   * makes Neo4j walk the relationship chain of whichever endpoint has the lower degree, and a file
+   * revision reused across thousands of commits still carries thousands of {@code CONTAINS}
+   * relationships — so that check scales with the repository's history rather than with this
+   * commit.
+   */
+  private Set<Long> retainLinkedToChild(
+      final Session session,
+      final long childCommitInternalId,
+      final Set<Long> candidateFileRevIds) {
+    final Result result =
+        session.query(
+            """
+            MATCH (child) WHERE id(child) = $childCommitId
+            MATCH (child)-[:CONTAINS]->(f)
+            RETURN id(f) AS fileRevId
+            """,
+            Map.of("childCommitId", childCommitInternalId));
+
+    final Set<Long> linked = new HashSet<>();
+    for (final Map<String, Object> row : result.queryResults()) {
+      final Long fileRevId = (Long) row.get("fileRevId");
+      if (candidateFileRevIds.contains(fileRevId)) {
+        linked.add(fileRevId);
+      }
+    }
+    return linked;
   }
 }

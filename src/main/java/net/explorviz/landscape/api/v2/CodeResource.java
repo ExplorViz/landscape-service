@@ -2,7 +2,6 @@ package net.explorviz.landscape.api.v2;
 
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
@@ -13,7 +12,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.explorviz.landscape.api.v2.model.BranchDto;
@@ -42,7 +40,6 @@ import net.explorviz.landscape.repository.CommitDiffRepository.FileComparison;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.FunctionRepository;
-import net.explorviz.landscape.repository.TraceRepository;
 import net.explorviz.landscape.util.CommitBranchOrderer;
 import org.jboss.resteasy.reactive.RestPath;
 import org.neo4j.ogm.session.Session;
@@ -56,8 +53,6 @@ public class CodeResource {
    * Dummy branch point expected by frontend if no branch point exists (e.g. for the main branch).
    */
   private static final BranchPointDto NO_BRANCH_POINT = new BranchPointDto("NONE", "");
-
-  @Inject TraceRepository traceRepository;
 
   @Inject ApplicationRepository applicationRepository;
 
@@ -142,13 +137,14 @@ public class CodeResource {
           parentCommits.stream().anyMatch(pc -> branchName.equals(pc.getBranch().getName()));
 
       if (!hasParentInSameBranch) {
-        final Optional<Commit> parentCommitOptional = parentCommits.stream().findAny();
-        parentCommitOptional.ifPresent(
-            parentCommit ->
-                branchToBranchPointMap.putIfAbsent(
-                    branchName,
-                    new BranchPointDto(
-                        parentCommit.getBranch().getName(), parentCommit.getHash())));
+        commit
+            .getFirstParentCommit()
+            .ifPresent(
+                parentCommit ->
+                    branchToBranchPointMap.putIfAbsent(
+                        branchName,
+                        new BranchPointDto(
+                            parentCommit.getBranch().getName(), parentCommit.getHash())));
       }
     }
 
@@ -303,12 +299,5 @@ public class CodeResource {
         addedPackages,
         deletedPackages,
         entityMetricsComparisons);
-  }
-
-  @DELETE
-  @Path("landscapes/{landscapeToken}/trace-data")
-  public void deleteTraceData(@RestPath final String landscapeToken) {
-    final Session session = sessionFactory.openSession();
-    traceRepository.deleteTraceData(session, landscapeToken);
   }
 }

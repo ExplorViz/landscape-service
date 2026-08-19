@@ -5,14 +5,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import net.explorviz.landscape.ogm.Contributor;
 import net.explorviz.landscape.ogm.ResourceAnnotation;
 import net.explorviz.landscape.ogm.ResourceVersion;
 import net.explorviz.landscape.ogm.TrackableResource;
 import org.neo4j.ogm.session.Session;
 
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 @ApplicationScoped
 public class TrackableResourceRepository {
 
@@ -38,37 +35,6 @@ public class TrackableResourceRepository {
       return Optional.of(session.load(type, resource.getId(), 2));
     }
     return Optional.empty();
-  }
-
-  /** Finds all trackableResources of a given type authored by a specific Contributor. */
-  public <T extends TrackableResource> Set<T> findAllByContributor(
-      final Session session,
-      final Class<T> type,
-      final String repoName,
-      final String tokenId,
-      final Contributor contributor) {
-
-    final String cypher =
-        """
-        MATCH (:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(t:%s)-[:HAS_VERSION]->(:ResourceVersion)-[:CREATED_BY]->(c:Contributor {gitUsername: $contributorName})
-        RETURN DISTINCT t;
-        """
-            .formatted(type.getSimpleName());
-
-    final Map<String, Object> params =
-        Map.of(
-            "tokenId", tokenId,
-            "repoName", repoName,
-            "contributorName", contributor.getGitUsername());
-
-    final Iterable<T> results = session.query(type, cypher, params);
-
-    final Set<T> resultSet = new HashSet<>();
-    results.forEach(resultSet::add);
-
-    return resultSet;
   }
 
   public Optional<ResourceAnnotation> findAnnotationByExternalId(

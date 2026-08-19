@@ -4,11 +4,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import net.explorviz.landscape.api.v3.model.landscape.BuildingDto.BuildingConvertible;
-import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel.FlatConvertible;
 
 /**
  * Inner grouping container / divider which groups buildings and subdistricts within a city to
@@ -38,12 +35,5 @@ public record DistrictDto(
     Objects.requireNonNull(parentCityId);
     Objects.requireNonNull(districtIds);
     Objects.requireNonNull(buildingIds);
-  }
-
-  /** Must be implemented by any object which can be represented as a district during flattening. */
-  public interface DistrictConvertible extends FlatConvertible {
-    Collection<? extends DistrictConvertible> getDistricts();
-
-    Collection<? extends BuildingConvertible> getBuildings();
   }
 }

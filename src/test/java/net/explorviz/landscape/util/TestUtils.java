@@ -16,8 +16,6 @@ public class TestUtils {
       List.of(
           "CREATE CONSTRAINT landscape_token_id IF NOT EXISTS FOR (l:Landscape) REQUIRE l.tokenId"
               + " IS UNIQUE",
-          "CREATE INDEX trace_trace_id IF NOT EXISTS FOR (t:Trace) ON (t.traceId)",
-          "CREATE INDEX span_span_id IF NOT EXISTS FOR (s:Span) ON (s.spanId)",
           "CREATE INDEX directory_name IF NOT EXISTS FOR (d:Directory) ON (d.name)",
           "CREATE INDEX file_revision_hash_name IF NOT EXISTS FOR (f:FileRevision) ON (f.hash,"
               + " f.name)",
@@ -55,21 +53,32 @@ public class TestUtils {
   }
 
   public static void clearDatabase(final Session session) {
-    session.query(
-        """
-        CALL apoc.periodic.iterate(
-          'MATCH (n) RETURN id(n) AS id',
-          'MATCH (n) WHERE id(n) = id DETACH DELETE n',
-          {batchSize: 10000, parallel: false}
-        ) YIELD batches, total
-        RETURN batches, total
-        """,
-        Map.of());
+    final int batchSize = 10_000;
+    while (true) {
+      final Result result =
+          session.query(
+              """
+              MATCH (n)
+              WITH n LIMIT $batchSize
+              DETACH DELETE n
+              RETURN count(*) AS deleted
+              """,
+              Map.of("batchSize", batchSize));
+      final long deleted =
+          ((Number) result.queryResults().iterator().next().get("deleted")).longValue();
+      if (deleted == 0) {
+        break;
+      }
+    }
     session.clear();
   }
 
   public static void ensureSchema(final Session session) {
     SCHEMA_STATEMENTS.forEach(statement -> session.query(statement, Map.of()));
+  }
+
+  public static void createLandscape(final Session session, final String landscapeTokenId) {
+    session.query("MERGE (l:Landscape {tokenId: $tokenId})", Map.of("tokenId", landscapeTokenId));
   }
 
   public static Map<String, Object> getNodeCountMap(Session session) {
@@ -88,9 +97,7 @@ public class TestUtils {
               COUNT {(:Clazz)} AS classes,
               COUNT {(:Field)} AS fields,
               COUNT {(:Function)} AS functions,
-              COUNT {(:Parameter)} AS parameters,
-              COUNT {(:Trace)} AS traces,
-              COUNT {(:Span)} AS spans;
+              COUNT {(:Parameter)} AS parameters;
             """,
             Map.of());
 
