@@ -5,8 +5,10 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
@@ -30,6 +32,8 @@ import org.neo4j.ogm.session.Session;
 public class StructureRepository {
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
+  private static final int SCOPED_ROUTE_COMMIT_CAP = 1500;
+  private static final long SCOPED_ROUTE_PAIR_CAP = 3000000L;
 
   @Inject StructureMapper mapper;
 
@@ -255,19 +259,35 @@ public class StructureRepository {
   }
 
   private List<CommitMeta> fetchOrderedCommits(
-      final Session session, final String landscapeToken, final String repositoryName) {
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom,
+      final long rangeTo) {
     final String query =
         """
         MATCH (:Landscape {tokenId: $tokenId})
           -[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(c:Commit)
         WHERE coalesce(c.authorDate, 0) <> 0
+          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
+          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
         RETURN c.hash AS hash, c.authorDate AS authorDate
         ORDER BY c.authorDate ASC, c.hash ASC
         """;
 
     final Result result =
-        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+        session.query(
+            query,
+            Map.of(
+                "tokenId",
+                landscapeToken,
+                "repoName",
+                repositoryName,
+                "rangeFrom",
+                rangeFrom,
+                "rangeTo",
+                rangeTo));
 
     final List<CommitMeta> commits = new ArrayList<>();
     result.forEach(
@@ -289,7 +309,8 @@ public class StructureRepository {
       final String groupBy,
       final long bucketSize) {
 
-    final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
+    final List<CommitMeta> commits =
+        fetchOrderedCommits(session, landscapeToken, repositoryName, 0, 0);
 
     final int commitCount = commits.size();
     if (commitCount == 0) {
@@ -344,9 +365,12 @@ public class StructureRepository {
       final int granularity,
       final String groupBy,
       final long bucketSize,
-      final long agingWindow) {
+      final long agingWindow,
+      final long rangeFrom,
+      final long rangeTo) {
 
-    final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
+    final List<CommitMeta> commits =
+        fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
     final int commitCount = commits.size();
     if (commitCount == 0) {
       return new AnimationWindowDeltaDto(0, 0, List.of());
@@ -370,8 +394,17 @@ public class StructureRepository {
     final long lastTs = commits.get(commits.size() - 1).authorDate();
 
     final String cacheKey =
-        landscapeToken + '|' + repositoryName + '|' + groupBy + '|' + granularity + '|' + bucket
-        + '|' + agingWindow;
+        landscapeToken
+            + '|'
+            + repositoryName
+            + '|'
+            + groupBy
+            + '|'
+            + granularity
+            + '|'
+            + bucket
+            + '|'
+            + agingWindow;
     final WalkState cached = walkStateCache.get(cacheKey);
 
     final int walkFrom;
@@ -379,7 +412,7 @@ public class StructureRepository {
     final Map<String, Long> lastChangeDate;
     Map<String, String> prevPresent;
     int prevTargetId;
-    final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode,agingWindow));
+    final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode, agingWindow));
     final int minStart = Math.max(0, from - lookback);
 
     if (cached != null && cached.frameIndex() < from && cached.frameIndex() + 1 >= minStart) {
@@ -393,7 +426,7 @@ public class StructureRepository {
       lastChangeOrdinal = new HashMap<>();
       lastChangeDate = new HashMap<>();
       prevPresent = Map.of();
-      prevTargetId = minStart > 0 ? targets.get(minStart -1) : -1;
+      prevTargetId = minStart > 0 ? targets.get(minStart - 1) : -1;
     }
 
     final List<String> neededHashes = new ArrayList<>();
@@ -571,7 +604,9 @@ public class StructureRepository {
       final Session session,
       final String landscapeToken,
       final String repositoryName,
-      final List<CommitMeta> commits) {
+      final List<CommitMeta> commits,
+      final long rangeFrom,
+      final long rangeTo) {
     final Map<Long, Integer> ordinalByDate = new HashMap<>();
     for (int i = 0; i < commits.size(); i++) {
       ordinalByDate.putIfAbsent(commits.get(i).authorDate(), i);
@@ -583,11 +618,23 @@ public class StructureRepository {
           -[:CONTAINS]->(:Repository {name: $repoName})
           -[:CONTAINS]->(c:Commit)
         WHERE coalesce(c.authorDate, 0) <> 0
+            AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
+            AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
         MATCH (c)-[:CONTAINS]->(f:FileRevision)
         RETURN f.filePath AS fqn, min(c.authorDate) AS firstAppearance
         """;
     final Result result =
-        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+        session.query(
+            query,
+            Map.of(
+                "tokenId",
+                landscapeToken,
+                "repoName",
+                repositoryName,
+                "rangeFrom",
+                rangeFrom,
+                "rangeTo",
+                rangeTo));
 
     final Map<String, Integer> fqnToFirstOrdinal = new HashMap<>();
     result.forEach(
@@ -606,8 +653,84 @@ public class StructureRepository {
   }
 
   public AnimationSkeletonDto fetchAnimationSkeleton(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom,
+      final long rangeTo) {
+
+    final List<CommitMeta> commits =
+        fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
+    final boolean scoped =
+        useScopedRoute(session, landscapeToken, repositoryName, rangeFrom, rangeTo, commits);
+    final FlatLandscapeDto landscape =
+        scoped
+            ? buildScopedSkeleton(session, landscapeToken, repositoryName, rangeFrom, rangeTo)
+            : buildFullSkeleton(session, landscapeToken, repositoryName);
+    final List<String> orderedCommitHashes = commits.stream().map(CommitMeta::hash).toList();
+    final List<Long> orderedCommitTimeStamps =
+        commits.stream().map(CommitMeta::authorDate).toList();
+    final Map<String, Integer> fqnToFirstOrdinal =
+        computeFqnFirstOrdinals(
+            session, landscapeToken, repositoryName, commits, rangeFrom, rangeTo);
+
+    return new AnimationSkeletonDto(
+        landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
+  }
+
+  private boolean useScopedRoute(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom,
+      final long rangeTo,
+      final List<CommitMeta> commits) {
+    if (rangeFrom == 0 && rangeTo == 0) {
+      return false;
+    }
+    if (commits.size() > SCOPED_ROUTE_COMMIT_CAP) {
+      return false;
+    }
+    return countCommitFilePairs(session, landscapeToken, repositoryName, rangeFrom, rangeTo)
+        <= SCOPED_ROUTE_PAIR_CAP;
+  }
+
+  private long countCommitFilePairs(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom,
+      final long rangeTo) {
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c:Commit)
+        WHERE coalesce(c.authorDate, 0) <> 0
+          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
+          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
+        RETURN sum(COUNT { (c)-[:CONTAINS]->() }) AS pairs
+        """;
+
+    final Result result =
+        session.query(
+            query,
+            Map.of(
+                "tokenId", landscapeToken,
+                "repoName", repositoryName,
+                "rangeFrom", rangeFrom,
+                "rangeTo", rangeTo));
+
+    for (final Map<String, Object> row : result) {
+      if (row.get("pairs") instanceof Number pairs) {
+        return pairs.longValue();
+      }
+    }
+    return Long.MAX_VALUE;
+  }
+
+  private FlatLandscapeDto buildFullSkeleton(
       final Session session, final String landscapeToken, final String repositoryName) {
-    final long t0 = System.currentTimeMillis();
     final String query =
         """
         MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
@@ -629,33 +752,177 @@ public class StructureRepository {
           id(a) AS cityId,
           [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds
         """;
-
     final Result result =
         session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
-    final long tQuery = System.currentTimeMillis();
-    final FlatLandscapeDto landscape =
-        deduplicateBuildingsByFqn(
-            mapper.buildFlatLandscape(
-                landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
-    final long tMap = System.currentTimeMillis();
-    final List<CommitMeta> commits = fetchOrderedCommits(session, landscapeToken, repositoryName);
-    final List<String> orderedCommitHashes = commits.stream().map(CommitMeta::hash).toList();
-    final List<Long> orderedCommitTimeStamps =
-        commits.stream().map(CommitMeta::authorDate).toList();
-    final Map<String, Integer> fqnToFirstOrdinal =
-        computeFqnFirstOrdinals(session, landscapeToken, repositoryName, commits);
-    final long tOrdinals = System.currentTimeMillis();
-    System.out.println(
-        "[skeleton] query="
-            + (tQuery - t0)
-            + "ms map="
-            + (tMap - tQuery)
-            + "ms ordinals="
-            + (tOrdinals - tMap)
-            + "ms");
+    return deduplicateBuildingsByFqn(
+        mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
+  }
 
-    return new AnimationSkeletonDto(
-        landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
+  private FlatLandscapeDto buildScopedSkeleton(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom,
+      final long rangeTo) {
+
+    final String fileQuery =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c:Commit)
+        WHERE coalesce(c.authorDate, 0) <> 0
+          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
+          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
+        MATCH (c)-[:CONTAINS]->(f:FileRevision)
+        WITH f, c.authorDate AS d
+        ORDER BY d DESC
+        WITH f.filePath AS filePath, head(collect(f)) AS rep
+        RETURN
+          id(rep) AS id,
+          filePath AS filePath,
+          rep.name AS name,
+          rep.language AS language,
+          apoc.map.fromPairs(
+            [k IN keys(rep) WHERE k STARTS WITH 'metrics.' | [k, rep[k]]]
+          ) AS metrics
+        """;
+
+    final String dirQuery =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
+        MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(d:Directory)
+        RETURN
+          id(a) AS cityId,
+          a.name AS cityName,
+          id(d) AS id,
+          d.name AS name,
+          [x IN nodes(p)[2..] | x.name] AS pathParts
+        """;
+
+    final Result dirResult = session.query(dirQuery, Map.of("tokenId", landscapeToken));
+    final Map<String, Long> realDirIdByPath = new HashMap<>();
+    final Map<String, String> dirNameByPath = new HashMap<>();
+    long cityId = -1L;
+    String cityName = repositoryName;
+    for (final Map<String, Object> row : dirResult) {
+      cityId = ((Number) row.get("cityId")).longValue();
+      cityName = (String) row.get("cityName");
+      final String path = joinPathParts(row.get("pathParts"));
+      realDirIdByPath.put(path, ((Number) row.get("id")).longValue());
+      dirNameByPath.put(path, (String) row.get("name"));
+    }
+
+    final Result fileResult =
+        session.query(
+            fileQuery,
+            Map.of(
+                "tokenId", landscapeToken,
+                "repoName", repositoryName,
+                "rangeFrom", rangeFrom,
+                "rangeTo", rangeTo));
+
+    final List<Map<String, Object>> rows = new ArrayList<>();
+    final Map<String, List<Long>> childrenByDir = new HashMap<>();
+    final Set<String> neededDirs = new LinkedHashSet<>();
+    neededDirs.add("");
+
+    for (final Map<String, Object> row : fileResult) {
+      final String filePath = (String) row.get("filePath");
+      if (filePath == null) {
+        continue;
+      }
+      final long id = ((Number) row.get("id")).longValue();
+
+      final Map<String, Object> properties = new HashMap<>();
+      properties.put("name", row.get("name"));
+      properties.put("language", row.get("language"));
+      if (row.get("metrics") instanceof Map<?, ?> metrics) {
+        metrics.forEach((k, v) -> properties.put(String.valueOf(k), v));
+      }
+      rows.add(nodeRow(id, "FileRevision", properties, cityId, List.of()));
+
+      final String parent = parentPath(filePath);
+      childrenByDir.computeIfAbsent(parent, k -> new ArrayList<>()).add(id);
+      for (String p = parent; !p.isEmpty(); p = parentPath(p)) {
+        neededDirs.add(p);
+      }
+    }
+    final Map<String, Long> dirIdByPath = new HashMap<>();
+    long syntheticId = -2L;
+    for (final String path : neededDirs) {
+      final Long real = realDirIdByPath.get(path);
+      dirIdByPath.put(path, real != null ? real : syntheticId--);
+    }
+    for (final String path : neededDirs) {
+      if (!path.isEmpty()) {
+        childrenByDir
+            .computeIfAbsent(parentPath(path), k -> new ArrayList<>())
+            .add(dirIdByPath.get(path));
+      }
+    }
+    for (final String path : neededDirs) {
+      final Map<String, Object> properties = new HashMap<>();
+      properties.put("name", dirNameByPath.getOrDefault(path, lastSegment(path)));
+      rows.add(
+          nodeRow(
+              dirIdByPath.get(path),
+              "Directory",
+              properties,
+              cityId,
+              childrenByDir.getOrDefault(path, List.of())));
+    }
+
+    final Map<String, Object> appProperties = new HashMap<>();
+    appProperties.put("name", cityName);
+    rows.add(nodeRow(cityId, "Application", appProperties, cityId, List.of(dirIdByPath.get(""))));
+
+    return mapper.buildFlatLandscape(landscapeToken, rows, TypeOfAnalysis.STATIC, repositoryName);
+  }
+
+  /** One node row in the shape {@code StructureMapper.parseNodeData} expects. */
+  private static Map<String, Object> nodeRow(
+      final long id,
+      final String label,
+      final Map<String, Object> properties,
+      final long cityId,
+      final List<Long> childrenIds) {
+    final Map<String, Object> row = new HashMap<>();
+    row.put("id", id);
+    row.put("labels", List.of(label));
+    row.put("properties", properties);
+    row.put("cityId", cityId);
+    row.put("childrenIds", childrenIds);
+    return row;
+  }
+
+  private static String parentPath(final String path) {
+    final int index = path.lastIndexOf('/');
+    return index < 0 ? "" : path.substring(0, index);
+  }
+
+  private static String lastSegment(final String path) {
+    final int index = path.lastIndexOf('/');
+    return index < 0 ? path : path.substring(index + 1);
+  }
+
+  private static String joinPathParts(final Object parts) {
+    final StringBuilder joined = new StringBuilder();
+    if (parts instanceof Object[] array) {
+      for (final Object part : array) {
+        if (joined.length() > 0) {
+          joined.append('/');
+        }
+        joined.append(part);
+      }
+    } else if (parts instanceof Iterable<?> iterable) {
+      for (final Object part : iterable) {
+        if (joined.length() > 0) {
+          joined.append('/');
+        }
+        joined.append(part);
+      }
+    }
+    return joined.toString();
   }
 
   private FlatLandscapeDto deduplicateBuildingsByFqn(final FlatLandscapeDto raw) {

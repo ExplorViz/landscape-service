@@ -180,20 +180,35 @@ public class StructureResource {
       @RestQuery @DefaultValue("1") final int granularity,
       @RestQuery @DefaultValue("commit") final String groupBy,
       @RestQuery @DefaultValue("86400000") final long bucketSize,
-      @RestQuery @DefaultValue("1") final long agingWindow) {
+      @RestQuery @DefaultValue("1") final long agingWindow,
+      @RestQuery @DefaultValue("0") final long rangeFrom,
+      @RestQuery @DefaultValue("0") final long rangeTo) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationDeltaWindow(
-        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize,
-        agingWindow);
+        session,
+        landscapeToken,
+        repositoryName,
+        start,
+        count,
+        granularity,
+        groupBy,
+        bucketSize,
+        agingWindow,
+        rangeFrom,
+        rangeTo);
   }
 
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/{repositoryName}/animation/skeleton")
   public AnimationSkeletonDto getEvolutionAnimationSkeleton(
-      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery @DefaultValue("0") final long rangeFrom,
+      @RestQuery @DefaultValue("0") final long rangeTo) {
     final Session session = sessionFactory.openSession();
-    return structureRepository.fetchAnimationSkeleton(session, landscapeToken, repositoryName);
+    return structureRepository.fetchAnimationSkeleton(
+        session, landscapeToken, repositoryName, rangeFrom, rangeTo);
   }
 
   @GET
