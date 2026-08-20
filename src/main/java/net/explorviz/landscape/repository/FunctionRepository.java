@@ -41,7 +41,7 @@ public class FunctionRepository {
             WITH fn, [node IN nodes(p)[1..] | node.name] AS nodeNames
             RETURN DISTINCT
               fn AS function,
-              apoc.text.join(nodeNames, "/") AS fqn;
+              string.join(nodeNames, "/") AS fqn;
             """,
             Map.of(
                 "tokenId", landscapeToken, "appName", applicationName, "commitHash", commitHash));

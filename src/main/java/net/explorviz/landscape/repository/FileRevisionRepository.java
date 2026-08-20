@@ -32,7 +32,7 @@ public class FileRevisionRepository {
         repo.remoteUrl AS remoteUrl,
         repo.name AS repositoryName,
         c.hash AS commitHash,
-        apoc.text.join(nodeNames, "/") AS fqn
+        string.join(nodeNames, "/") AS fqn
       ORDER BY c.commitDate DESC
       LIMIT 1
       """;
@@ -248,7 +248,7 @@ public class FileRevisionRepository {
             WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
             RETURN DISTINCT
               f AS file,
-              apoc.text.join(nodeNames, "/") AS filePath;
+              string.join(nodeNames, "/") AS filePath;
             """,
             Map.of(
                 "tokenId", landscapeToken, "appName", applicationName, "commitHash", commitHash));
@@ -282,7 +282,7 @@ public class FileRevisionRepository {
             WITH f, [node IN nodes(p)[1..] | node.name] AS nodeNames
             RETURN DISTINCT
               f AS file,
-              apoc.text.join(nodeNames, "/") AS filePath;
+              string.join(nodeNames, "/") AS filePath;
             """,
             Map.of("tokenId", landscapeToken, "repoName", repoName, "commitHash", commitHash));
 

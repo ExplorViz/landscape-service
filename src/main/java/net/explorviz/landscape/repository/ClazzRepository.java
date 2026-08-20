@@ -42,7 +42,7 @@ public class ClazzRepository {
             WITH c, [node IN nodes(p)[1..] | node.name] AS nodeNames
             RETURN DISTINCT
               c AS clazz,
-              apoc.text.join(nodeNames, "/") AS fqn;
+              string.join(nodeNames, "/") AS fqn;
             """,
             Map.of(
                 "tokenId", landscapeToken, "appName", applicationName, "commitHash", commitHash));
