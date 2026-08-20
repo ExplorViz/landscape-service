@@ -2,6 +2,7 @@ package net.explorviz.landscape.api.v3;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -13,11 +14,16 @@ import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
+import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
+import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.repository.FileDetailedMapper;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.StructureRepository;
 import org.jboss.resteasy.reactive.RestPath;
+import org.jboss.resteasy.reactive.RestQuery;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
@@ -126,5 +132,94 @@ public class StructureResource {
         .findFileDetailedContext(session, landscapeToken, id)
         .map(context -> fileDetailedMapper.map(context, commitHash))
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
+  }
+
+  /**
+   * Retrieve structure data gathered from static analysis for a particular application and commit.
+   *
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @return The flat landscape containing the applications of the repository at the given commit,
+   *     where each application represents a city
+   */
+  /*
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation")
+  public List<AnimationFrameDto> getEvolutionAnimation(
+      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
+    final Session session = sessionFactory.openSession();
+
+    return structureRepository.fetchFlatLandscapeForAnimation(
+        session, landscapeToken, repositoryName);
+        }*/
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation")
+  public AnimationWindowDto getEvolutionAnimation(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery @DefaultValue("0") final int start,
+      @RestQuery @DefaultValue("-1") final int count,
+      @RestQuery @DefaultValue("1") final int granularity,
+      @RestQuery @DefaultValue("commit") final String groupBy,
+      @RestQuery @DefaultValue("86400000") final long bucketSize) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchAnimationWindow(
+        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation/delta")
+  @SuppressWarnings("PMD.ExcessiveParameterList")
+  public AnimationWindowDeltaDto getEvolutionAnimationDelta(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery @DefaultValue("0") final int start,
+      @RestQuery @DefaultValue("-1") final int count,
+      @RestQuery @DefaultValue("1") final int granularity,
+      @RestQuery @DefaultValue("commit") final String groupBy,
+      @RestQuery @DefaultValue("86400000") final long bucketSize,
+      @RestQuery @DefaultValue("1") final long agingWindow,
+      @RestQuery @DefaultValue("0") final long rangeFrom,
+      @RestQuery @DefaultValue("0") final long rangeTo) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchAnimationDeltaWindow(
+        session,
+        landscapeToken,
+        repositoryName,
+        start,
+        count,
+        granularity,
+        groupBy,
+        bucketSize,
+        agingWindow,
+        rangeFrom,
+        rangeTo);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation/skeleton")
+  public AnimationSkeletonDto getEvolutionAnimationSkeleton(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestQuery @DefaultValue("0") final long rangeFrom,
+      @RestQuery @DefaultValue("0") final long rangeTo) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchAnimationSkeleton(
+        session, landscapeToken, repositoryName, rangeFrom, rangeTo);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/file-history/{fileRevisionId}")
+  public List<FileHistoryDto> getFileHistory(
+      @RestPath final String landscapeToken,
+      @RestPath final String repositoryName,
+      @RestPath final long fileRevisionId) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchFileHistory(session, fileRevisionId);
   }
 }
