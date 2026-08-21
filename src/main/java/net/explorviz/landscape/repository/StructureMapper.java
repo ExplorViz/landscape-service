@@ -16,7 +16,6 @@ import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import org.neo4j.ogm.model.Result;
 
 /** Mapper class for converting Neo4j results into FlatLandscapeDto. */
 @ApplicationScoped
@@ -28,7 +27,7 @@ public class StructureMapper {
 
   public FlatLandscapeDto buildFlatLandscape(
       final String landscapeToken,
-      final Result result,
+      final Iterable<Map<String, Object>> result,
       final TypeOfAnalysis origin,
       final String repositoryName) {
     final Map<Long, NodeData> nodesById = new HashMap<>();

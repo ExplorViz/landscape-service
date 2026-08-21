@@ -44,7 +44,7 @@ public class CommitDiffRepository {
                 MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c2)
                 WHERE f.name = f2.name AND f <> f2
               }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            RETURN string.join([node IN nodes(p)[1..] | node.name], "/");
             """,
             diffQueryParams(query)));
   }
@@ -76,7 +76,7 @@ public class CommitDiffRepository {
                 MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c1)
                 WHERE f.name = f2.name AND f <> f2
               }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            RETURN string.join([node IN nodes(p)[1..] | node.name], "/");
             """,
             diffQueryParams(query)));
   }
@@ -108,7 +108,7 @@ public class CommitDiffRepository {
                 MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c2)
                 WHERE f.name = f2.name AND f <> f2
               }
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            RETURN string.join([node IN nodes(p)[1..] | node.name], "/");
             """,
             diffQueryParams(query)));
   }
@@ -136,7 +136,7 @@ public class CommitDiffRepository {
             WHERE
               (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c2) AND
               NOT (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1)
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            RETURN string.join([node IN nodes(p)[1..] | node.name], "/");
             """,
             diffQueryParams(query)));
   }
@@ -164,7 +164,7 @@ public class CommitDiffRepository {
             WHERE
               (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c1) AND
               NOT (d)-[:CONTAINS*]->(:FileRevision)<-[:CONTAINS]-(c2)
-            RETURN apoc.text.join([node IN nodes(p)[1..] | node.name], "/");
+            RETURN string.join([node IN nodes(p)[1..] | node.name], "/");
             """,
             diffQueryParams(query)));
   }
@@ -195,7 +195,7 @@ public class CommitDiffRepository {
         OPTIONAL MATCH (containingDir)-[:CONTAINS]->(f2:FileRevision)<-[:CONTAINS]-(c1)
         WHERE f.name = f2.name
         RETURN
-          apoc.text.join([node IN nodes(p)[1..] | node.name], "/") AS fileFqn,
+          string.join([node IN nodes(p)[1..] | node.name], "/") AS fileFqn,
           f AS fileFirstCommit,
           f2 AS fileSecondCommit;
         """,
