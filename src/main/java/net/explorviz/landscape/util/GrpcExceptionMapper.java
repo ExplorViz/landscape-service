@@ -5,11 +5,11 @@ import io.grpc.StatusRuntimeException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.UndeclaredThrowableException;
 import net.explorviz.landscape.proto.CommitData;
-import net.explorviz.landscape.proto.ContributorData;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.RelinkResourcesRequest;
 import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.TrackableResourceEvent;
+import net.explorviz.landscape.proto.TrackableResourceEventBatch;
 import net.explorviz.landscape.repository.IncompleteCommitFileCopyException;
 import net.explorviz.landscape.repository.ParentCommitNotReadyException;
 
@@ -87,18 +87,6 @@ public final class GrpcExceptionMapper {
   }
 
   public static StatusRuntimeException mapToGrpcException(
-      final Exception e, final ContributorData contributorData) {
-    final String contextInfo =
-        "Regarding the call to persistContributor for the contributor"
-            + "with name '"
-            + contributorData.getGitUsername()
-            + "' and email '"
-            + contributorData.getEmail()
-            + "'.";
-    return mapToGrpcException(e, contextInfo);
-  }
-
-  public static StatusRuntimeException mapToGrpcException(
       final Exception e, final TrackableResourceEvent trackableResourceEvent) {
     final String contextInfo =
         "Regarding the call to persistTrackableResourceEvent for "
@@ -107,6 +95,14 @@ public final class GrpcExceptionMapper {
             + "' and resource id '"
             + trackableResourceEvent.getResourceId()
             + "'.";
+    return mapToGrpcException(e, contextInfo);
+  }
+
+  public static StatusRuntimeException mapToGrpcException(
+      final Exception e, final TrackableResourceEventBatch trackableResourceEventBatch) {
+    final String contextInfo =
+        "Regarding the call to persistTrackableResourceEventBatch for batch with size"
+            + trackableResourceEventBatch.getEventsList().size();
     return mapToGrpcException(e, contextInfo);
   }
 

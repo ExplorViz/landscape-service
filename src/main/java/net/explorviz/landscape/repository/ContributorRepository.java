@@ -42,7 +42,7 @@ public class ContributorRepository {
     final boolean isUpdated = updateContributorFields(contributor, data);
 
     if (contributor.getId() == null || isUpdated) {
-      session.save(contributor);
+      session.save(contributor, 1);
     }
     return contributor;
   }
