@@ -19,9 +19,11 @@ import net.explorviz.landscape.ogm.ResourceVersion;
 import net.explorviz.landscape.ogm.TrackableResource;
 import net.explorviz.landscape.proto.RelinkResourcesRequest;
 import net.explorviz.landscape.proto.TrackableResourceEvent;
+import net.explorviz.landscape.proto.TrackableResourceEventBatch;
 import net.explorviz.landscape.proto.TrackableResourceService;
 import net.explorviz.landscape.proto.TrackableResourceType;
 import net.explorviz.landscape.repository.ContributorRepository;
+import net.explorviz.landscape.repository.RepositoryCommitPersistenceCoordinator;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.repository.TrackableResourceRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
@@ -36,6 +38,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   @Inject ContributorRepository contributorRepository;
   @Inject SessionFactory sessionFactory;
   @Inject TrackableResourceRepository trackableResourceRepository;
+  @Inject RepositoryCommitPersistenceCoordinator commitPersistenceCoordinator;
 
   @Override
   @Blocking
@@ -54,17 +57,54 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
 
   @Override
   @Blocking
-  public Uni<Empty> relinkResources(final RelinkResourcesRequest request) {
-    final Session session = sessionFactory.openSession();
-    try (Transaction tx = session.beginTransaction()) {
-      trackableResourceRepository.linkPullRequestToCommits(
-          session, request.getLandscapeToken(), request.getRepositoryName());
-      tx.commit();
+  public Uni<Empty> persistTrackableResourceEvents(final TrackableResourceEventBatch request) {
+    if (request.getEventsList().isEmpty()) {
+      return Uni.createFrom().item(Empty.getDefaultInstance());
+    }
+    final TrackableResourceEvent event = request.getEventsList().get(0);
+    try {
+      commitPersistenceCoordinator.runExclusive(
+          event.getLandscapeToken(),
+          event.getRepositoryName(),
+          () -> {
+            final Session session = sessionFactory.openSession();
+            try (Transaction tx = session.beginTransaction()) {
+              for (final TrackableResourceEvent e : request.getEventsList()) {
+                saveTrackableResourceEvent(session, e);
+              }
+              tx.commit();
+            } finally {
+              session.clear();
+            }
+            return Empty.getDefaultInstance();
+          });
       return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
-    } finally {
-      session.clear();
+    }
+  }
+
+  @Override
+  @Blocking
+  public Uni<Empty> relinkResources(final RelinkResourcesRequest request) {
+    try {
+      commitPersistenceCoordinator.runExclusive(
+          request.getLandscapeToken(),
+          request.getRepositoryName(),
+          () -> {
+            final Session session = sessionFactory.openSession();
+            try (Transaction tx = session.beginTransaction()) {
+              trackableResourceRepository.linkPullRequestToCommits(
+                  session, request.getLandscapeToken(), request.getRepositoryName());
+              tx.commit();
+            } finally {
+              session.clear();
+            }
+            return Empty.getDefaultInstance();
+          });
+      return Uni.createFrom().item(Empty.getDefaultInstance());
+    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+      return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
   }
 
