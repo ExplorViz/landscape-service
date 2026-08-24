@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class StructureRepository {
       int frameIndex,
       Map<String, Integer> lastChangeOrdinal,
       Map<String, Long> lastChangeDate,
+      Map<String, String> lastAction,
       Map<String, String> present,
       int targetId) {}
 
@@ -408,6 +410,7 @@ public class StructureRepository {
     final int walkFrom;
     final Map<String, Integer> lastChangeOrdinal;
     final Map<String, Long> lastChangeDate;
+    final Map<String, String> lastAction;
     Map<String, String> prevPresent;
     int prevTargetId;
     final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode, agingWindow));
@@ -419,12 +422,14 @@ public class StructureRepository {
       lastChangeDate = new HashMap<>(cached.lastChangeDate());
       prevPresent = cached.present();
       prevTargetId = cached.targetId();
+      lastAction = new HashMap<>(cached.lastAction());
     } else {
       walkFrom = minStart;
       lastChangeOrdinal = new HashMap<>();
       lastChangeDate = new HashMap<>();
       prevPresent = Map.of();
       prevTargetId = minStart > 0 ? targets.get(minStart - 1) : -1;
+      lastAction = new HashMap<>();
     }
 
     final List<String> neededHashes = new ArrayList<>();
@@ -451,13 +456,9 @@ public class StructureRepository {
       final List<BuildingChangeDto> changes = diffPresentSets(prevPresent, curPresent);
 
       for (final BuildingChangeDto change : changes) {
-        if (CommitComparison.REMOVED.toString().equals(change.action())) {
-          lastChangeOrdinal.remove(change.fqn());
-          lastChangeDate.remove(change.fqn());
-        } else {
-          lastChangeOrdinal.put(change.fqn(), i);
-          lastChangeDate.put(change.fqn(), target.authorDate());
-        }
+        lastAction.put(change.fqn(), change.action());
+        lastChangeOrdinal.put(change.fqn(), i);
+        lastChangeDate.put(change.fqn(), target.authorDate());
       }
 
       if (i == from) {
@@ -470,7 +471,7 @@ public class StructureRepository {
                 tsFrom,
                 tsTo,
                 frameCommitCount,
-                buildKeyframeState(curPresent, lastChangeOrdinal, lastChangeDate),
+                buildKeyframeState(curPresent, lastChangeOrdinal, lastChangeDate, lastAction),
                 changes));
       } else if (i > from) {
         frames.add(
@@ -493,7 +494,8 @@ public class StructureRepository {
     }
     walkStateCache.put(
         cacheKey,
-        new WalkState(to - 1, lastChangeOrdinal, lastChangeDate, prevPresent, prevTargetId));
+        new WalkState(
+            to - 1, lastChangeOrdinal, lastChangeDate, lastAction, prevPresent, prevTargetId));
     return new AnimationWindowDeltaDto(totalFrames, from, frames);
   }
 
@@ -584,17 +586,24 @@ public class StructureRepository {
   private List<BuildingStateDto> buildKeyframeState(
       final Map<String, String> present,
       final Map<String, Integer> lastChangeOrdinal,
-      final Map<String, Long> lastChangeDate) {
+      final Map<String, Long> lastChangeDate,
+      final Map<String, String> lastAction) {
+    final Set<String> fqns = new HashSet<>(present.keySet());
+    lastAction.forEach(
+        (fqn, action) -> {
+          if (CommitComparison.REMOVED.toString().equals(action)) {
+            fqns.add(fqn);
+          }
+        });
     final List<BuildingStateDto> state = new ArrayList<>();
-    present
-        .keySet()
-        .forEach(
-            fqn ->
-                state.add(
-                    new BuildingStateDto(
-                        fqn,
-                        lastChangeOrdinal.getOrDefault(fqn, 0),
-                        lastChangeDate.getOrDefault(fqn, 0L))));
+    fqns.forEach(
+        fqn ->
+            state.add(
+                new BuildingStateDto(
+                    fqn,
+                    lastChangeOrdinal.getOrDefault(fqn, 0),
+                    lastChangeDate.getOrDefault(fqn, 0L),
+                    lastAction.getOrDefault(fqn, CommitComparison.UNCHANGED.toString()))));
     return state;
   }
 
