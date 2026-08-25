@@ -8,20 +8,33 @@ message TelemetryEntity {
   string landscape_token_id = 1;
   string landscape_token_secret = 2;
 
-  optional string git_commit_hash = 4;
+  optional string git_commit_hash = 3;
 
   oneof entity_descriptor {
+    GenericServiceDescriptor generic_service_descriptor = 4;
     CodeDescriptor code_descriptor = 5;
   }
 }
 
+/**
+ * GenericServiceDescriptor describes a service for which no entity information
+ * apart from the service name could be deducted.
+ */
+message GenericServiceDescriptor {
+  string service_telemetry_key = 1; // Lookup key for retrieving telemetry for this service
+  string service_name = 2;
+}
+
+/**
+ * CodeDescriptor describes a function in code.
+ */
 message CodeDescriptor {
   string application_name = 1;
 
-  string file_id = 2; // Lookup key for retrieving telemetry for this file
+  string file_telemetry_key = 2; // Lookup key for retrieving telemetry for this file
   string file_path = 3; // File path, separated by "/"
 
-  string function_id = 4; // Lookup key for retrieving telemetry for this function
+  string function_telemetry_key = 4; // Lookup key for retrieving telemetry for this function
   string function_name = 5; // Name of the function, excluding signature
 
   optional string class_name = 6; // Inner classes may be separated by "."

@@ -55,10 +55,10 @@ public class CodeTelemetryServiceIntegrationTest {
     CodeDescriptor codeDescriptor =
         CodeDescriptor.newBuilder()
             .setApplicationName("hello-world")
-            .setFileId("796f20776164647570")
+            .setFileTelemetryKey("796f20776164647570")
             .setFilePath(String.join("/", filePath))
             .setFunctionName("main")
-            .setFunctionId("66722065207368206120766F636120646F")
+            .setFunctionTelemetryKey("66722065207368206120766F636120646F")
             .setClassName("HelloWorld")
             .setLanguage("java")
             .build();

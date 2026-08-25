@@ -32,8 +32,8 @@ public class CodeTelemetryService {
               splitClassPath,
               descriptor.getFunctionName(),
               entity.getGitCommitHash(),
-              descriptor.getFileId(),
-              descriptor.getFunctionId());
+              descriptor.getFileTelemetryKey(),
+              descriptor.getFunctionTelemetryKey());
 
       if (success) {
         return;
@@ -47,8 +47,8 @@ public class CodeTelemetryService {
         splitFilePath,
         splitClassPath,
         descriptor.getFunctionName(),
-        descriptor.getFileId(),
-        descriptor.getFunctionId(),
+        descriptor.getFileTelemetryKey(),
+        descriptor.getFunctionTelemetryKey(),
         descriptor.getLanguage());
   }
 

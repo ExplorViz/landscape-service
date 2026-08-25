@@ -84,7 +84,7 @@ public class FlatLandscapeComparator {
                               UUID.randomUUID().toString(),
                               pathName,
                               fqn.toString(),
-                              descriptor.getFileId(),
+                              descriptor.getFileTelemetryKey(),
                               TypeOfAnalysis.RUNTIME,
                               null),
                           city.flatBaseModel().id(),
