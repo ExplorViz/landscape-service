@@ -3,6 +3,7 @@ package net.explorviz.landscape.repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,6 +27,7 @@ import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.api.v3.model.landscape.LanguageCountDto;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -187,6 +189,32 @@ public class StructureRepository {
     }
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
+  }
+
+  public List<LanguageCountDto> fetchLanguageCounts(
+      final Session session, final String landscapeToken, final String repositoryName) {
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
+        MATCH (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(f:FileRevision)
+        WHERE f.repoName = $repoName
+        RETURN coalesce(f.language, 'LANGUAGE_UNSPECIFIED') AS language,
+               count(DISTINCT f.filePath) AS files
+        ORDER BY files DESC
+        """;
+
+    final Result result =
+        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+
+    final List<LanguageCountDto> counts = new ArrayList<>();
+    result.forEach(
+        row -> {
+          final Object files = row.get("files");
+          counts.add(
+              new LanguageCountDto(
+                  (String) row.get("language"), files instanceof Number n ? n.longValue() : 0L));
+        });
+    return counts;
   }
 
   /**
@@ -367,8 +395,10 @@ public class StructureRepository {
       final long bucketSize,
       final long agingWindow,
       final long rangeFrom,
-      final long rangeTo) {
+      final long rangeTo,
+      final String languages) {
 
+    final List<String> languageFilter = parseLanguages(languages);
     final List<CommitMeta> commits =
         fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
     final int commitCount = commits.size();
@@ -404,7 +434,9 @@ public class StructureRepository {
             + '|'
             + bucket
             + '|'
-            + agingWindow;
+            + agingWindow
+            + '|'
+            + String.join(",", languageFilter);
     final WalkState cached = walkStateCache.get(cacheKey);
 
     final int walkFrom;
@@ -437,7 +469,7 @@ public class StructureRepository {
       neededHashes.add(commits.get(targets.get(i)).hash());
     }
     final Map<String, Map<String, String>> presentByCommit =
-        fetchPresentSets(session, landscapeToken, repositoryName, neededHashes);
+        fetchPresentSets(session, landscapeToken, repositoryName, neededHashes, languageFilter);
 
     final List<AnimationFrameDeltaDto> frames = new ArrayList<>();
     for (int i = walkFrom; i < to; i++) {
@@ -521,7 +553,8 @@ public class StructureRepository {
       final Session session,
       final String landscapeToken,
       final String repositoryName,
-      final Collection<String> commitHashes) {
+      final Collection<String> commitHashes,
+      final List<String> languages) {
     if (commitHashes.isEmpty()) {
       return Map.of();
     }
@@ -532,6 +565,8 @@ public class StructureRepository {
           -[:CONTAINS]->(c:Commit)
         WHERE c.hash IN $hashes
         MATCH (c)-[:CONTAINS]->(f:FileRevision)
+        WHERE size($languages) = 0
+          OR coalesce(f.language, 'LANGUAGE_UNSPECIFIED') IN $languages
         RETURN c.hash AS hash, f.filePath AS fqn, f.hash AS fileHash
         """;
 
@@ -544,7 +579,9 @@ public class StructureRepository {
                 "repoName",
                 repositoryName,
                 "hashes",
-                List.copyOf(commitHashes)));
+                List.copyOf(commitHashes),
+                "languages",
+                languages));
 
     final Map<String, Map<String, String>> presentByCommit = new HashMap<>();
     result.forEach(
@@ -613,7 +650,8 @@ public class StructureRepository {
       final String repositoryName,
       final List<CommitMeta> commits,
       final long rangeFrom,
-      final long rangeTo) {
+      final long rangeTo,
+      final List<String> languages) {
     final Map<Long, Integer> ordinalByDate = new HashMap<>();
     for (int i = 0; i < commits.size(); i++) {
       ordinalByDate.putIfAbsent(commits.get(i).authorDate(), i);
@@ -628,6 +666,8 @@ public class StructureRepository {
             AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
             AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
         MATCH (c)-[:CONTAINS]->(f:FileRevision)
+        WHERE size($languages) = 0
+            OR coalesce(f.language, 'LANGUAGE_UNSPECIFIED') IN $languages
         RETURN f.filePath AS fqn, min(c.authorDate) AS firstAppearance
         """;
     final Result result =
@@ -641,7 +681,9 @@ public class StructureRepository {
                 "rangeFrom",
                 rangeFrom,
                 "rangeTo",
-                rangeTo));
+                rangeTo,
+                "languages",
+                languages));
 
     final Map<String, Integer> fqnToFirstOrdinal = new HashMap<>();
     result.forEach(
@@ -664,22 +706,25 @@ public class StructureRepository {
       final String landscapeToken,
       final String repositoryName,
       final long rangeFrom,
-      final long rangeTo) {
+      final long rangeTo,
+      final String languages) {
 
+    final List<String> languageFilter = parseLanguages(languages);
     final List<CommitMeta> commits =
         fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
     final boolean scoped =
         useScopedRoute(session, landscapeToken, repositoryName, rangeFrom, rangeTo, commits);
     final FlatLandscapeDto landscape =
         scoped
-            ? buildScopedSkeleton(session, landscapeToken, repositoryName, rangeFrom, rangeTo)
-            : buildFullSkeleton(session, landscapeToken, repositoryName);
+            ? buildScopedSkeleton(
+                session, landscapeToken, repositoryName, rangeFrom, rangeTo, languageFilter)
+            : buildFullSkeleton(session, landscapeToken, repositoryName, languageFilter);
     final List<String> orderedCommitHashes = commits.stream().map(CommitMeta::hash).toList();
     final List<Long> orderedCommitTimeStamps =
         commits.stream().map(CommitMeta::authorDate).toList();
     final Map<String, Integer> fqnToFirstOrdinal =
         computeFqnFirstOrdinals(
-            session, landscapeToken, repositoryName, commits, rangeFrom, rangeTo);
+            session, landscapeToken, repositoryName, commits, rangeFrom, rangeTo, languageFilter);
 
     return new AnimationSkeletonDto(
         landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
@@ -737,12 +782,17 @@ public class StructureRepository {
   }
 
   private FlatLandscapeDto buildFullSkeleton(
-      final Session session, final String landscapeToken, final String repositoryName) {
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final List<String> languages) {
     final String query =
         """
         MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
         MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(f:FileRevision)
         WHERE f.repoName = $repoName
+            AND (size($languages) = 0
+            OR coalesce(f.language, 'LANGUAGE_UNSPECIFIED') IN $languages)
 
         WITH DISTINCT a, nodes(p) AS pathNodes
 
@@ -760,7 +810,9 @@ public class StructureRepository {
           [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds
         """;
     final Result result =
-        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+        session.query(
+            query,
+            Map.of("tokenId", landscapeToken, "repoName", repositoryName, "languages", languages));
     return deduplicateBuildingsByFqn(
         mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
   }
@@ -770,7 +822,8 @@ public class StructureRepository {
       final String landscapeToken,
       final String repositoryName,
       final long rangeFrom,
-      final long rangeTo) {
+      final long rangeTo,
+      final List<String> languages) {
 
     final String fileQuery =
         """
@@ -781,6 +834,8 @@ public class StructureRepository {
           AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
           AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
         MATCH (c)-[:CONTAINS]->(f:FileRevision)
+        WHERE size($languages) = 0
+           OR coalesce(f.language, 'LANGUAGE_UNSPECIFIED') IN $languages
         WITH f, c.authorDate AS d
         ORDER BY d DESC
         WITH f.filePath AS filePath, head(collect(f)) AS rep
@@ -826,7 +881,8 @@ public class StructureRepository {
                 "tokenId", landscapeToken,
                 "repoName", repositoryName,
                 "rangeFrom", rangeFrom,
-                "rangeTo", rangeTo));
+                "rangeTo", rangeTo,
+                "languages", languages));
 
     final List<Map<String, Object>> rows = new ArrayList<>();
     final Map<String, List<Long>> childrenByDir = new HashMap<>();
@@ -1006,5 +1062,12 @@ public class StructureRepository {
       targets.add(cursor);
     }
     return targets;
+  }
+
+  private static List<String> parseLanguages(final String languages) {
+    if (languages == null || languages.isBlank()) {
+      return List.of();
+    }
+    return Arrays.stream(languages.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
   }
 }

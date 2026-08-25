@@ -19,6 +19,7 @@ import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
 import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.api.v3.model.landscape.LanguageCountDto;
 import net.explorviz.landscape.repository.FileDetailedMapper;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.StructureRepository;
@@ -182,7 +183,8 @@ public class StructureResource {
       @RestQuery @DefaultValue("86400000") final long bucketSize,
       @RestQuery @DefaultValue("1") final long agingWindow,
       @RestQuery @DefaultValue("0") final long rangeFrom,
-      @RestQuery @DefaultValue("0") final long rangeTo) {
+      @RestQuery @DefaultValue("0") final long rangeTo,
+      @RestQuery @DefaultValue("") final String languages) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationDeltaWindow(
         session,
@@ -195,7 +197,8 @@ public class StructureResource {
         bucketSize,
         agingWindow,
         rangeFrom,
-        rangeTo);
+        rangeTo,
+        languages);
   }
 
   @GET
@@ -205,10 +208,11 @@ public class StructureResource {
       @RestPath final String landscapeToken,
       @RestPath final String repositoryName,
       @RestQuery @DefaultValue("0") final long rangeFrom,
-      @RestQuery @DefaultValue("0") final long rangeTo) {
+      @RestQuery @DefaultValue("0") final long rangeTo,
+      @RestQuery @DefaultValue("") final String languages) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationSkeleton(
-        session, landscapeToken, repositoryName, rangeFrom, rangeTo);
+        session, landscapeToken, repositoryName, rangeFrom, rangeTo, languages);
   }
 
   @GET
@@ -220,5 +224,14 @@ public class StructureResource {
       @RestPath final long fileRevisionId) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchFileHistory(session, fileRevisionId);
+  }
+
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/evolution/{repositoryName}/animation/languages")
+  public List<LanguageCountDto> getEvolutionAnimationLanguages(
+      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
+    final Session session = sessionFactory.openSession();
+    return structureRepository.fetchLanguageCounts(session, landscapeToken, repositoryName);
   }
 }
