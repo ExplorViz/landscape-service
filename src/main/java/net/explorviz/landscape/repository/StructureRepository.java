@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -261,7 +262,8 @@ public class StructureRepository {
 
     return frames;
   }*/
-  public List<FileHistoryDto> fetchFileHistory(final Session session, final long fileRevisionId) {
+  public List<FileHistoryDto> fetchFileHistory(final Session session,final String landscapeToken,
+      final String repositoryName, final long fileRevisionId) {
     final String query =
         """
         MATCH (clicked:FileRevision) WHERE id(clicked) = $id
@@ -274,7 +276,9 @@ public class StructureRepository {
     final Result result = session.query(query, Map.of("id", fileRevisionId));
 
     final List<FileHistoryDto> entries = new ArrayList<>();
-    result.forEach(
+    session
+        .query(query, Map.of("id", fileRevisionId))
+        .forEach(
         row -> {
           final Object date = row.get("date");
           entries.add(
@@ -283,6 +287,35 @@ public class StructureRepository {
                   date instanceof Number n ? n.longValue() : 0L,
                   (String) row.get("action")));
         });
+    final String presenceQuery =
+        """
+        MATCH (clicked:FileRevision) WHERE id(clicked) = $id
+        MATCH (dir:Directory)-[:CONTAINS]->(clicked)
+        MATCH (dir)-[:CONTAINS]->(rev:FileRevision) WHERE rev.name = clicked.name
+        MATCH (c:Commit)-[:CONTAINS]->(rev)
+        WHERE coalesce(c.authorDate, 0) <> 0
+        RETURN DISTINCT c.hash AS hash
+        """;
+
+    final Set<String> presentIn = new HashSet<>();
+    session
+        .query(presenceQuery, Map.of("id", fileRevisionId))
+        .forEach(row -> presentIn.add((String) row.get("hash")));
+
+    final List<CommitMeta> commits =
+        fetchOrderedCommits(session, landscapeToken, repositoryName, 0, 0);
+    boolean wasPresent = false;
+    for (final CommitMeta commit : commits) {
+      final boolean isPresent = presentIn.contains(commit.hash());
+      if (wasPresent && !isPresent) {
+        entries.add(
+            new FileHistoryDto(
+                commit.hash(), commit.authorDate(), CommitComparison.REMOVED.toString()));
+      }
+      wasPresent = isPresent;
+    }
+
+    entries.sort(Comparator.comparingLong(FileHistoryDto::date));
     return entries;
   }
 
