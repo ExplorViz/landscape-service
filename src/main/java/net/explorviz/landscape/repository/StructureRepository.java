@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -262,8 +263,11 @@ public class StructureRepository {
 
     return frames;
   }*/
-  public List<FileHistoryDto> fetchFileHistory(final Session session,final String landscapeToken,
-      final String repositoryName, final long fileRevisionId) {
+  public List<FileHistoryDto> fetchFileHistory(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long fileRevisionId) {
     final String query =
         """
         MATCH (clicked:FileRevision) WHERE id(clicked) = $id
@@ -279,14 +283,14 @@ public class StructureRepository {
     session
         .query(query, Map.of("id", fileRevisionId))
         .forEach(
-        row -> {
-          final Object date = row.get("date");
-          entries.add(
-              new FileHistoryDto(
-                  (String) row.get("hash"),
-                  date instanceof Number n ? n.longValue() : 0L,
-                  (String) row.get("action")));
-        });
+            row -> {
+              final Object date = row.get("date");
+              entries.add(
+                  new FileHistoryDto(
+                      (String) row.get("hash"),
+                      date instanceof Number n ? n.longValue() : 0L,
+                      (String) row.get("action")));
+            });
     final String presenceQuery =
         """
         MATCH (clicked:FileRevision) WHERE id(clicked) = $id
@@ -358,6 +362,39 @@ public class StructureRepository {
           commits.add(new CommitMeta((String) row.get("hash"), authorDate));
         });
     return commits;
+  }
+
+  private CommitMeta fetchLastCommitBefore(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final long rangeFrom) {
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(:Repository {name: $repoName})
+          -[:CONTAINS]->(c:Commit)
+        WHERE coalesce(c.authorDate, 0) <> 0 AND c.authorDate < $rangeFrom
+        RETURN c.hash AS hash, c.authorDate AS authorDate
+        ORDER BY c.authorDate DESC, c.hash DESC
+        LIMIT 1
+        """;
+
+    final Iterator<Map<String, Object>> rows =
+        session
+            .query(
+                query,
+                Map.of(
+                    "tokenId", landscapeToken,
+                    "repoName", repositoryName,
+                    "rangeFrom", rangeFrom))
+            .iterator();
+    if (!rows.hasNext()) {
+      return null;
+    }
+    final Map<String, Object> row = rows.next();
+    final Object date = row.get("authorDate");
+    return new CommitMeta((String) row.get("hash"), date instanceof Number n ? n.longValue() : 0L);
   }
 
   public AnimationWindowDto fetchAnimationWindow(
@@ -480,6 +517,7 @@ public class StructureRepository {
     int prevTargetId;
     final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode, agingWindow));
     final int minStart = Math.max(0, from - lookback);
+    CommitMeta seed = null;
 
     if (cached != null && cached.frameIndex() < from && cached.frameIndex() + 1 >= minStart) {
       walkFrom = cached.frameIndex() + 1;
@@ -492,18 +530,34 @@ public class StructureRepository {
       walkFrom = minStart;
       lastChangeOrdinal = new HashMap<>();
       lastChangeDate = new HashMap<>();
+      lastAction = new HashMap<>();
       prevPresent = Map.of();
       prevTargetId = minStart > 0 ? targets.get(minStart - 1) : -1;
-      lastAction = new HashMap<>();
+      if (prevTargetId >= 0) {
+        seed = commits.get(prevTargetId);
+      } else if (rangeFrom != 0) {
+        seed = fetchLastCommitBefore(session, landscapeToken, repositoryName, rangeFrom);
+      }
     }
 
     final List<String> neededHashes = new ArrayList<>();
+    if (seed != null) {
+      neededHashes.add(seed.hash());
+    }
     for (int i = walkFrom; i < to; i++) {
       neededHashes.add(commits.get(targets.get(i)).hash());
     }
     final Map<String, Map<String, String>> presentByCommit =
         fetchPresentSets(session, landscapeToken, repositoryName, neededHashes, languageFilter);
-
+    if (seed != null) {
+      prevPresent = presentByCommit.getOrDefault(seed.hash(), Map.of());
+      final int agedOrdinal = walkFrom - lookback - 1;
+      final long agedDate = seed.authorDate() - agingWindow;
+      for (final String fqn : prevPresent.keySet()) {
+        lastChangeOrdinal.putIfAbsent(fqn, agedOrdinal);
+        lastChangeDate.putIfAbsent(fqn, agedDate);
+      }
+    }
     final List<AnimationFrameDeltaDto> frames = new ArrayList<>();
     for (int i = walkFrom; i < to; i++) {
       final CommitMeta target = commits.get(targets.get(i));

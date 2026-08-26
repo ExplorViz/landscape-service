@@ -223,7 +223,8 @@ public class StructureResource {
       @RestPath final String repositoryName,
       @RestPath final long fileRevisionId) {
     final Session session = sessionFactory.openSession();
-    return structureRepository.fetchFileHistory(session, landscapeToken, repositoryName, fileRevisionId);
+    return structureRepository.fetchFileHistory(
+        session, landscapeToken, repositoryName, fileRevisionId);
   }
 
   @GET
