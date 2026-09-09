@@ -3,6 +3,7 @@ package net.explorviz.landscape.ogm.otel;
 import java.util.HashSet;
 import java.util.Set;
 import net.explorviz.landscape.ogm.Directory;
+import net.explorviz.landscape.ogm.http.HttpEndpoint;
 import net.explorviz.landscape.ogm.rpc.RpcSystem;
 import org.neo4j.ogm.annotation.GeneratedValue;
 import org.neo4j.ogm.annotation.Id;
@@ -35,6 +36,9 @@ public class Scope {
   private final Set<RpcSystem> rpcSystems = new HashSet<>();
 
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
+  private final Set<HttpEndpoint> httpEndpoints = new HashSet<>();
+
+  @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private Directory directory;
 
   public Scope() {
@@ -65,6 +69,10 @@ public class Scope {
 
   public Set<RpcSystem> getRpcSystems() {
     return new HashSet<>(rpcSystems);
+  }
+
+  public Set<HttpEndpoint> getHttpEndpoints() {
+    return new HashSet<>(httpEndpoints);
   }
 
   public Directory getDirectory() {

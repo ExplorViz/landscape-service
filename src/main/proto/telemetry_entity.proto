@@ -20,6 +20,7 @@ message TelemetryEntity {
     GenericServiceDescriptor generic_service_descriptor = 5;
     CodeDescriptor code_descriptor = 6;
     RpcDescriptor rpc_descriptor = 7;
+    HttpDescriptor http_descriptor = 8;
   }
 }
 
@@ -61,4 +62,16 @@ message RpcDescriptor {
   string method_name = 5; // Name of the RPC method (unqualified) as provided in the service definition
 
   optional string system_name = 6; // Name of the used RPC system, e.g. "grpc", "dubbo"
+}
+
+/**
+ * HttpDescriptor describes a request to an HTTP API endpoint. An endpoint is uniquely identified
+ * by the application it belongs to and its route. A single endpoint can support multiple HTTP methods.
+ */
+message HttpDescriptor {
+  string application_name = 1; // Name of the application or service to which the API endpoint belongs
+  string telemetry_key = 2; // Lookup key for retrieving telemetry for this API endpoint
+
+  string route = 3; // The matched route template of the request's URL path. Dynamic segments in the path should be represented by placeholders
+  string method = 4; // The HTTP request method type, e.g. "GET"
 }
