@@ -37,6 +37,7 @@ public class CodeTelemetryServiceIntegrationTest {
 
   private static final String DEFAULT_LANDSCAPE_ID = "mytokenvalue";
   private static final String DEFAULT_LANDSCAPE_SECRET = "mytokensecret";
+  private static final String DEFAULT_INSTRUMENTATION_SCOPE = "scope";
 
   @TestHTTPEndpoint(StructureResource.class)
   @TestHTTPResource("/runtime")
@@ -68,6 +69,7 @@ public class CodeTelemetryServiceIntegrationTest {
             .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
             .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
             .setCodeDescriptor(codeDescriptor)
+            .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
             .build();
 
     companion

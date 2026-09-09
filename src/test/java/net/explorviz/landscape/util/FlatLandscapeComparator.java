@@ -16,6 +16,7 @@ import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.api.v3.model.landscape.ModelType;
 import net.explorviz.landscape.proto.CodeDescriptor;
 
 public class FlatLandscapeComparator {
@@ -46,6 +47,7 @@ public class FlatLandscapeComparator {
                           descriptor.getApplicationName(),
                           null,
                           null,
+                          ModelType.SERVICE,
                           TypeOfAnalysis.RUNTIME,
                           null),
                       new ArrayList<>(),
@@ -85,6 +87,7 @@ public class FlatLandscapeComparator {
                               pathName,
                               fqn.toString(),
                               descriptor.getFileTelemetryKey(),
+                              ModelType.CODE,
                               TypeOfAnalysis.RUNTIME,
                               null),
                           city.flatBaseModel().id(),
@@ -119,6 +122,7 @@ public class FlatLandscapeComparator {
                             pathName,
                             fqn.toString(),
                             null,
+                            ModelType.CODE,
                             TypeOfAnalysis.RUNTIME,
                             null),
                         city.flatBaseModel().id(),

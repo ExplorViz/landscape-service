@@ -16,12 +16,6 @@ import org.neo4j.ogm.session.Session;
 public class HttpTelemetryService {
   public void saveEntity(
       final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
-
-    if (descriptor.getApplicationName().isBlank()) {
-      System.out.println("yoo");
-      System.out.println(descriptor);
-    }
-
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureEndpointPathForCommit(session, entity, descriptor);
       if (success) {

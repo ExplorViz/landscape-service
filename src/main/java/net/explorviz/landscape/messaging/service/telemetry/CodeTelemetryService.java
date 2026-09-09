@@ -73,7 +73,7 @@ public class CodeTelemetryService {
             SET file.telemetryKey = $fileTelemetryKey
             SET function.telemetryKey = $funcTelemetryKey
 
-            MERGE (a)-[CONTAINS]->(sc:Scope {name: $scopeName})
+            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
             MERGE (sc)-[:CONTAINS]->(appRootDir)
 
             RETURN function;

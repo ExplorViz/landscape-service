@@ -47,7 +47,6 @@ public class Scope {
 
   public Scope(final String name) {
     this.name = name;
-    this.version = null;
   }
 
   public Scope(final String name, final String version) {
