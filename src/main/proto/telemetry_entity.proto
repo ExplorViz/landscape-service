@@ -4,15 +4,21 @@ option java_multiple_files = true;
 option java_package = "net.explorviz.landscape.proto";
 option java_outer_classname = "TelemetryEntityProto";
 
+// TelemetryEntity describes runtime structure data derived from OpenTelemetry stream analysis.
 message TelemetryEntity {
   string landscape_token_id = 1;
   string landscape_token_secret = 2;
 
-  optional string git_commit_hash = 3;
+  // Name of the OpenTelemetry instrumentation scope to which this entity's telemetry belongs.
+  // See https://opentelemetry.io/docs/concepts/instrumentation-scope/
+  string instrumentation_scope = 3;
 
+  optional string git_commit_hash = 4;
+
+  // Specifies details depending on the type of entity this message represents
   oneof entity_descriptor {
-    GenericServiceDescriptor generic_service_descriptor = 4;
-    CodeDescriptor code_descriptor = 5;
+    GenericServiceDescriptor generic_service_descriptor = 5;
+    CodeDescriptor code_descriptor = 6;
   }
 }
 
@@ -38,5 +44,5 @@ message CodeDescriptor {
   string function_name = 5; // Name of the function, excluding signature
 
   optional string class_name = 6; // Inner classes may be separated by "."
-  optional string language = 7;
+  optional string language = 7; // Programming language, e.g. "java"
 }
