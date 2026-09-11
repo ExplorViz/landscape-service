@@ -1,7 +1,6 @@
-package net.explorviz.landscape.messaging.service.telemetry;
+package net.explorviz.landscape.messaging.telemetry.handler;
 
 import io.quarkus.logging.Log;
-import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Map;
 import net.explorviz.landscape.ogm.rpc.RpcMethod;
 import net.explorviz.landscape.proto.RpcDescriptor;
@@ -12,10 +11,16 @@ import org.neo4j.ogm.session.Session;
  * Receives entities extracted from telemetry data that describe remote procedure calls and writes
  * the corresponding nodes to the graph.
  */
-@ApplicationScoped
-public class RpcTelemetryService {
-  public void saveEntity(
-      final Session session, final TelemetryEntity entity, final RpcDescriptor descriptor) {
+public final class RpcTelemetryHandler {
+
+  private RpcTelemetryHandler() {}
+
+  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+    if (!entity.hasRpcDescriptor()) {
+      throw new IllegalArgumentException("RPC descriptor is required");
+    }
+
+    final RpcDescriptor descriptor = entity.getRpcDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureMethodPathForCommit(session, entity, descriptor);
@@ -40,7 +45,7 @@ public class RpcTelemetryService {
    * some repository. All remaining missing nodes along the path are created. For the service and
    * method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
-  private boolean ensureMethodPathForCommit(
+  private static boolean ensureMethodPathForCommit(
       final Session session, final TelemetryEntity entity, final RpcDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");
@@ -108,7 +113,7 @@ public class RpcTelemetryService {
    * not be contained in any commit. All missing nodes along the path are created. For the service
    * and method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
-  private boolean ensureMethodPath(
+  private static boolean ensureMethodPath(
       final Session session, final TelemetryEntity entity, final RpcDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");

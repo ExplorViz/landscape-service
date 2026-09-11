@@ -1,6 +1,5 @@
-package net.explorviz.landscape.messaging.service.telemetry;
+package net.explorviz.landscape.messaging.telemetry.handler;
 
-import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Map;
 import net.explorviz.landscape.proto.GenericServiceDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
@@ -10,13 +9,16 @@ import org.neo4j.ogm.session.Session;
  * Receives entities extracted from telemetry data that describe services that cannot be classified
  * more precisely and writes the corresponding nodes to the graph.
  */
-@ApplicationScoped
-public class GenericServiceTelemetryService {
+public final class GenericTelemetryHandler {
 
-  public void saveEntity(
-      final Session session,
-      final TelemetryEntity entity,
-      final GenericServiceDescriptor descriptor) {
+  private GenericTelemetryHandler() {}
+
+  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+    if (!entity.hasGenericServiceDescriptor()) {
+      throw new IllegalArgumentException("Generic descriptor is required");
+    }
+
+    final GenericServiceDescriptor descriptor = entity.getGenericServiceDescriptor();
 
     session.query(
         """

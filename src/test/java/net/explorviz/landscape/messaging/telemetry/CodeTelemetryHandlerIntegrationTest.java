@@ -25,7 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
-public class CodeTelemetryServiceIntegrationTest {
+public class CodeTelemetryHandlerIntegrationTest {
 
   @AutoClose KafkaCompanion companion;
 

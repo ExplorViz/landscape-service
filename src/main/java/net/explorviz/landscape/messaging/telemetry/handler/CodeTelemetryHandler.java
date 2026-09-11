@@ -1,6 +1,5 @@
-package net.explorviz.landscape.messaging.service.telemetry;
+package net.explorviz.landscape.messaging.telemetry.handler;
 
-import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Locale;
 import java.util.Map;
 import net.explorviz.landscape.ogm.Function;
@@ -12,11 +11,16 @@ import org.neo4j.ogm.session.Session;
  * Receives entities extracted from telemetry data that describe functions in code and writes them
  * to the graph.
  */
-@ApplicationScoped
-public class CodeTelemetryService {
+public final class CodeTelemetryHandler {
 
-  public void saveEntity(
-      final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
+  private CodeTelemetryHandler() {}
+
+  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+    if (!entity.hasCodeDescriptor()) {
+      throw new IllegalArgumentException("Code descriptor is required");
+    }
+
+    final CodeDescriptor descriptor = entity.getCodeDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success =
@@ -38,7 +42,7 @@ public class CodeTelemetryService {
    *
    * @return True if the file and function existed and the updates were successful, otherwise false.
    */
-  private boolean updateTelemetryKeyForExistingFileAndFunction(
+  private static boolean updateTelemetryKeyForExistingFileAndFunction(
       final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
 
     final String[] splitFilePath = descriptor.getFilePath().split("/");
@@ -99,7 +103,7 @@ public class CodeTelemetryService {
    * must already exist. If the landscape node is missing, an exception is thrown. For the file and
    * function node, a telemetry key is set regardless of whether the node previously existed or not.
    */
-  private void ensureFunctionPath(
+  private static void ensureFunctionPath(
       final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
 
     final String[] splitFilePath = descriptor.getFilePath().split("/");

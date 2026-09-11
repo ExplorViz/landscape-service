@@ -17,7 +17,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.explorviz.landscape.messaging.TelemetryConsumer;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Clazz;
@@ -38,7 +37,7 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @QuarkusTest
-class CodeTelemetryServiceTest {
+class CodeTelemetryHandlerTest {
 
   @Inject TelemetryConsumer telemetryConsumer;
 

@@ -1,7 +1,6 @@
-package net.explorviz.landscape.messaging.service.telemetry;
+package net.explorviz.landscape.messaging.telemetry.handler;
 
 import io.quarkus.logging.Log;
-import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Map;
 import net.explorviz.landscape.ogm.http.HttpEndpoint;
 import net.explorviz.landscape.proto.HttpDescriptor;
@@ -12,10 +11,17 @@ import org.neo4j.ogm.session.Session;
  * Receives entities extracted from telemetry data that describe HTTP requests and writes the
  * corresponding nodes to the graph.
  */
-@ApplicationScoped
-public class HttpTelemetryService {
-  public void saveEntity(
-      final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
+public final class HttpTelemetryHandler {
+
+  private HttpTelemetryHandler() {}
+
+  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+    if (!entity.hasHttpDescriptor()) {
+      throw new IllegalArgumentException("HTTP descriptor is required");
+    }
+
+    final HttpDescriptor descriptor = entity.getHttpDescriptor();
+
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureEndpointPathForCommit(session, entity, descriptor);
       if (success) {
@@ -40,7 +46,7 @@ public class HttpTelemetryService {
    * is set regardless of whether the node previously existed. The endpoint's supported methods are
    * updated to contain that of the provided entity descriptor.
    */
-  private boolean ensureEndpointPathForCommit(
+  private static boolean ensureEndpointPathForCommit(
       final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
 
     final HttpEndpoint result =
@@ -79,7 +85,7 @@ public class HttpTelemetryService {
    * set regardless of whether the node previously existed. The endpoint's supported methods are
    * updated to contain that of the provided entity descriptor.
    */
-  private boolean ensureEndpointPath(
+  private static boolean ensureEndpointPath(
       final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
 
     final HttpEndpoint result =
