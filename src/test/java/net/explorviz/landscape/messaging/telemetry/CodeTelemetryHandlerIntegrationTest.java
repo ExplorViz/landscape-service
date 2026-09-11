@@ -12,12 +12,11 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.Response;
 import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import java.time.Duration;
-import java.util.List;
 import net.explorviz.landscape.api.v3.StructureResource;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.proto.CodeDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
-import net.explorviz.landscape.util.FlatLandscapeComparator;
+import net.explorviz.landscape.util.FlatLandscapeBuilder;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.AutoClose;
@@ -68,8 +67,8 @@ public class CodeTelemetryHandlerIntegrationTest {
         TelemetryEntity.newBuilder()
             .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
             .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
-            .setCodeDescriptor(codeDescriptor)
             .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
+            .setCodeDescriptor(codeDescriptor)
             .build();
 
     companion
@@ -79,8 +78,10 @@ public class CodeTelemetryHandlerIntegrationTest {
         .awaitCompletion();
 
     FlatLandscapeDto expectedLandscape =
-        FlatLandscapeComparator.landscapeFromCodeEntities(
-            DEFAULT_LANDSCAPE_ID, List.of(entity.getCodeDescriptor()));
+        new FlatLandscapeBuilder()
+            .setLandscapeToken(DEFAULT_LANDSCAPE_ID)
+            .addModelsFromTelemetryEntity(entity)
+            .build();
 
     await()
         .atMost(Duration.ofSeconds(10))

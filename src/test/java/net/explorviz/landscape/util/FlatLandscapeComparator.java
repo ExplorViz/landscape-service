@@ -4,147 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
-import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.api.v3.model.landscape.ModelType;
-import net.explorviz.landscape.proto.CodeDescriptor;
 
+/** Testing utility that can assert equality for the structure of landscape objects. */
 public class FlatLandscapeComparator {
-
-  /**
-   * Takes in a list of {@link CodeDescriptor}s and directly constructs a {@link FlatLandscapeDto}
-   * from it to be used for tests, where the cities correspond to the applications, directories are
-   * represented by districts, and the files within them by buildings. The {@link TypeOfAnalysis} is
-   * set as runtime and the telemetry key is set according to the IDs in the descriptor.
-   */
-  public static FlatLandscapeDto landscapeFromCodeEntities(
-      final String landscapeTokenId, Collection<CodeDescriptor> descriptors) {
-
-    FlatLandscapeDto landscape =
-        new FlatLandscapeDto(landscapeTokenId, new HashMap<>(), new HashMap<>(), new HashMap<>());
-
-    for (CodeDescriptor descriptor : descriptors) {
-      String[] filePath = descriptor.getFilePath().split("/");
-
-      CityDto city =
-          landscape.cities().values().stream()
-              .filter(c -> c.flatBaseModel().name().equals(descriptor.getApplicationName()))
-              .findAny()
-              .orElse(
-                  new CityDto(
-                      new FlatBaseModel(
-                          UUID.randomUUID().toString(),
-                          descriptor.getApplicationName(),
-                          null,
-                          null,
-                          ModelType.SERVICE,
-                          TypeOfAnalysis.RUNTIME,
-                          null),
-                      new ArrayList<>(),
-                      new ArrayList<>(),
-                      new ArrayList<>(),
-                      new ArrayList<>()));
-
-      landscape.cities().putIfAbsent(city.flatBaseModel().id(), city);
-
-      StringBuilder fqn = new StringBuilder();
-      DistrictDto parentDistrict = null;
-
-      for (int i = 0; i < filePath.length; i++) {
-        String pathName = filePath[i];
-
-        if (!fqn.isEmpty()) {
-          fqn.append("/");
-        }
-        fqn.append(pathName);
-
-        final String parentDistrictId =
-            parentDistrict != null ? parentDistrict.flatBaseModel().id() : null;
-
-        if (i == filePath.length - 1) {
-          List<String> containerIdList =
-              parentDistrict != null ? parentDistrict.buildingIds() : city.buildingIds();
-
-          BuildingDto building =
-              containerIdList.stream()
-                  .map(id -> landscape.buildings().get(id))
-                  .filter(b -> b.flatBaseModel().name().equals(pathName))
-                  .findAny()
-                  .orElse(
-                      new BuildingDto(
-                          new FlatBaseModel(
-                              UUID.randomUUID().toString(),
-                              pathName,
-                              fqn.toString(),
-                              descriptor.getFileTelemetryKey(),
-                              ModelType.CODE,
-                              TypeOfAnalysis.RUNTIME,
-                              null),
-                          city.flatBaseModel().id(),
-                          parentDistrictId,
-                          descriptor.getLanguage(),
-                          Map.of()));
-
-          landscape.buildings().putIfAbsent(building.flatBaseModel().id(), building);
-          if (!city.allContainedBuildingIds().contains(building.flatBaseModel().id())) {
-            city.allContainedBuildingIds().add(building.flatBaseModel().id());
-          }
-
-          if (!containerIdList.contains(building.flatBaseModel().id())) {
-            containerIdList.add(building.flatBaseModel().id());
-          }
-
-          continue;
-        }
-
-        List<String> containerIdList =
-            parentDistrict != null ? parentDistrict.districtIds() : city.districtIds();
-
-        DistrictDto district =
-            containerIdList.stream()
-                .map(id -> landscape.districts().get(id))
-                .filter(d -> d.flatBaseModel().name().equals(pathName))
-                .findAny()
-                .orElse(
-                    new DistrictDto(
-                        new FlatBaseModel(
-                            UUID.randomUUID().toString(),
-                            pathName,
-                            fqn.toString(),
-                            null,
-                            ModelType.CODE,
-                            TypeOfAnalysis.RUNTIME,
-                            null),
-                        city.flatBaseModel().id(),
-                        parentDistrictId,
-                        new ArrayList<>(),
-                        new ArrayList<>()));
-
-        landscape.districts().putIfAbsent(district.flatBaseModel().id(), district);
-        if (!city.allContainedDistrictIds().contains(district.flatBaseModel().id())) {
-          city.allContainedDistrictIds().add(district.flatBaseModel().id());
-        }
-
-        if (!containerIdList.contains(district.flatBaseModel().id())) {
-          containerIdList.add(district.flatBaseModel().id());
-        }
-
-        parentDistrict = district;
-      }
-    }
-
-    return landscape;
-  }
 
   /**
    * Assert whether the IDs used within the flat landscape refer to valid landscape objects and
