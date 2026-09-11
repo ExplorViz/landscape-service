@@ -15,10 +15,10 @@ public class HttpEndpoint {
   @Id @GeneratedValue private Long id;
 
   /**
-   * The route template of the request's URL path. Dynamic segments in the path are represented by
-   * placeholders.
+   * The name of the endpoint. This should correspond to the route template of the request's URL
+   * path. Dynamic segments in the path (like an ID) should be represented by placeholders.
    */
-  private String route;
+  private String name;
 
   /**
    * Identifier for looking up telemetry data related to this endpoint (e.g. finding communication).
@@ -34,11 +34,11 @@ public class HttpEndpoint {
     // Empty constructor required by Neo4j OGM
   }
 
-  public HttpEndpoint(final String route) {
-    this.route = route;
+  public HttpEndpoint(final String name) {
+    this.name = name;
   }
 
-  public String getRoute() {
-    return route;
+  public String getName() {
+    return name;
   }
 }

@@ -110,7 +110,7 @@ public class StructureRepository {
               id(n) AS id,
               labels(n) AS labels,
               properties(n) AS properties,
-              coalesce(n.name, n.route) AS name,
+              n.name AS name,
               string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
               id(a) AS cityId,
               childrenIds,
@@ -774,6 +774,15 @@ public class StructureRepository {
     return Long.MAX_VALUE;
   }
 
+  /**
+   * Fetches the structure landscape data for all files in the given repository across all commits.
+   * The resulting structure can be used to animate changes between commits.
+   *
+   * @param session OGM session object
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @return The structure data for all commits in the provided repository
+   */
   private FlatLandscapeDto buildFullSkeleton(
       final Session session, final String landscapeToken, final String repositoryName) {
     final Result result =
@@ -820,6 +829,18 @@ public class StructureRepository {
         buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC));
   }
 
+  /**
+   * Fetches the structure landscape data for all files in the repository that appear in at least
+   * one commit whose author date falls within the provided time range. The resulting structure can
+   * be used to animate changes between commits.
+   *
+   * @param session OGM session object
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @param rangeFrom Start of searched commit time range in nanoseconds since Unix epoch, inclusive
+   * @param rangeTo Start of searched commit time range in nanoseconds since Unix epoch, inclusive
+   * @return The structure data for all commits in the provided time range
+   */
   private FlatLandscapeDto buildScopedSkeleton(
       final Session session,
       final String landscapeToken,

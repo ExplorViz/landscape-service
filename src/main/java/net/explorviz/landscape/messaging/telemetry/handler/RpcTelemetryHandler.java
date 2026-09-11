@@ -91,6 +91,7 @@ public final class RpcTelemetryHandler {
 
             MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
             SET m.telemetryKey = $methodTelemetryKey
+
             RETURN m;
             """,
             Map.of(
@@ -156,6 +157,7 @@ public final class RpcTelemetryHandler {
 
             MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
             SET m.telemetryKey = $methodTelemetryKey
+
             RETURN m;
             """,
             Map.of(

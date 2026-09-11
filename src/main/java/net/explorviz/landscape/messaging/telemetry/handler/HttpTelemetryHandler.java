@@ -58,7 +58,7 @@ public final class HttpTelemetryHandler {
 
             MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})<-[:CONTAINS]-(commit)
+            MERGE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})<-[:CONTAINS]-(commit)
 
             SET e.telemetryKey = $endpointTelemetryKey
             SET e.supportedMethods =
@@ -97,13 +97,13 @@ public final class HttpTelemetryHandler {
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
             OPTIONAL CALL (sc) {
               MATCH (sc) WHERE NOT EXISTS {
-                MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})
+                MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
                 WHERE NOT (:Commit)-[:CONTAINS]->(e)
               }
               // Only executed if previous match was successful
-              CREATE (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})
+              CREATE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
             }
-            MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})
+            MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
             WHERE NOT (:Commit)-[:CONTAINS]->(e)
 
             SET e.telemetryKey = $endpointTelemetryKey

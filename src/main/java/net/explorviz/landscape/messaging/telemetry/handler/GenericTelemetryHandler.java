@@ -67,7 +67,9 @@ public final class GenericTelemetryHandler {
             MATCH (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
             WHERE NOT (:Commit)-[:CONTAINS]->(e)
 
-            SET e.telemetryKey = $telemetryKey;
+            SET e.telemetryKey = $telemetryKey
+
+            RETURN e;
             """,
             Map.of(
                 "tokenId", entity.getLandscapeTokenId(),
@@ -102,7 +104,10 @@ public final class GenericTelemetryHandler {
             MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
             MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
             MERGE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity)<-[:CONTAINS]-(commit)
-            SET e.telemetryKey = $telemetryKey;
+
+            SET e.telemetryKey = $telemetryKey
+
+            RETURN e;
             """,
             Map.of(
                 "tokenId", entity.getLandscapeTokenId(),

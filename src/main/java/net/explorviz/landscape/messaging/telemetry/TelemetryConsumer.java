@@ -56,7 +56,7 @@ public class TelemetryConsumer {
       handler.saveEntity(session, entity);
       tx.commit();
     } catch (Exception e) { // NOPMD
-      Log.error("Failed to process code telemetry entity: " + entity, e);
+      Log.error("Failed to process telemetry entity: " + entity, e);
     }
   }
 }

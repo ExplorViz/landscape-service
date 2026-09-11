@@ -173,6 +173,7 @@ public final class CodeTelemetryHandler {
             WITH *, coalesce(lastCreatedClass, deepestClassOrFile) AS funcParent
             MERGE (funcParent)-[:CONTAINS]->(function:Function {name: $funcName})
             SET function.telemetryKey = $funcTelemetryKey
+
             RETURN function;
             """,
             Map.of(
