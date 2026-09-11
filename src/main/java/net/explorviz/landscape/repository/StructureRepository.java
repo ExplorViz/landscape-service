@@ -81,7 +81,8 @@ public class StructureRepository {
             WHERE
               (rootDir IS NULL OR n <> rootDir) // Application root shouldn't become a district
               AND EXISTS {
-                MATCH (n)-[:CONTAINS]->*(end:Scope|FileRevision|RPCService|HTTPEndpoint)
+                MATCH (n)
+                  -[:CONTAINS]->*(end:FileRevision|RPCService|HTTPEndpoint|GenericTelemetryEntity)
                 WHERE
                   end.telemetryKey IS NOT NULL
                   AND NOT (:Commit)-[:CONTAINS]->(end)

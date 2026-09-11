@@ -100,6 +100,7 @@ public final class HttpTelemetryHandler {
                 MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})
                 WHERE NOT (:Commit)-[:CONTAINS]->(e)
               }
+              // Only executed if previous match was successful
               CREATE (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})
             }
             MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {route: $endpointRoute})

@@ -25,13 +25,6 @@ public class Scope {
 
   private String version;
 
-  /**
-   * Identifier for looking up telemetry data related to this scope (e.g. for communication). Note
-   * this is specifically for generic service telemetry data which could not be further narrowed
-   * down to an entity contained within this scope.
-   */
-  private String telemetryKey;
-
   @Relationship(type = "CONTAINS", direction = Relationship.Direction.OUTGOING)
   private final Set<RpcSystem> rpcSystems = new HashSet<>();
 
@@ -60,10 +53,6 @@ public class Scope {
 
   public String getVersion() {
     return version;
-  }
-
-  public String getTelemetryKey() {
-    return telemetryKey;
   }
 
   public Set<RpcSystem> getRpcSystems() {

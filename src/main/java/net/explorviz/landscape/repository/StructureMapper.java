@@ -29,13 +29,15 @@ public final class StructureMapper {
   private static final String LABEL_RPC_NAMESPACE = "RPCNamespace";
   private static final String LABEL_RPC_SERVICE = "RPCService";
   private static final String LABEL_HTTP_ENDPOINT = "HTTPEndpoint";
+  private static final String LABEL_GENERIC_ENTITY = "GenericTelemetryEntity";
 
   private static final Set<String> CITY_LABELS = Set.of("Application");
 
   private static final Set<String> DISTRICT_LABELS =
-      Set.of("Scope", "Directory", "RPCSystem", "RPCNamespace");
+      Set.of(LABEL_SCOPE, LABEL_DIRECTORY, LABEL_RPC_SYSTEM, LABEL_RPC_NAMESPACE);
+
   private static final Set<String> BUILDING_LABELS =
-      Set.of("FileRevision", "RPCService", "HTTPEndpoint");
+      Set.of(LABEL_FILE_REVISION, LABEL_RPC_SERVICE, LABEL_HTTP_ENDPOINT, LABEL_GENERIC_ENTITY);
 
   private static final Map<String, ModelType> LABEL_TO_TYPE =
       Map.of(
@@ -46,7 +48,8 @@ public final class StructureMapper {
           LABEL_RPC_SYSTEM, ModelType.RPC,
           LABEL_RPC_NAMESPACE, ModelType.RPC,
           LABEL_RPC_SERVICE, ModelType.RPC,
-          LABEL_HTTP_ENDPOINT, ModelType.HTTP);
+          LABEL_HTTP_ENDPOINT, ModelType.HTTP,
+          LABEL_GENERIC_ENTITY, ModelType.UNKNOWN);
 
   public record NodeData(
       Long id,
