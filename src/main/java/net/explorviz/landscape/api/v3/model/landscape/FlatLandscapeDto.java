@@ -1,12 +1,13 @@
 package net.explorviz.landscape.api.v3.model.landscape;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * The central structure data object exchanged with the frontend. Captures the structural state of a
  * specific landscape under some condition, i.e. for some particular git commit or containing only
- * dynamic data from a particular timestamp.
+ * runtime analysis data.
  *
  * <p>Uses a flat data model, meaning that visualization objects do not contain their children
  * directly (leading to deeply nested objects), instead referencing them only via their ID. The
@@ -15,7 +16,6 @@ import java.util.Objects;
  * @param landscapeToken String identifier of the visualization landscape
  * @param cities All city model objects in the landscape, indexed by their ID
  * @param districts All district model objects in the landscape, indexed by their ID
- * @param buildings All building model objects in the landscape, indexed by their ID
  * @param buildings All building model objects in the landscape, indexed by their ID
  */
 public record FlatLandscapeDto(
@@ -29,5 +29,13 @@ public record FlatLandscapeDto(
     Objects.requireNonNull(cities);
     Objects.requireNonNull(districts);
     Objects.requireNonNull(buildings);
+  }
+
+  /**
+   * Creates a new {@link FlatLandscapeDto} with the given landscape token ID where all model maps
+   * are initialized as empty.
+   */
+  public static FlatLandscapeDto newEmptyLandscape(final String landscapeToken) {
+    return new FlatLandscapeDto(landscapeToken, new HashMap<>(), new HashMap<>(), new HashMap<>());
   }
 }

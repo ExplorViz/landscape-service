@@ -1,9 +1,9 @@
 package net.explorviz.landscape;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
-import net.explorviz.landscape.messaging.telemetry.CodeTelemetryServiceIntegrationTest;
+import net.explorviz.landscape.messaging.telemetry.CodeTelemetryHandlerIntegrationTest;
 
 @QuarkusIntegrationTest
-class CodeTelemetryServiceIT extends CodeTelemetryServiceIntegrationTest {
+class CodeTelemetryHandlerIT extends CodeTelemetryHandlerIntegrationTest {
   // Execute the same tests but in packaged mode.
 }

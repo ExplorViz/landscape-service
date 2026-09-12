@@ -1,6 +1,5 @@
-package net.explorviz.landscape.messaging.service.telemetry;
+package net.explorviz.landscape.messaging.telemetry.handler;
 
-import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Locale;
 import java.util.Map;
 import net.explorviz.landscape.ogm.Function;
@@ -12,56 +11,43 @@ import org.neo4j.ogm.session.Session;
  * Receives entities extracted from telemetry data that describe functions in code and writes them
  * to the graph.
  */
-@ApplicationScoped
-public class CodeTelemetryService {
+public final class CodeTelemetryHandler {
 
-  public void saveEntity(
-      final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
+  private CodeTelemetryHandler() {}
 
-    final String[] splitFilePath = descriptor.getFilePath().split("/");
-    final String[] splitClassPath =
-        descriptor.hasClassName() ? descriptor.getClassName().split("\\.") : new String[0];
+  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+    if (!entity.hasCodeDescriptor()) {
+      throw new IllegalArgumentException("Code descriptor is required");
+    }
+
+    final CodeDescriptor descriptor = entity.getCodeDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success =
-          updateTelemetryIdForExistingFileAndFunction(
-              session,
-              entity.getLandscapeTokenId(),
-              descriptor.getApplicationName(),
-              splitFilePath,
-              splitClassPath,
-              descriptor.getFunctionName(),
-              entity.getGitCommitHash(),
-              descriptor.getFileId(),
-              descriptor.getFunctionId());
-
+          updateTelemetryKeyForExistingFileAndFunction(session, entity, descriptor);
       if (success) {
         return;
       }
     }
 
-    ensureFunctionPath(
-        session,
-        entity.getLandscapeTokenId(),
-        descriptor.getApplicationName(),
-        splitFilePath,
-        splitClassPath,
-        descriptor.getFunctionName(),
-        descriptor.getFileId(),
-        descriptor.getFunctionId(),
-        descriptor.getLanguage());
+    ensureFunctionPath(session, entity, descriptor);
   }
 
-  private boolean updateTelemetryIdForExistingFileAndFunction(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String[] filePath,
-      final String[] classPath,
-      final String functionName,
-      final String commitHash,
-      final String fileTelemetryKey,
-      final String funcTelemetryKey) {
+  /**
+   * Retrieves existing file and function nodes from static analysis matching those described by the
+   * entity, where the file must be reachable via its application's root directory and be contained
+   * within a commit whose hash matches that of the entity. All nodes along the file path must
+   * already exist. If a node is found, its telemetry key is set to that of the entity. If no node
+   * is found, then no changes to the graph are made.
+   *
+   * @return True if the file and function existed and the updates were successful, otherwise false.
+   */
+  private static boolean updateTelemetryKeyForExistingFileAndFunction(
+      final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
+
+    final String[] splitFilePath = descriptor.getFilePath().split("/");
+    final String[] splitClassPath =
+        descriptor.hasClassName() ? descriptor.getClassName().split("\\.") : new String[0];
 
     final Function result =
         session.queryForObject(
@@ -90,51 +76,35 @@ public class CodeTelemetryService {
 
             SET file.telemetryKey = $fileTelemetryKey
             SET function.telemetryKey = $funcTelemetryKey
+
             RETURN function;
             """,
             Map.of(
-                "tokenId", landscapeToken,
-                "appName", applicationName,
-                "filePath", filePath,
-                "classPath", classPath,
-                "commitHash", commitHash,
-                "funcName", functionName,
-                "fileTelemetryKey", fileTelemetryKey,
-                "funcTelemetryKey", funcTelemetryKey));
+                "tokenId", entity.getLandscapeTokenId(),
+                "appName", descriptor.getApplicationName(),
+                "filePath", splitFilePath,
+                "classPath", splitClassPath,
+                "commitHash", entity.getGitCommitHash(),
+                "funcName", descriptor.getFunctionName(),
+                "scopeName", entity.getInstrumentationScope(),
+                "fileTelemetryKey", descriptor.getFileTelemetryKey(),
+                "funcTelemetryKey", descriptor.getFunctionTelemetryKey()));
 
     return result != null;
   }
 
   /**
    * Ensures that a path from a landscape node to the specified function node exists, where the file
-   * containing the function should be the runtime version of that file, meaning it should not be
-   * contained in any commit. All missing nodes along the path are created, only the landscape node
-   * must already exist. If the landscape node is missing, an exception is thrown. For the file and
-   * function node, a telemetry key is set regardless of whether the node previously existed or not.
-   *
-   * @param session OGM session object
-   * @param landscapeToken String identifier of the software landscape
-   * @param applicationName Name of the application within which to search / create function
-   * @param filePath Path of the file relative to the application node, where the last array element
-   *     specifies the file name
-   * @param classPath Path of the class within the file. Useful for specifying inner classes, e.g.
-   *     ["MyClass", "MyInnerClass"]
-   * @param functionName Name of the function node to search for
-   * @param fileTelemetryKey Identifier by which to look up telemetry for the file
-   * @param functionTelemetryKey Identifier by which to look up telemetry for the function
-   * @param language Programming language to set for the file node. Only applied if no file already
-   *     exists. Null may be passed if no language is given
+   * containing the function is the runtime version of that file and should be reachable via an
+   * instrumentation scope. All missing nodes along the path are created. For the file and function
+   * node, a telemetry key is set regardless of whether the node previously existed or not.
    */
-  private void ensureFunctionPath(
-      final Session session,
-      final String landscapeToken,
-      final String applicationName,
-      final String[] filePath,
-      final String[] classPath,
-      final String functionName,
-      final String fileTelemetryKey,
-      final String functionTelemetryKey,
-      final String language) {
+  private static void ensureFunctionPath(
+      final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
+
+    final String[] splitFilePath = descriptor.getFilePath().split("/");
+    final String[] splitClassPath =
+        descriptor.hasClassName() ? descriptor.getClassName().split("\\.") : new String[0];
 
     final Function result =
         session.queryForObject(
@@ -144,9 +114,10 @@ public class CodeTelemetryService {
             MERGE (l)-[:CONTAINS]->(app:Application {name: $appName})
             MERGE (app)-[:HAS_ROOT]->(appRoot:Directory)
             ON CREATE SET appRoot.name = "*"
+            MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
 
             // Find longest file path match
-            MATCH p = (appRoot)-[:CONTAINS]->*(deepestNode:Directory|FileRevision)
+            MATCH p = (sc)-[:CONTAINS]->*(deepestNode:Scope|Directory|FileRevision)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $filePath[j-1])
               AND (length(p) < size($filePath) XOR "FileRevision" IN labels(deepestNode))
@@ -155,7 +126,7 @@ public class CodeTelemetryService {
             ORDER BY length(p) DESC
             LIMIT 1
 
-            // Create missing directories + file, if any
+            // Create missing directories + file, if necessary
             WITH *, $filePath[length(p)..] AS remainingFilePath
             OPTIONAL CALL (*) {
               UNWIND [x in range(0, size(remainingFilePath)-1) | x] AS idx
@@ -197,21 +168,22 @@ public class CodeTelemetryService {
             WITH *, coalesce(lastCreatedClass, deepestClassOrFile) AS funcParent
             MERGE (funcParent)-[:CONTAINS]->(function:Function {name: $funcName})
             SET function.telemetryKey = $funcTelemetryKey
+
             RETURN function;
             """,
             Map.of(
-                "tokenId", landscapeToken,
-                "appName", applicationName,
-                "filePath", filePath,
-                "classPath", classPath,
-                "funcName", functionName,
-                "fileTelemetryKey", fileTelemetryKey,
-                "language", language.toUpperCase(Locale.US),
-                "funcTelemetryKey", functionTelemetryKey));
+                "tokenId", entity.getLandscapeTokenId(),
+                "appName", descriptor.getApplicationName(),
+                "scopeName", entity.getInstrumentationScope(),
+                "filePath", splitFilePath,
+                "classPath", splitClassPath,
+                "funcName", descriptor.getFunctionName(),
+                "fileTelemetryKey", descriptor.getFileTelemetryKey(),
+                "language", descriptor.getLanguage().toUpperCase(Locale.US),
+                "funcTelemetryKey", descriptor.getFunctionTelemetryKey()));
 
     if (result == null) {
-      throw new IllegalStateException(
-          "Failed to create path to function node. The landscape might be missing.");
+      throw new IllegalStateException("Failed to create path to function node.");
     }
   }
 }

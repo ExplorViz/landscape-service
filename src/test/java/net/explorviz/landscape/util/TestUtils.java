@@ -92,6 +92,7 @@ public class TestUtils {
               COUNT {(:Commit)} AS commits,
               COUNT {(:Tag)} AS tags,
               COUNT {(:Application)} AS applications,
+              COUNT {(:Scope)} AS scopes,
               COUNT {(:Directory)} AS directories,
               COUNT {(:FileRevision)} AS files,
               COUNT {(:Clazz)} AS classes,

@@ -23,7 +23,7 @@ dependencies {
     implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-container-image-jib")
-    implementation("org.neo4j:neo4j-ogm-quarkus:4.2.5")
+    implementation("org.neo4j:neo4j-ogm-quarkus:4.2.9")
 
     implementation("io.quarkus:quarkus-messaging-kafka")
 

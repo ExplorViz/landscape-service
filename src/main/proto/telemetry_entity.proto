@@ -4,26 +4,74 @@ option java_multiple_files = true;
 option java_package = "net.explorviz.landscape.proto";
 option java_outer_classname = "TelemetryEntityProto";
 
+// TelemetryEntity describes runtime structure data derived from OpenTelemetry stream analysis.
 message TelemetryEntity {
   string landscape_token_id = 1;
   string landscape_token_secret = 2;
 
+  // Name of the OpenTelemetry instrumentation scope to which this entity's telemetry belongs.
+  // See https://opentelemetry.io/docs/concepts/instrumentation-scope/
+  string instrumentation_scope = 3;
+
   optional string git_commit_hash = 4;
 
+  // Specifies details depending on the type of entity this message represents
   oneof entity_descriptor {
-    CodeDescriptor code_descriptor = 5;
+    GenericServiceDescriptor generic_service_descriptor = 5;
+    CodeDescriptor code_descriptor = 6;
+    RpcDescriptor rpc_descriptor = 7;
+    HttpDescriptor http_descriptor = 8;
   }
 }
 
+/**
+ * GenericServiceDescriptor describes a service for which no entity information
+ * apart from the service name could be deducted.
+ */
+message GenericServiceDescriptor {
+  string service_telemetry_key = 1; // Lookup key for retrieving telemetry for this service
+  string service_name = 2;
+}
+
+/**
+ * CodeDescriptor describes a function in code.
+ */
 message CodeDescriptor {
   string application_name = 1;
 
-  string file_id = 2; // Lookup key for retrieving telemetry for this file
+  string file_telemetry_key = 2; // Lookup key for retrieving telemetry for this file
   string file_path = 3; // File path, separated by "/"
 
-  string function_id = 4; // Lookup key for retrieving telemetry for this function
+  string function_telemetry_key = 4; // Lookup key for retrieving telemetry for this function
   string function_name = 5; // Name of the function, excluding signature
 
   optional string class_name = 6; // Inner classes may be separated by "."
-  optional string language = 7;
+  optional string language = 7; // Programming language, e.g. "java"
+}
+
+/**
+ * RpcDescriptor describes a method within a remote procedure call service (e.g. gRPC).
+ */
+message RpcDescriptor {
+  string application_name = 1; // Name of the application or service hosting the RPC server
+
+  string service_telemetry_key = 2; // Lookup key for retrieving telemetry for this RPC service
+  string service_name = 3; // Fully-qualified name of the RPC service, separated by "."
+
+  string method_telemetry_key = 4; // Lookup key for retrieving telemetry for this RPC method
+  string method_name = 5; // Name of the RPC method (unqualified) as provided in the service definition
+
+  optional string system_name = 6; // Name of the used RPC system, e.g. "grpc", "dubbo"
+}
+
+/**
+ * HttpDescriptor describes a request to an HTTP API endpoint. An endpoint is uniquely identified
+ * by the application it belongs to and its route. A single endpoint can support multiple HTTP methods.
+ */
+message HttpDescriptor {
+  string application_name = 1; // Name of the application or service to which the API endpoint belongs
+  string telemetry_key = 2; // Lookup key for retrieving telemetry for this API endpoint
+
+  string route = 3; // The matched route template of the request's URL path. Dynamic segments in the path should be represented by placeholders
+  string method = 4; // The HTTP request method type, e.g. "GET"
 }

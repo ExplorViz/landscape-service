@@ -11,6 +11,12 @@ final class LandscapeBaseModelDiffApplier {
       final FlatBaseModel base, final String newId, final CommitComparison comp) {
 
     return new FlatBaseModel(
-        newId, base.name(), base.fqn(), base.telemetryKey(), base.originOfData(), comp);
+        newId,
+        base.name(),
+        base.fqn(),
+        base.telemetryKey(),
+        base.type(),
+        base.originOfData(),
+        comp);
   }
 }

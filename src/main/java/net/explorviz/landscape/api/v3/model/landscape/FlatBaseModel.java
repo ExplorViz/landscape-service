@@ -15,6 +15,8 @@ import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
  * @param fqn The fully-qualified name for this visualization object, if applicable. This allows
  *     faster lookup than having to construct it from the visualization hierarchy
  * @param telemetryKey Identifier by which telemetry data about this entity can be searched
+ * @param type Classification of this model's role or origin. Can be used for filtering or visually
+ *     distinguishing models that come from different analysis sources.
  * @param originOfData Analysis method through which this object was discovered
  * @param commitComparison Only applicable to git analysis: Indicates this object's relationship
  *     regarding two selected commits
@@ -25,6 +27,7 @@ public record FlatBaseModel(
     String name,
     @JsonInclude(Include.NON_NULL) String fqn,
     @JsonInclude(Include.NON_NULL) String telemetryKey,
+    @JsonInclude(Include.NON_NULL) ModelType type,
     @JsonInclude(Include.NON_NULL) TypeOfAnalysis originOfData,
     @JsonInclude(Include.NON_NULL) CommitComparison commitComparison) {
 

@@ -1,4 +1,4 @@
-package net.explorviz.landscape;
+package net.explorviz.landscape.messaging;
 
 import static net.explorviz.landscape.util.TestUtils.resetDatabase;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -7,8 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.util.Map;
-import net.explorviz.landscape.messaging.TelemetryConsumer;
-import net.explorviz.landscape.messaging.TokenEventConsumer;
+import net.explorviz.landscape.messaging.telemetry.TelemetryConsumer;
 import net.explorviz.landscape.proto.CodeDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.proto.EventType;

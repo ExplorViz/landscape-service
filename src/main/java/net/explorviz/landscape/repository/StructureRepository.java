@@ -1,14 +1,13 @@
 package net.explorviz.landscape.repository;
 
+import static net.explorviz.landscape.repository.StructureMapper.buildFlatLandscape;
+
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
@@ -29,7 +28,6 @@ import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
 @SuppressWarnings({
-  "PMD.AssignmentInOperand",
   "PMD.AvoidDuplicateLiterals",
   "PMD.AvoidLiteralsInIfCondition",
   "PMD.CognitiveComplexity",
@@ -50,8 +48,6 @@ public class StructureRepository {
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
   private static final int SCOPED_ROUTE_COMMIT_CAP = 1500;
   private static final long SCOPED_ROUTE_PAIR_CAP = 3000000L;
-
-  @Inject StructureMapper mapper;
 
   private record CommitMeta(String hash, long authorDate) {}
 
@@ -78,64 +74,92 @@ public class StructureRepository {
     final Result result =
         session.query(
             """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(a:Application)
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
+            OPTIONAL MATCH (a)-[:HAS_ROOT]->(rootDir:Directory)
 
-            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS]->+(file:FileRevision)
-            WHERE file.telemetryKey IS NOT NULL
+            MATCH p = (a)-[:CONTAINS]->*(n)
+            WHERE
+              (rootDir IS NULL OR n <> rootDir) // Application root shouldn't become a district
+              AND EXISTS {
+                MATCH (n)
+                  -[:CONTAINS]->*(end:FileRevision|RPCService|HTTPEndpoint|GenericTelemetryEntity)
+                WHERE
+                  end.telemetryKey IS NOT NULL
+                  AND NOT (:Commit)-[:CONTAINS]->(end)
+              }
 
-            WITH a, nodes(p) AS pathNodes
-            UNWIND pathNodes AS n
-            WITH DISTINCT n, a
+            // Remove application root directory from path, as it should not become a district.
+            WITH a, n, [x IN nodes(p) WHERE coalesce(x <> rootDir, true)] AS pathNodes
+
+            WITH a, collect(DISTINCT n) AS allMatchedNodes, collect(DISTINCT pathNodes) AS matches
+
+            UNWIND matches AS pathNodes
+            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
+
+            // Determine child IDs, where only previously matched nodes should qualify.
+            WITH *, [(n)-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)] AS childrenIds
+
             RETURN
               id(n) AS id,
               labels(n) AS labels,
               properties(n) AS properties,
+              n.name AS name,
+              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
               id(a) AS cityId,
-              [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds,
-              [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
+              childrenIds,
+              id(pathNodes[-2]) AS parentId
             """,
             Map.of("tokenId", landscapeToken));
-    return mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME, null);
+
+    return buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME);
   }
 
   public FlatLandscapeDto fetchFlatLandscapeForStaticData(
       final Session session, final StaticDataRequest request) {
-    final String query =
-        """
-        MATCH (l:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(:Commit {hash: $commitHash})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
-
-        MATCH p = (a:Application)-[:HAS_ROOT]->(root:Directory)-[:CONTAINS*0..]->(f)
-        WHERE (l)-[:CONTAINS]->(a)
-
-        WITH DISTINCT a, nodes(p) AS pathNodes
-
-        UNWIND [a] + pathNodes AS n
-        WITH DISTINCT n, a
-        RETURN
-          id(n) AS id,
-          labels(n) AS labels,
-          properties(n) AS properties,
-          id(a) AS cityId,
-          [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds,
-          [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
-        """;
-
     final Result result =
         session.query(
-            query,
+            """
+            MATCH (l:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(r:Repository {name: $repoName})
+              -[:CONTAINS]->(c:Commit {hash: $commitHash})
+
+            // Find relevant applications
+            MATCH (a:Application)-[:HAS_ROOT]->(rootDir:Directory)
+            WHERE (rootDir)<-[:CONTAINS*0..]-(:Directory)<-[:HAS_ROOT]-(r)
+
+            // Find path from application to all required nodes
+            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(n)
+            WHERE (n)-[:CONTAINS*0..]->(:FileRevision)<-[:CONTAINS]-(c)
+
+            // Remove application root directory from path, as it should not become a district.
+            WITH a, n, nodes(p)[0] + nodes(p)[2..] AS pathNodes
+
+            WITH a, collect(DISTINCT n) AS allMatchedNodes, collect(DISTINCT pathNodes) AS matches
+
+            UNWIND matches AS pathNodes
+            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
+
+            // Determine child IDs, where only previously matched nodes should qualify.
+            // Children of app root directory should be given directly to the application instead.
+            WITH *, [
+              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)
+            ] AS childrenIds
+
+            RETURN
+              id(n) AS id,
+              labels(n) AS labels,
+              properties(n) AS properties,
+              n.name AS name,
+              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
+              id(a) AS cityId,
+              childrenIds,
+              id(pathNodes[-2]) AS parentId
+            """,
             Map.of(
-                "tokenId",
-                request.landscapeToken(),
-                "repoName",
-                request.repositoryName(),
-                "commitHash",
-                request.commitHash()));
-    return mapper.buildFlatLandscape(
-        request.landscapeToken(), result, TypeOfAnalysis.STATIC, request.repositoryName());
+                "tokenId", request.landscapeToken(),
+                "repoName", request.repositoryName(),
+                "commitHash", request.commitHash()));
+    return buildFlatLandscape(request.landscapeToken(), result, TypeOfAnalysis.STATIC);
   }
 
   public FlatLandscapeDto fetchCombinedFlatLandscape(
@@ -743,35 +767,73 @@ public class StructureRepository {
     return Long.MAX_VALUE;
   }
 
+  /**
+   * Fetches the structure landscape data for all files in the given repository across all commits.
+   * The resulting structure can be used to animate changes between commits.
+   *
+   * @param session OGM session object
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @return The structure data for all commits in the provided repository
+   */
   private FlatLandscapeDto buildFullSkeleton(
       final Session session, final String landscapeToken, final String repositoryName) {
-    final String query =
-        """
-        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
-        MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(f:FileRevision)
-        WHERE f.repoName = $repoName
-
-        WITH DISTINCT a, nodes(p) AS pathNodes
-
-        UNWIND [a] + pathNodes AS n
-        WITH DISTINCT n, a
-        RETURN
-          id(n) AS id,
-          labels(n) AS labels,
-          apoc.map.fromPairs(
-            [k IN keys(n)
-             WHERE k = 'name' OR k = 'language' OR k STARTS WITH 'metrics.'
-             | [k, n[k]]]
-          ) AS properties,
-          id(a) AS cityId,
-          [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds
-        """;
     final Result result =
-        session.query(query, Map.of("tokenId", landscapeToken, "repoName", repositoryName));
+        session.query(
+            """
+            MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
+            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(n:Directory|FileRevision)
+            WHERE (n)-[:CONTAINS*0..]->(:FileRevision {repoName: $repoName})
+
+            // Remove application root directory from path, as it should not become a district.
+            WITH a, n, nodes(p)[0] + nodes(p)[2..] AS pathNodes
+
+            WITH a,
+              [a] + collect(DISTINCT n) AS allMatchedNodes,
+              [[a]] + collect(DISTINCT pathNodes) AS matches
+
+            UNWIND matches AS pathNodes
+            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
+
+            // Determine child IDs, where only previously matched nodes should qualify.
+            // Children of app root directory should be given directly to the application instead.
+            WITH *, [
+              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(m) WHERE m IN allMatchedNodes | id(m)
+            ] AS childrenIds
+
+            RETURN
+              id(n) AS id,
+              labels(n) AS labels,
+              apoc.map.fromPairs(
+                [k IN keys(n)
+                 WHERE k = 'language' OR k STARTS WITH 'metrics.'
+                 | [k, n[k]]]
+              ) AS properties,
+              n.name AS name,
+              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
+              id(a) AS cityId,
+              childrenIds,
+              id(pathNodes[-2]) AS parentId
+            """,
+            Map.of(
+                "tokenId", landscapeToken,
+                "repoName", repositoryName));
     return deduplicateBuildingsByFqn(
-        mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
+        buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC));
   }
 
+  /**
+   * Fetches the structure landscape data for all files in the repository that appear in at least
+   * one commit whose author date falls within the provided time range. The resulting structure can
+   * be used to animate changes between commits.
+   *
+   * @param session OGM session object
+   * @param landscapeToken String identifier of the landscape
+   * @param repositoryName Name of the repository for which to retrieve structure data
+   * @param rangeFrom Start of searched commit time range in nanoseconds since Unix epoch, inclusive
+   * @param rangeTo Start of searched commit time range in nanoseconds since Unix epoch, inclusive
+   * @return The structure data for all commits in the provided time range
+   */
   private FlatLandscapeDto buildScopedSkeleton(
       final Session session,
       final String landscapeToken,
@@ -779,164 +841,61 @@ public class StructureRepository {
       final long rangeFrom,
       final long rangeTo) {
 
-    final String fileQuery =
-        """
-        MATCH (:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(c:Commit)
-        WHERE coalesce(c.authorDate, 0) <> 0
-          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
-          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
-        MATCH (c)-[:CONTAINS]->(f:FileRevision)
-        WITH f, c.authorDate AS d
-        ORDER BY d DESC
-        WITH f.filePath AS filePath, head(collect(f)) AS rep
-        RETURN
-          id(rep) AS id,
-          filePath AS filePath,
-          rep.name AS name,
-          rep.language AS language,
-          apoc.map.fromPairs(
-            [k IN keys(rep) WHERE k STARTS WITH 'metrics.' | [k, rep[k]]]
-          ) AS metrics
-        """;
-
-    final String dirQuery =
-        """
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
-        MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(d:Directory)
-        RETURN
-          id(a) AS cityId,
-          a.name AS cityName,
-          id(d) AS id,
-          d.name AS name,
-          [x IN nodes(p)[2..] | x.name] AS pathParts
-        """;
-
-    final Result dirResult = session.query(dirQuery, Map.of("tokenId", landscapeToken));
-    final Map<String, Long> realDirIdByPath = new HashMap<>();
-    final Map<String, String> dirNameByPath = new HashMap<>();
-    long cityId = -1L;
-    String cityName = repositoryName;
-    for (final Map<String, Object> row : dirResult) {
-      cityId = ((Number) row.get("cityId")).longValue();
-      cityName = (String) row.get("cityName");
-      final String path = joinPathParts(row.get("pathParts"));
-      realDirIdByPath.put(path, ((Number) row.get("id")).longValue());
-      dirNameByPath.put(path, (String) row.get("name"));
-    }
-
-    final Result fileResult =
+    final Result result =
         session.query(
-            fileQuery,
+            """
+            MATCH (:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(c:Commit)
+            WHERE
+              coalesce(c.authorDate, 0) <> 0
+              AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
+              AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
+            MATCH (c)-[:CONTAINS]->(f:FileRevision)
+            WITH f, c.authorDate AS d
+            ORDER BY d DESC
+            WITH f.filePath AS filePath, head(collect(f)) AS rep
+
+            // Match all relevant ancestor nodes in the application structure.
+            // The application's root directory is excluded since should not become a district.
+            MATCH (n:Application|Directory|FileRevision)-[:CONTAINS|HAS_ROOT]->*(rep)
+            WHERE NOT (:Application)-[:HAS_ROOT]->(n)
+
+            WITH collect(DISTINCT n) AS allMatchedNodes
+            UNWIND allMatchedNodes AS n
+
+            // Find full path from application to node
+            CALL (n) {
+              MATCH p = (a:Application)-[:CONTAINS|HAS_ROOT]->*(n)
+              RETURN p, a
+              LIMIT 1
+            }
+
+            // Remove application root directory from the path, as it should not contribute to fqn
+            WITH a, n, allMatchedNodes, nodes(p)[0] + nodes(p)[2..] AS pathNodes
+
+            // When determining child IDs, include children of app root directory in app's children
+            WITH *, [
+              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(m) WHERE m IN allMatchedNodes | id(m)
+            ] AS childrenIds
+
+            RETURN
+              id(n) AS id,
+              labels(n) AS labels,
+              properties(n) AS properties,
+              n.name AS name,
+              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
+              id(a) AS cityId,
+              childrenIds,
+              id(pathNodes[-2]) AS parentId
+            """,
             Map.of(
                 "tokenId", landscapeToken,
                 "repoName", repositoryName,
                 "rangeFrom", rangeFrom,
                 "rangeTo", rangeTo));
 
-    final List<Map<String, Object>> rows = new ArrayList<>();
-    final Map<String, List<Long>> childrenByDir = new HashMap<>();
-    final Set<String> neededDirs = new LinkedHashSet<>();
-    neededDirs.add("");
-
-    for (final Map<String, Object> row : fileResult) {
-      final String filePath = (String) row.get("filePath");
-      if (filePath == null) {
-        continue;
-      }
-      final long id = ((Number) row.get("id")).longValue();
-
-      final Map<String, Object> properties = new HashMap<>();
-      properties.put("name", row.get("name"));
-      properties.put("language", row.get("language"));
-      if (row.get("metrics") instanceof Map<?, ?> metrics) {
-        metrics.forEach((k, v) -> properties.put(String.valueOf(k), v));
-      }
-      rows.add(nodeRow(id, "FileRevision", properties, cityId, List.of()));
-
-      final String parent = parentPath(filePath);
-      childrenByDir.computeIfAbsent(parent, k -> new ArrayList<>()).add(id);
-      for (String p = parent; !p.isEmpty(); p = parentPath(p)) {
-        neededDirs.add(p);
-      }
-    }
-    final Map<String, Long> dirIdByPath = new HashMap<>();
-    long syntheticId = -2L;
-    for (final String path : neededDirs) {
-      final Long real = realDirIdByPath.get(path);
-      dirIdByPath.put(path, real != null ? real : syntheticId--);
-    }
-    for (final String path : neededDirs) {
-      if (!path.isEmpty()) {
-        childrenByDir
-            .computeIfAbsent(parentPath(path), k -> new ArrayList<>())
-            .add(dirIdByPath.get(path));
-      }
-    }
-    for (final String path : neededDirs) {
-      final Map<String, Object> properties = new HashMap<>();
-      properties.put("name", dirNameByPath.getOrDefault(path, lastSegment(path)));
-      rows.add(
-          nodeRow(
-              dirIdByPath.get(path),
-              "Directory",
-              properties,
-              cityId,
-              childrenByDir.getOrDefault(path, List.of())));
-    }
-
-    final Map<String, Object> appProperties = new HashMap<>();
-    appProperties.put("name", cityName);
-    rows.add(nodeRow(cityId, "Application", appProperties, cityId, List.of(dirIdByPath.get(""))));
-
-    return mapper.buildFlatLandscape(landscapeToken, rows, TypeOfAnalysis.STATIC, repositoryName);
-  }
-
-  /** One node row in the shape {@code StructureMapper.parseNodeData} expects. */
-  private static Map<String, Object> nodeRow(
-      final long id,
-      final String label,
-      final Map<String, Object> properties,
-      final long cityId,
-      final List<Long> childrenIds) {
-    final Map<String, Object> row = new HashMap<>();
-    row.put("id", id);
-    row.put("labels", List.of(label));
-    row.put("properties", properties);
-    row.put("cityId", cityId);
-    row.put("childrenIds", childrenIds);
-    return row;
-  }
-
-  private static String parentPath(final String path) {
-    final int index = path.lastIndexOf('/');
-    return index < 0 ? "" : path.substring(0, index);
-  }
-
-  private static String lastSegment(final String path) {
-    final int index = path.lastIndexOf('/');
-    return index < 0 ? path : path.substring(index + 1);
-  }
-
-  private static String joinPathParts(final Object parts) {
-    final StringBuilder joined = new StringBuilder();
-    if (parts instanceof Object[] array) {
-      for (final Object part : array) {
-        if (joined.length() > 0) {
-          joined.append('/');
-        }
-        joined.append(part);
-      }
-    } else if (parts instanceof Iterable<?> iterable) {
-      for (final Object part : iterable) {
-        if (joined.length() > 0) {
-          joined.append('/');
-        }
-        joined.append(part);
-      }
-    }
-    return joined.toString();
+    return buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC);
   }
 
   private FlatLandscapeDto deduplicateBuildingsByFqn(final FlatLandscapeDto raw) {

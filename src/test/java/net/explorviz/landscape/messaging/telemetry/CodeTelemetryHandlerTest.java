@@ -17,7 +17,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.explorviz.landscape.messaging.TelemetryConsumer;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Clazz;
@@ -38,7 +37,7 @@ import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
 @QuarkusTest
-class CodeTelemetryServiceTest {
+class CodeTelemetryHandlerTest {
 
   @Inject TelemetryConsumer telemetryConsumer;
 
@@ -47,11 +46,13 @@ class CodeTelemetryServiceTest {
   private Session session;
   private String landscapeToken;
   private String baseAppName;
+  private String baseScopeName;
 
   @BeforeEach
   void cleanup() {
     landscapeToken = "mytokenvalue";
     baseAppName = "myApp";
+    baseScopeName = "myScope";
 
     session = sessionFactory.openSession();
     resetDatabase(session);
@@ -76,6 +77,7 @@ class CodeTelemetryServiceTest {
     TelemetryEntity.Builder baseEntityBuilder() {
       return TelemetryEntity.newBuilder()
           .setLandscapeTokenId(landscapeToken)
+          .setInstrumentationScope(baseScopeName)
           .setCodeDescriptor(
               CodeDescriptor.newBuilder()
                   .setApplicationName(baseAppName)
@@ -92,6 +94,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -104,7 +107,7 @@ class CodeTelemetryServiceTest {
               """
               MATCH (:Landscape {tokenId: $landscapeToken})
                 -[:CONTAINS]->(app:Application {name: $appName})
-                -[:HAS_ROOT]->(:Directory)
+                -[:CONTAINS]->(:Scope {name: $scopeName})
                 -[:CONTAINS]->(:Directory {name: $dirOne})
                 -[:CONTAINS]->(:Directory {name: $dirTwo})
                 -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -120,6 +123,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .functions(1)
@@ -136,7 +140,7 @@ class CodeTelemetryServiceTest {
           RETURN EXISTS {
             MATCH (:Landscape {tokenId: $landscapeToken})
               -[:CONTAINS]->(app:Application {name: $appName})
-              -[:HAS_ROOT]->(:Directory)
+              -[:CONTAINS]->(:Scope {name: $scopeName})
               -[:CONTAINS]->(:Directory {name: $dirOne})
               -[:CONTAINS]->(:Directory {name: $dirTwo})
               -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -153,6 +157,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -181,6 +186,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .functions(1)
@@ -212,6 +218,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -227,7 +234,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(d3:Directory {name: $dirThree})
@@ -248,6 +255,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(2)
               .functions(2)
@@ -275,6 +283,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -289,7 +298,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -308,6 +317,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .functions(2)
@@ -337,6 +347,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -349,7 +360,7 @@ class CodeTelemetryServiceTest {
               """
               MATCH (:Landscape {tokenId: $landscapeToken})
                 -[:CONTAINS]->(app:Application {name: $appName})
-                -[:HAS_ROOT]->(:Directory)
+                -[:CONTAINS]->(:Scope {name: $scopeName})
                 -[:CONTAINS]->(:Directory {name: $dirOne})
                 -[:CONTAINS]->(:Directory {name: $dirTwo})
                 -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -375,6 +386,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .functions(1)
@@ -410,6 +422,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -426,7 +439,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(sharedDir:Directory {name: $dirThree})
@@ -461,6 +474,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(5)
               .files(2)
               .functions(2)
@@ -487,6 +501,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -503,7 +518,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -522,6 +537,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .classes(3)
@@ -560,6 +576,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -577,7 +594,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -599,6 +616,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .classes(3)
@@ -638,6 +656,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -655,7 +674,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -680,6 +699,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .classes(3)
@@ -708,6 +728,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -724,7 +745,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -743,6 +764,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .classes(3)
@@ -784,6 +806,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", baseFilePath.get(0));
       params.put("dirTwo", baseFilePath.get(1));
       params.put("dirThree", baseFilePath.get(2));
@@ -801,7 +824,7 @@ class CodeTelemetryServiceTest {
               RETURN EXISTS {
                 MATCH (:Landscape {tokenId: $landscapeToken})
                   -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(:Directory {name: $dirThree})
@@ -823,6 +846,7 @@ class CodeTelemetryServiceTest {
           ExpectedCounts.builder()
               .landscapes(1)
               .applications(1)
+              .scopes(1)
               .directories(4)
               .files(1)
               .classes(3)
@@ -840,6 +864,7 @@ class CodeTelemetryServiceTest {
     private String baseFileName;
     private List<String> baseFilePath;
     private String baseFileHash;
+    private String baseFileTelemetryKey;
     private String baseFunctionName;
 
     private void buildDefaultStaticData(Session session) {
@@ -883,6 +908,7 @@ class CodeTelemetryServiceTest {
       baseFileName = "MyClass.java";
       baseFilePath = ImmutableList.<String>builder().addAll(baseDirNames).add(baseFileName).build();
       baseFileHash = "1";
+      baseFileTelemetryKey = "myFileKey";
       baseFunctionName = "myMethod";
 
       buildDefaultStaticData(session);
@@ -891,6 +917,7 @@ class CodeTelemetryServiceTest {
     TelemetryEntity.Builder baseEntityBuilder() {
       return TelemetryEntity.newBuilder()
           .setLandscapeTokenId(landscapeToken)
+          .setInstrumentationScope(baseScopeName)
           .setCodeDescriptor(
               CodeDescriptor.newBuilder()
                   .setApplicationName(baseAppName)
@@ -949,6 +976,7 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(1)
               .applications(1)
+              .scopes(0)
               .directories(4)
               .functions(1)
               .build());
@@ -973,6 +1001,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("repoRoot", filePath.get(0));
       params.put("dirOne", filePath.get(1));
       params.put("dirTwo", filePath.get(2));
@@ -992,12 +1021,16 @@ class CodeTelemetryServiceTest {
                   -[:CONTAINS]->(:Directory {name: $dirOne})
                   -[:CONTAINS]->(:Directory {name: $dirTwo})
                   -[:CONTAINS]->(d:Directory {name: $dirThree})
-                  -[:CONTAINS]->(fileD:FileRevision {name: $fileName})
-                  -[:CONTAINS]->(funD:Function {name: $funName})
-
-                MATCH (d)
                   -[:CONTAINS]->(fileS:FileRevision {name: $fileName, hash: $fileHash})
                   -[:CONTAINS]->(funS:Function {name: $funName})
+
+                MATCH (app)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(d:Directory {name: $dirThree})
+                  -[:CONTAINS]->(fileD:FileRevision {name: $fileName})
+                  -[:CONTAINS]->(funD:Function {name: $funName})
                 WHERE fileD.hash IS NULL AND funS <> funD
               } as exists;
               """,
@@ -1013,14 +1046,15 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(2)
               .applications(1)
-              .directories(4)
+              .scopes(1)
+              .directories(7)
               .functions(2)
               .build());
     }
 
     /**
      * If a commit hash is included in the entity and the corresponding commit, file and function
-     * nodes exist, then no new nodes should be created.
+     * nodes exist, then no new nodes should be created. Only the telemetry key should be updated.
      */
     @Test
     void testPersistEntityWithCommitAndStaticDataExists() {
@@ -1033,7 +1067,8 @@ class CodeTelemetryServiceTest {
                   CodeDescriptor.newBuilder()
                       .setApplicationName(baseAppName)
                       .setFunctionName(baseFunctionName)
-                      .setFilePath(String.join("/", filePath)))
+                      .setFilePath(String.join("/", filePath))
+                      .setFileTelemetryKey(baseFileTelemetryKey))
               .setGitCommitHash(baseCommitHash)
               .build();
 
@@ -1047,6 +1082,7 @@ class CodeTelemetryServiceTest {
       params.put("dirThree", filePath.get(2));
       params.put("fileName", baseFileName);
       params.put("fileHash", baseFileHash);
+      params.put("fileTelemetryKey", baseFileTelemetryKey);
       params.put("funName", baseFunctionName);
       params.put("commitHash", baseCommitHash);
 
@@ -1060,8 +1096,11 @@ class CodeTelemetryServiceTest {
                 -[:CONTAINS]->(:Directory {name: $dirOne})
                 -[:CONTAINS]->(:Directory {name: $dirTwo})
                 -[:CONTAINS]->(:Directory {name: $dirThree})
-                -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
+                -[:CONTAINS]->(file:FileRevision {name: $fileName})
                 -[:CONTAINS]->(:Function {name: $funName})
+              WHERE
+                file.hash = $fileHash
+                AND file.telemetryKey = $fileTelemetryKey
               MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
               RETURN commit;
               """,
@@ -1076,6 +1115,7 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(1)
               .applications(1)
+              .scopes(0)
               .directories(4)
               .functions(1)
               .build());
@@ -1101,6 +1141,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1125,12 +1166,17 @@ class CodeTelemetryServiceTest {
 
                 MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
 
-                MATCH (dir)
+                MATCH (app)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
                   -[:CONTAINS]->(fileDyn:FileRevision {name: $fileName})
                   -[:CONTAINS]->(funDyn:Function {name: $funName})
                 WHERE NOT (commit)-[:CONTAINS]->(fileDyn)
                   AND NOT (file)-[:CONTAINS]->(funDyn)
                   AND NOT (fileDyn)-[:CONTAINS]->(fun)
+                  AND file.telemetryKey IS NULL
                   AND fileDyn.hash IS NULL
                   AND file <> fileDyn
                   AND fun <> funDyn
@@ -1147,7 +1193,8 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(2)
               .applications(1)
-              .directories(4)
+              .scopes(1)
+              .directories(7)
               .functions(2)
               .build());
       assertNotNull(databaseIsCorrect);
@@ -1188,6 +1235,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("dirOne", filePath.get(0));
       params.put("dirTwo", filePath.get(1));
       params.put("dirThree", filePath.get(2));
@@ -1214,11 +1262,15 @@ class CodeTelemetryServiceTest {
 
                 MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
 
-                MATCH (dir)
+                MATCH (app)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(runtimeDir:Directory {name: $dirThree})
                   -[:CONTAINS]->(file2:FileRevision {name: $fileName})
                   -[:CONTAINS]->(fun2:Function {name: $unknownFunName})
 
-                MATCH (dir)
+                MATCH (runtimeDir)
                   -[:CONTAINS]->(file3:FileRevision {name: $unknownFileName})
                   -[:CONTAINS]->(fun3:Function {name: $funName})
                 WHERE NOT (commit)-[:CONTAINS]->(file2)
@@ -1242,110 +1294,10 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(3)
               .applications(1)
-              .directories(4)
+              .scopes(1)
+              .directories(7)
               .functions(3)
               .build());
-    }
-
-    @Test
-    void testPersistEntityWithPartOfFunctionPathAlreadyExisting() {
-      List<String> filePath = new ArrayList<>(baseDirNames);
-      String innerDir = "inner";
-      String innerFileName = "Inner.java";
-      String innerFunctionName = "innerFun";
-      Collections.addAll(filePath, innerDir, innerFileName);
-
-      TelemetryEntity testEntity =
-          baseEntityBuilder()
-              .setCodeDescriptor(
-                  CodeDescriptor.newBuilder()
-                      .setApplicationName(baseAppName)
-                      .setFunctionName(innerFunctionName)
-                      .setFilePath(String.join("/", filePath)))
-              .setGitCommitHash(baseCommitHash)
-              .build();
-
-      Map<String, Object> params = new HashMap<>();
-      params.put("landscapeToken", landscapeToken);
-      params.put("appName", baseAppName);
-      params.put("dirOne", filePath.get(0));
-      params.put("dirTwo", filePath.get(1));
-      params.put("dirThree", filePath.get(2));
-      params.put("innerDir", innerDir);
-      params.put("fileName", baseFileName);
-      params.put("fileHash", baseFileHash);
-      params.put("funName", baseFunctionName);
-      params.put("commitHash", baseCommitHash);
-      params.put("innerFile", innerFileName);
-      params.put("innerFunction", innerFunctionName);
-
-      Boolean oldDatabaseIsCorrect =
-          session.queryForObject(
-              Boolean.class,
-              """
-              RETURN EXISTS {
-                MATCH (:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
-                  -[:CONTAINS]->(:Directory {name: $dirOne})
-                  -[:CONTAINS]->(:Directory {name: $dirTwo})
-                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                  -[:CONTAINS]->(fun:Function {name: $funName})
-
-                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
-                WHERE NOT (dir)-[:CONTAINS]->(:Directory {name: $innerDir})
-                  AND NOT EXISTS { MATCH (:FileRevision {name: $innerFile}) }
-                  AND NOT EXISTS { MATCH (:Function {name: $innerFunction}) }
-              } as exists;
-              """,
-              params);
-
-      telemetryConsumer.consume(testEntity.toByteArray());
-
-      Boolean databaseIsCorrect =
-          session.queryForObject(
-              Boolean.class,
-              """
-              RETURN EXISTS {
-                MATCH (:Landscape {tokenId: $landscapeToken})
-                  -[:CONTAINS]->(app:Application {name: $appName})
-                  -[:HAS_ROOT]->(:Directory)
-                  -[:CONTAINS]->(:Directory {name: $dirOne})
-                  -[:CONTAINS]->(:Directory {name: $dirTwo})
-                  -[:CONTAINS]->(dir:Directory {name: $dirThree})
-                  -[:CONTAINS]->(file:FileRevision {name: $fileName, hash: $fileHash})
-                  -[:CONTAINS]->(fun:Function {name: $funName})
-
-                MATCH (commit:Commit {hash: $commitHash})-[:CONTAINS]->(file)
-
-                MATCH (dir)
-                  -[:CONTAINS]->(:Directory {name: $innerDir})
-                  -[:CONTAINS]->(innerFile:FileRevision {name: $innerFile})
-                  -[:CONTAINS]->(innerFun:Function {name: $innerFunction})
-                WHERE NOT (commit)-[:CONTAINS]->(innerFile)
-                  AND NOT (file)-[:CONTAINS]->(innerFun)
-                  AND NOT (innerFile)-[:CONTAINS]->(fun)
-                  AND innerFile.hash IS NULL
-                  AND file <> innerFile
-                  AND fun <> innerFun
-              } as exists;
-              """,
-              params);
-
-      assertNotNull(oldDatabaseIsCorrect);
-      assertNodeCounts(
-          session,
-          ExpectedCounts.builder()
-              .landscapes(1)
-              .repositories(1)
-              .branches(1)
-              .commits(1)
-              .files(2)
-              .applications(1)
-              .directories(5)
-              .functions(2)
-              .build());
-      assertNotNull(databaseIsCorrect);
     }
 
     /*
@@ -1387,6 +1339,7 @@ class CodeTelemetryServiceTest {
       params.put("funNameTwo", functionNameTwo);
       params.put("fileName", baseFileName);
       params.put("fileHash", baseFileHash);
+      params.put("fileTelemetryKey", baseFileTelemetryKey);
       params.put("commitHash", baseCommitHash);
       params.put("className", className);
 
@@ -1428,6 +1381,7 @@ class CodeTelemetryServiceTest {
                       .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePath))
+                      .setFileTelemetryKey(baseFileTelemetryKey)
                       .setClassName(className))
               .setGitCommitHash(baseCommitHash)
               .build();
@@ -1442,6 +1396,7 @@ class CodeTelemetryServiceTest {
                 MATCH (file:FileRevision {name: $fileName, hash: $fileHash})
                   -[:CONTAINS]->(:Clazz {name: $className})
                   -[:CONTAINS]->(:Function {name: $funNameTwo})
+                WHERE file.telemetryKey = $fileTelemetryKey
               } as exists;
               """,
               params);
@@ -1457,6 +1412,7 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(1)
               .applications(1)
+              .scopes(0)
               .directories(4)
               .functions(2)
               .classes(1)
@@ -1473,6 +1429,7 @@ class CodeTelemetryServiceTest {
       Map<String, Object> params = new HashMap<>();
       params.put("landscapeToken", landscapeToken);
       params.put("appName", baseAppName);
+      params.put("scopeName", baseScopeName);
       params.put("repoName", baseRepoName);
       params.put("branchName", baseBranchName);
       params.put("repoRoot", baseRepoName);
@@ -1483,6 +1440,7 @@ class CodeTelemetryServiceTest {
       params.put("funNameTwo", functionNameTwo);
       params.put("fileName", baseFileName);
       params.put("fileHash", baseFileHash);
+      params.put("fileTelemetryKey", baseFileTelemetryKey);
       params.put("commitHash", baseCommitHash);
       params.put("className", className);
 
@@ -1493,6 +1451,7 @@ class CodeTelemetryServiceTest {
                       .setApplicationName(baseAppName)
                       .setFunctionName(functionNameTwo)
                       .setFilePath(String.join("/", filePath))
+                      .setFileTelemetryKey(baseFileTelemetryKey)
                       .setClassName(className))
               .setGitCommitHash(baseCommitHash)
               .build();
@@ -1521,13 +1480,20 @@ class CodeTelemetryServiceTest {
                   -[:CONTAINS]->(d:Directory {name: $dirThree})
                   -[:CONTAINS]->(file)
 
-                MATCH (d)
+                MATCH (l)-[:CONTAINS]->(a:Application {name: $appName})-[:HAS_ROOT]->(root)
+
+                MATCH (a)
+                  -[:CONTAINS]->(:Scope {name: $scopeName})
+                  -[:CONTAINS]->(:Directory {name: $dirOne})
+                  -[:CONTAINS]->(:Directory {name: $dirTwo})
+                  -[:CONTAINS]->(:Directory {name: $dirThree})
                   -[:CONTAINS]->(file2:FileRevision {name: $fileName})
                   -[:CONTAINS]->(:Clazz {name: $className})
                   -[:CONTAINS]->(:Function {name: $funNameTwo})
-
-                MATCH (l)-[:CONTAINS]->(:Application {name: $appName})-[:HAS_ROOT]->(root)
-                WHERE file <> file2
+                WHERE
+                  file <> file2
+                  AND file.telemetryKey IS NULL
+                  AND file2.telemetryKey = $fileTelemetryKey
               } as exists;
               """,
               params);
@@ -1542,7 +1508,8 @@ class CodeTelemetryServiceTest {
               .commits(1)
               .files(2)
               .applications(1)
-              .directories(4)
+              .scopes(1)
+              .directories(7)
               .functions(2)
               .classes(1)
               .build());
