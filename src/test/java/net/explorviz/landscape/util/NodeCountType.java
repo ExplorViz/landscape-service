@@ -8,6 +8,7 @@ public enum NodeCountType {
   TAG("tags"),
   FILE("files"),
   APPLICATION("applications"),
+  SCOPE("scopes"),
   DIRECTORY("directories"),
   CLAZZ("classes"),
   FIELD("fields"),

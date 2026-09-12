@@ -54,6 +54,11 @@ public class ExpectedCounts {
       return this;
     }
 
+    public Builder scopes(long v) {
+      values.put(NodeCountType.SCOPE.key(), v);
+      return this;
+    }
+
     public Builder directories(long v) {
       values.put(NodeCountType.DIRECTORY.key(), v);
       return this;

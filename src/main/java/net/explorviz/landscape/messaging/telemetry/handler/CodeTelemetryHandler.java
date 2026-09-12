@@ -34,11 +34,11 @@ public final class CodeTelemetryHandler {
   }
 
   /**
-   * Retrieves the file and function nodes described by the entity, where the file must be contained
-   * within a commit with the hash matching that which is specified by the entity. All nodes along
-   * the file path must already exist. If a node is found, its telemetry key is set to that of the
-   * entity, and the node for the instrumentation scope is created if it does not already exist. If
-   * no node is found, then no changes to the graph are performed.
+   * Retrieves existing file and function nodes from static analysis matching those described by the
+   * entity, where the file must be reachable via its application's root directory and be contained
+   * within a commit whose hash matches that of the entity. All nodes along the file path must
+   * already exist. If a node is found, its telemetry key is set to that of the entity. If no node
+   * is found, then no changes to the graph are made.
    *
    * @return True if the file and function existed and the updates were successful, otherwise false.
    */
@@ -77,9 +77,6 @@ public final class CodeTelemetryHandler {
             SET file.telemetryKey = $fileTelemetryKey
             SET function.telemetryKey = $funcTelemetryKey
 
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(appRootDir)
-
             RETURN function;
             """,
             Map.of(
@@ -98,10 +95,9 @@ public final class CodeTelemetryHandler {
 
   /**
    * Ensures that a path from a landscape node to the specified function node exists, where the file
-   * containing the function should be the runtime version of that file, meaning it should not be
-   * contained in any commit. All missing nodes along the path are created, only the landscape node
-   * must already exist. If the landscape node is missing, an exception is thrown. For the file and
-   * function node, a telemetry key is set regardless of whether the node previously existed or not.
+   * containing the function is the runtime version of that file and should be reachable via an
+   * instrumentation scope. All missing nodes along the path are created. For the file and function
+   * node, a telemetry key is set regardless of whether the node previously existed or not.
    */
   private static void ensureFunctionPath(
       final Session session, final TelemetryEntity entity, final CodeDescriptor descriptor) {
@@ -119,10 +115,9 @@ public final class CodeTelemetryHandler {
             MERGE (app)-[:HAS_ROOT]->(appRoot:Directory)
             ON CREATE SET appRoot.name = "*"
             MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(appRoot)
 
             // Find longest file path match
-            MATCH p = (appRoot)-[:CONTAINS]->*(deepestNode:Directory|FileRevision)
+            MATCH p = (sc)-[:CONTAINS]->*(deepestNode:Scope|Directory|FileRevision)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $filePath[j-1])
               AND (length(p) < size($filePath) XOR "FileRevision" IN labels(deepestNode))

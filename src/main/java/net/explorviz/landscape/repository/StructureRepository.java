@@ -97,14 +97,7 @@ public class StructureRepository {
             WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
 
             // Determine child IDs, where only previously matched nodes should qualify.
-            // Children of app root directory should be given directly to the containing scope.
-            WITH *, CASE
-              WHEN n:Scope THEN [
-                (n)-[:CONTAINS*0..1]->(:Directory|Scope)-[:CONTAINS]->(c)
-                WHERE c IN allMatchedNodes | id(c)
-              ]
-              ELSE [(n)-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)]
-            END AS childrenIds
+            WITH *, [(n)-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)] AS childrenIds
 
             RETURN
               id(n) AS id,
