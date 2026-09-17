@@ -104,9 +104,6 @@ public class StructureRepository {
           id(sourceFile) AS sourceId,
           id(targetFile) AS targetId,
           type(r)        AS type
-          id(sourceFile) AS sourceId,
-          id(targetFile) AS targetId,
-          type(r)        AS type
         """;
 
     final Result result =
@@ -131,9 +128,6 @@ public class StructureRepository {
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(sourceFile) AS sourceId,
-          id(targetFile) AS targetId,
-          type(r)        AS type
           id(sourceFile) AS sourceId,
           id(targetFile) AS targetId,
           type(r)        AS type
@@ -163,9 +157,6 @@ public class StructureRepository {
           id(sourceFile) AS sourceId,
           id(targetFile) AS targetId,
           type(r)        AS type
-          id(sourceFile) AS sourceId,
-          id(targetFile) AS targetId,
-          type(r)        AS type
         """;
 
     final Result result =
@@ -190,9 +181,6 @@ public class StructureRepository {
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(sourceFile) AS sourceId,
-          id(targetFile) AS targetId,
-          type(r)        AS type
           id(sourceFile) AS sourceId,
           id(targetFile) AS targetId,
           type(r)        AS type
