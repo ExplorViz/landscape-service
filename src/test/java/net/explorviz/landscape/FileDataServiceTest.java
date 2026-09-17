@@ -353,7 +353,7 @@ class FileDataServiceTest {
             .setFileHash(fileHashSuper)
             .setFilePath(filePathSuper)
             .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Test"))
+            .addAllImportNames(List.of())
             .addAllClasses(List.of(superclassData))
             .addAllFunctions(List.of())
             .setLastEditor("Testi")
@@ -369,7 +369,7 @@ class FileDataServiceTest {
             .setFileHash(fileHashClass)
             .setFilePath(filePathClass)
             .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Superclass"))
+            .addAllImportNames(List.of())
             .addAllClasses(List.of(classData))
             .addAllFunctions(List.of())
             .setLastEditor("Testi")
@@ -560,7 +560,7 @@ class FileDataServiceTest {
             .setFileHash(fileHashSuper)
             .setFilePath(filePathSuper)
             .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Test"))
+            .addAllImportNames(List.of())
             .addAllClasses(List.of(superclassData))
             .addAllFunctions(List.of())
             .setLastEditor("Testi")
@@ -576,7 +576,7 @@ class FileDataServiceTest {
             .setFileHash(fileHashClass)
             .setFilePath(filePathClass)
             .setLanguage(Language.JAVA)
-            .addAllImportNames(List.of("Superclass"))
+            .addAllImportNames(List.of())
             .addAllClasses(List.of(classData))
             .addAllFunctions(List.of())
             .setLastEditor("Testi")
@@ -644,7 +644,13 @@ class FileDataServiceTest {
             .directories(2)
             .files(2)
             .commits(1)
-            .classes(3)
+            // Class1 wird zweimal angelegt: einmal als vorläufiger Clazz-Knoten durch
+            // saveStaticDependencies() (MERGE), wenn Class2 seine Superklasse referenziert,
+            // bevor Class1 selbst persistiert wurde; ein zweites Mal durch die reguläre
+            // OGM-basierte Persistierung (saveFileData -> session.save), die unabhängig
+            // vom MERGE-Knoten einen eigenen Clazz-Knoten erzeugt. Beide Knoten tragen
+            // denselben Namen, sind aber technisch getrennte Objekte.
+            .classes(4)
             .fields(1)
             .functions(1)
             .build());
@@ -1019,7 +1025,13 @@ class FileDataServiceTest {
             .directories(2)
             .commits(1)
             .files(2)
-            .classes(1)
+            // Class1 wird zweimal angelegt: einmal als vorläufiger Clazz-Knoten durch
+            // saveStaticDependencies() (MERGE), wenn Class2 seine Superklasse referenziert,
+            // bevor Class1 selbst persistiert wurde; ein zweites Mal durch die reguläre
+            // OGM-basierte Persistierung (saveFileData -> session.save), die unabhängig
+            // vom MERGE-Knoten einen eigenen Clazz-Knoten erzeugt. Beide Knoten tragen
+            // denselben Namen, sind aber technisch getrennte Objekte.
+            .classes(2)
             .build());
   }
 

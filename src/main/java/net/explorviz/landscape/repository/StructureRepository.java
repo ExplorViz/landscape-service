@@ -6,12 +6,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.proto.ClassData;
+import net.explorviz.landscape.proto.FieldData;
+import net.explorviz.landscape.proto.FileData;
+import net.explorviz.landscape.proto.FunctionData;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -22,6 +27,28 @@ public class StructureRepository {
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
   private static final String PARAM_TOKEN_ID = "tokenId";
   private static final String PARAM_COMMIT_HASH = "commitHash";
+  private static final String PARAM_FILE_NAME = "fileName";
+  private static final String PARAM_TARGET_NAME = "targetName";
+  private static final Set<String> PRIMITIVE_OR_KNOWN_NON_CLASS_TYPES =
+      Set.of(
+          "int",
+          "long",
+          "double",
+          "float",
+          "boolean",
+          "char",
+          "byte",
+          "short",
+          "void",
+          "String",
+          "Integer",
+          "Long",
+          "Double",
+          "Float",
+          "Boolean",
+          "Character",
+          "Byte",
+          "Short");
 
   @Inject StructureMapper mapper;
 
@@ -41,10 +68,9 @@ public class StructureRepository {
 
     final String query =
         """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
         MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
-        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
         MATCH (source)-[r:IMPORT]->(target:Clazz)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
@@ -68,15 +94,19 @@ public class StructureRepository {
 
     final String query =
         """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
-        MATCH (f)-[:CONTAINS]->(source:Clazz)
-        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:EXTENDS]->(target:Clazz)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(source) AS sourceId,
-          id(target) AS targetId,
-          type(r)    AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
         """;
 
     final Result result =
@@ -94,15 +124,19 @@ public class StructureRepository {
 
     final String query =
         """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
-        MATCH (f)-[:CONTAINS]->(source:Clazz)
-        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:IMPLEMENTS]->(target:Clazz)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(source) AS sourceId,
-          id(target) AS targetId,
-          type(r)    AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
         """;
 
     final Result result =
@@ -120,16 +154,18 @@ public class StructureRepository {
 
     final String query =
         """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
-        MATCH (f)-[:CONTAINS]->(source:Clazz)
-        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
-        MATCH (source)-[:HAS_METHOD]->(m1:Method)-[:CALLS]->(m2:Method)<-[:HAS_METHOD]-(target:Clazz)
-        WHERE source <> target
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
+        MATCH (source)-[r:CALLS]->(target:Clazz)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(source) AS sourceId,
-          id(target) AS targetId,
-          'CALLS'    AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
         """;
 
     final Result result =
@@ -147,15 +183,19 @@ public class StructureRepository {
 
     final String query =
         """
-        MATCH (l:Landscape {tokenId: $tokenId})
-        MATCH (c:Commit {hash: $commitHash})-[:CONTAINS]->(f:FileRevision)
-        MATCH (f)-[:CONTAINS]->(source:Clazz)
-        WHERE (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(c)
+        MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(repo:Repository)-[:CONTAINS]->(c:Commit {hash: $commitHash})
+        MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
+        MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:USES_TYPE]->(target:Clazz)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
+        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
-          id(source) AS sourceId,
-          id(target) AS targetId,
-          type(r)    AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
+          id(sourceFile) AS sourceId,
+          id(targetFile) AS targetId,
+          type(r)        AS type
         """;
 
     final Result result =
@@ -218,7 +258,7 @@ public class StructureRepository {
           properties(n) AS properties,
           id(a) AS cityId,
           [(n)-[:HAS_ROOT|CONTAINS]->(m) | id(m)] AS childrenIds,
-          [(n)<-[:HAS_ROOT|CONTAINS]-(p) | id(p)][0] AS parentId
+          [(n)<-[:HAS_ROOT|CONTAINS]-(p) WHERE p:Directory OR p:Application | id(p)][0] AS parentId
         """;
 
     final Result result =
@@ -298,5 +338,151 @@ public class StructureRepository {
     }
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
+  }
+
+  public void saveStaticDependencies(final Session session, final FileData fileData) {
+    final String fileName =
+        fileData.getFilePath().contains("/")
+            ? fileData.getFilePath().substring(fileData.getFilePath().lastIndexOf('/') + 1)
+            : fileData.getFilePath();
+
+    saveImportDependencies(session, fileData, fileName);
+
+    for (final ClassData classData : fileData.getClassesList()) {
+      saveExtendsDependencies(session, classData, fileName);
+      saveImplementsDependencies(session, classData, fileName);
+      saveCallsDependencies(session, classData, fileName);
+      saveUsesTypeDependencies(session, classData, fileName);
+    }
+  }
+
+  private void saveImportDependencies(
+      final Session session, final FileData fileData, final String fileName) {
+    for (final String importName : fileData.getImportNamesList()) {
+      final String shortName =
+          importName.contains(".")
+              ? importName.substring(importName.lastIndexOf('.') + 1)
+              : importName;
+
+      final String query =
+          """
+          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MERGE (target:Clazz {name: $targetName})
+          MERGE (source)-[:IMPORT]->(target)
+          """;
+      session.query(
+          query,
+          Map.of(
+              PARAM_FILE_NAME, fileName,
+              PARAM_TARGET_NAME, shortName));
+    }
+  }
+
+  private void saveExtendsDependencies(
+      final Session session, final ClassData classData, final String fileName) {
+    for (final String superClass : classData.getSuperclassesList()) {
+      final String targetClassName =
+          superClass.contains("::")
+              ? superClass.substring(superClass.lastIndexOf("::") + 2)
+              : superClass;
+
+      final String extendsQuery =
+          """
+          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MERGE (target:Clazz {name: $targetName})
+          MERGE (source)-[:EXTENDS]->(target)
+          """;
+      session.query(
+          extendsQuery,
+          Map.of(
+              PARAM_FILE_NAME, fileName,
+              PARAM_TARGET_NAME, targetClassName));
+    }
+  }
+
+  private void saveImplementsDependencies(
+      final Session session, final ClassData classData, final String fileName) {
+    for (final String iface : classData.getImplementedInterfacesList()) {
+      final String targetInterfaceName =
+          iface.contains("::")
+              ? iface.substring(iface.lastIndexOf("::") + 2)
+              : iface.contains(".") ? iface.substring(iface.lastIndexOf('.') + 1) : iface;
+
+      final String implementsQuery =
+          """
+          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MERGE (target:Clazz {name: $targetName})
+          MERGE (source)-[:IMPLEMENTS]->(target)
+          """;
+      session.query(
+          implementsQuery,
+          Map.of(
+              PARAM_FILE_NAME, fileName,
+              PARAM_TARGET_NAME, targetInterfaceName));
+    }
+  }
+
+  private void saveCallsDependencies(
+      final Session session, final ClassData classData, final String fileName) {
+    for (final FunctionData function : classData.getFunctionsList()) {
+      for (final String calledTarget : function.getOutgoingMethodCallsList()) {
+        final String targetClassName =
+            calledTarget.contains("::")
+                ? calledTarget.substring(calledTarget.lastIndexOf("::") + 2)
+                : calledTarget;
+
+        final String callsQuery =
+            """
+            MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+            MERGE (target:Clazz {name: $targetName})
+            MERGE (source)-[:CALLS]->(target)
+            """;
+        session.query(
+            callsQuery,
+            Map.of(
+                PARAM_FILE_NAME, fileName,
+                PARAM_TARGET_NAME, targetClassName));
+      }
+    }
+  }
+
+  private void saveUsesTypeDependencies(
+      final Session session, final ClassData classData, final String fileName) {
+    for (final FieldData field : classData.getFieldsList()) {
+      final String fieldType = field.getType();
+      if (fieldType == null || fieldType.isEmpty()) {
+        continue;
+      }
+
+      final String targetTypeName =
+          fieldType.contains("::")
+              ? fieldType.substring(fieldType.lastIndexOf("::") + 2)
+              : fieldType;
+
+      final String simpleTypeName =
+          targetTypeName.contains(".")
+              ? targetTypeName.substring(targetTypeName.lastIndexOf('.') + 1)
+              : targetTypeName;
+
+      if (simpleTypeName.isEmpty() || isPrimitiveOrKnownNonClass(simpleTypeName)) {
+        continue;
+      }
+
+      final String usesTypeQuery =
+          """
+          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MERGE (target:Clazz {name: $targetName})
+          MERGE (source)-[:USES_TYPE]->(target)
+          """;
+      session.query(
+          usesTypeQuery,
+          Map.of(
+              PARAM_FILE_NAME, fileName,
+              PARAM_TARGET_NAME, simpleTypeName));
+    }
+  }
+
+  private boolean isPrimitiveOrKnownNonClass(final String type) {
+    return PRIMITIVE_OR_KNOWN_NON_CLASS_TYPES.contains(type);
   }
 }

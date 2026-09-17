@@ -17,6 +17,7 @@ import net.explorviz.landscape.ogm.Function;
 import net.explorviz.landscape.proto.ClassData;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.FileDataService;
+import net.explorviz.landscape.repository.StructureRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -27,6 +28,7 @@ public class FileDataServiceImpl implements FileDataService {
 
   @Inject SessionFactory sessionFactory;
   @Inject FileDataBatchWriter fileDataBatchWriter;
+  @Inject StructureRepository structureRepository;
 
   @Blocking
   @Override
@@ -54,6 +56,9 @@ public class FileDataServiceImpl implements FileDataService {
     final Session session = sessionFactory.openSession();
     try (Transaction tx = session.beginTransaction()) {
       fileDataBatchWriter.persistBatch(session, files);
+      for (final FileData fileData : files) {
+        structureRepository.saveStaticDependencies(session, fileData);
+      }
       tx.commit();
       return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
@@ -75,6 +80,7 @@ public class FileDataServiceImpl implements FileDataService {
 
     try (Transaction tx = session.beginTransaction()) {
       saveFileData(session, request);
+      structureRepository.saveStaticDependencies(session, request);
       tx.commit();
       return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper

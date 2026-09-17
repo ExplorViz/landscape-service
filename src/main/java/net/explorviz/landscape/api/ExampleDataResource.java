@@ -196,65 +196,134 @@ public class ExampleDataResource {
             MERGE (app)-[:HAS_ROOT]->(rootDir:Directory {name: $repoName})
             MERGE (rootDir)-[:CONTAINS]->(d1:Directory {name: "net"})
             MERGE (d1)-[:CONTAINS]->(d2:Directory {name: "explorviz"})
-            MERGE (d2)-[:CONTAINS]->(outerDir:Directory {name: "persistence"})
-            MERGE (outerDir)-[:CONTAINS]->(innerDir:Directory {name: "innerpackage"})
+            MERGE (d2)-[:CONTAINS]->(serviceDir:Directory {name: "service"})
+            MERGE (d2)-[:CONTAINS]->(repositoryDir:Directory {name: "repository"})
+            MERGE (d2)-[:CONTAINS]->(modelDir:Directory {name: "model"})
+            MERGE (d2)-[:CONTAINS]->(utilDir:Directory {name: "util"})
+            MERGE (d2)-[:CONTAINS]->(controllerDir:Directory {name: "controller"})
 
-            MERGE (outerDir)-[:CONTAINS]->(file1:FileRevision {name: "ClassA.java"})
-            MERGE (file1)-[:CONTAINS]->(class1:Clazz {name: "ClassA"})
-            MERGE (outerDir)-[:CONTAINS]->(file2:FileRevision {name: "ClassB.java"})
-            MERGE (file2)-[:CONTAINS]->(class2:Clazz {name: "ClassB"})
-            MERGE (outerDir)-[:CONTAINS]->(file2modified:FileRevision {name: "ClassB.java"})
-            MERGE (file2modified)-[:CONTAINS]->(class2modified:Clazz {name: "ClassB"})
-            MERGE (innerDir)-[:CONTAINS]->(file3:FileRevision {name: "ClassC.java"})
-            MERGE (file3)-[:CONTAINS]->(class3:Clazz {name: "ClassC"})
+            MERGE (serviceDir)-[:CONTAINS]->(innerServiceDir:Directory {name: "impl"})
 
-            // --- Zusätzliche Klassen/Interfaces für Vererbung ---
-            MERGE (outerDir)-[:CONTAINS]->(file4:FileRevision {name: "AbstractBase.java"})
-            MERGE (file4)-[:CONTAINS]->(class4:Clazz {name: "AbstractBase"})
-            MERGE (outerDir)-[:CONTAINS]->(file5:FileRevision {name: "Comparable.java"})
-            MERGE (file5)-[:CONTAINS]->(class5:Clazz {name: "Comparable"})
+            MERGE (serviceDir)-[:CONTAINS]->(file1:FileRevision {name: "UserService.java"})
+            MERGE (file1)-[:CONTAINS]->(class1:Clazz {name: "UserService"})
+            MERGE (serviceDir)-[:CONTAINS]->(file2:FileRevision {name: "OrderService.java"})
+            MERGE (file2)-[:CONTAINS]->(class2:Clazz {name: "OrderService"})
+            MERGE (serviceDir)-[:CONTAINS]->(file3:FileRevision {name: "PaymentService.java"})
+            MERGE (file3)-[:CONTAINS]->(class3:Clazz {name: "PaymentService"})
+            MERGE (innerServiceDir)-[:CONTAINS]->(file4:FileRevision {name: "UserServiceImpl.java"})
+            MERGE (file4)-[:CONTAINS]->(class4:Clazz {name: "UserServiceImpl"})
+            MERGE (innerServiceDir)-[:CONTAINS]->(file5:FileRevision {name: "OrderServiceImpl.java"})
+            MERGE (file5)-[:CONTAINS]->(class5:Clazz {name: "OrderServiceImpl"})
+
+            MERGE (repositoryDir)-[:CONTAINS]->(file6:FileRevision {name: "UserRepository.java"})
+            MERGE (file6)-[:CONTAINS]->(class6:Clazz {name: "UserRepository"})
+            MERGE (repositoryDir)-[:CONTAINS]->(file7:FileRevision {name: "OrderRepository.java"})
+            MERGE (file7)-[:CONTAINS]->(class7:Clazz {name: "OrderRepository"})
+            MERGE (repositoryDir)-[:CONTAINS]->(file8:FileRevision {name: "PaymentRepository.java"})
+            MERGE (file8)-[:CONTAINS]->(class8:Clazz {name: "PaymentRepository"})
+
+            MERGE (modelDir)-[:CONTAINS]->(file9:FileRevision {name: "User.java"})
+            MERGE (file9)-[:CONTAINS]->(class9:Clazz {name: "User"})
+            MERGE (modelDir)-[:CONTAINS]->(file10:FileRevision {name: "Order.java"})
+            MERGE (file10)-[:CONTAINS]->(class10:Clazz {name: "Order"})
+            MERGE (modelDir)-[:CONTAINS]->(file11:FileRevision {name: "Payment.java"})
+            MERGE (file11)-[:CONTAINS]->(class11:Clazz {name: "Payment"})
+            MERGE (modelDir)-[:CONTAINS]->(file12:FileRevision {name: "BaseEntity.java"})
+            MERGE (file12)-[:CONTAINS]->(class12:Clazz {name: "BaseEntity"})
+
+            MERGE (utilDir)-[:CONTAINS]->(file13:FileRevision {name: "DateUtil.java"})
+            MERGE (file13)-[:CONTAINS]->(class13:Clazz {name: "DateUtil"})
+            MERGE (utilDir)-[:CONTAINS]->(file14:FileRevision {name: "ValidationUtil.java"})
+            MERGE (file14)-[:CONTAINS]->(class14:Clazz {name: "ValidationUtil"})
+
+            MERGE (controllerDir)-[:CONTAINS]->(file15:FileRevision {name: "UserController.java"})
+            MERGE (file15)-[:CONTAINS]->(class15:Clazz {name: "UserController"})
+            MERGE (controllerDir)-[:CONTAINS]->(file16:FileRevision {name: "OrderController.java"})
+            MERGE (file16)-[:CONTAINS]->(class16:Clazz {name: "OrderController"})
 
             MERGE (repo)-[:HAS_ROOT]->(rootDir)
-            MERGE (commit1)-[:CONTAINS]->(file1)
+
+            MERGE (commit1)-[:CONTAINS]->(file9)
+            MERGE (commit1)-[:CONTAINS]->(file10)
+            MERGE (commit1)-[:CONTAINS]->(file12)
+
             MERGE (commit2)-[:CONTAINS]->(file1)
             MERGE (commit2)-[:CONTAINS]->(file2)
-            MERGE (commit2)-[:CONTAINS]->(file3)  // ClassC.java auch in commit2
-            MERGE (commit3)-[:CONTAINS]->(file2modified)
+            MERGE (commit2)-[:CONTAINS]->(file3)
+            MERGE (commit2)-[:CONTAINS]->(file4)
+            MERGE (commit2)-[:CONTAINS]->(file5)
+            MERGE (commit2)-[:CONTAINS]->(file6)
+            MERGE (commit2)-[:CONTAINS]->(file7)
+            MERGE (commit2)-[:CONTAINS]->(file8)
+            MERGE (commit2)-[:CONTAINS]->(file9)
+            MERGE (commit2)-[:CONTAINS]->(file10)
+            MERGE (commit2)-[:CONTAINS]->(file11)
+            MERGE (commit2)-[:CONTAINS]->(file12)
+            MERGE (commit2)-[:CONTAINS]->(file13)
+            MERGE (commit2)-[:CONTAINS]->(file14)
+
+            MERGE (commit3)-[:CONTAINS]->(file15)
+            MERGE (commit3)-[:CONTAINS]->(file16)
+            MERGE (commit3)-[:CONTAINS]->(file1)
+            MERGE (commit3)-[:CONTAINS]->(file2)
             MERGE (commit3)-[:CONTAINS]->(file3)
-            MERGE (commit3)-[:CONTAINS]->(file4)
-            MERGE (commit3)-[:CONTAINS]->(file5)
+            MERGE (commit3)-[:CONTAINS]->(file9)
+            MERGE (commit3)-[:CONTAINS]->(file10)
+            MERGE (commit3)-[:CONTAINS]->(file11)
+            MERGE (commit3)-[:CONTAINS]->(file12)
 
-            // --- 1) Import-Abhängigkeiten ---
-            MERGE (class1)-[:IMPORT]->(class2)
-            MERGE (class2)-[:IMPORT]->(class3)
-            MERGE (class1)-[:IMPORT]->(class3)
-            MERGE (class2modified)-[:IMPORT]->(class3)
+            MERGE (class4)-[:EXTENDS]->(class1)
+            MERGE (class5)-[:EXTENDS]->(class2)
+            MERGE (class9)-[:EXTENDS]->(class12)
+            MERGE (class10)-[:EXTENDS]->(class12)
+            MERGE (class11)-[:EXTENDS]->(class12)
 
-            // --- 2) Vererbungsbeziehungen ---
-            MERGE (class1)-[:EXTENDS]->(class4)
-            MERGE (class2)-[:IMPLEMENTS]->(class5)
-            MERGE (class2modified)-[:IMPLEMENTS]->(class5)
+            MERGE (class4)-[:IMPLEMENTS]->(class1)
+            MERGE (class5)-[:IMPLEMENTS]->(class2)
 
-            // --- 3) Methodenaufrufe ---
-            // Annahme: Methoden werden separat als Method-Nodes angelegt
-            // und über HAS_METHOD mit ihrer Clazz verbunden (siehe addFunctionsToClass).
-            MERGE (class1)-[:HAS_METHOD]->(m1:Method {name: "doWork"})
-            MERGE (class2)-[:HAS_METHOD]->(m2:Method {name: "helper"})
-            MERGE (class3)-[:HAS_METHOD]->(m3:Method {name: "utilMethod"})
-            MERGE (m1)-[:CALLS]->(m2)
+            MERGE (class1)-[:IMPORT]->(class6)
+            MERGE (class1)-[:IMPORT]->(class9)
+            MERGE (class2)-[:IMPORT]->(class7)
+            MERGE (class2)-[:IMPORT]->(class10)
+            MERGE (class3)-[:IMPORT]->(class8)
+            MERGE (class3)-[:IMPORT]->(class11)
+            MERGE (class4)-[:IMPORT]->(class6)
+            MERGE (class4)-[:IMPORT]->(class9)
+            MERGE (class5)-[:IMPORT]->(class7)
+            MERGE (class5)-[:IMPORT]->(class10)
+            MERGE (class15)-[:IMPORT]->(class1)
+            MERGE (class15)-[:IMPORT]->(class9)
+            MERGE (class16)-[:IMPORT]->(class2)
+            MERGE (class16)-[:IMPORT]->(class10)
+            MERGE (class1)-[:IMPORT]->(class13)
+            MERGE (class2)-[:IMPORT]->(class13)
+            MERGE (class3)-[:IMPORT]->(class14)
+
+            MERGE (class1)-[:USES_TYPE]->(class9)
+            MERGE (class2)-[:USES_TYPE]->(class10)
+            MERGE (class3)-[:USES_TYPE]->(class11)
+            MERGE (class15)-[:USES_TYPE]->(class9)
+            MERGE (class16)-[:USES_TYPE]->(class10)
+            MERGE (class1)-[:HAS_METHOD]->(m1:Method {name: "findUser"})
+            MERGE (class2)-[:HAS_METHOD]->(m2:Method {name: "createOrder"})
+            MERGE (class3)-[:HAS_METHOD]->(m3:Method {name: "processPayment"})
+            MERGE (class4)-[:HAS_METHOD]->(m4:Method {name: "saveUser"})
+            MERGE (class5)-[:HAS_METHOD]->(m5:Method {name: "saveOrder"})
+            MERGE (class15)-[:HAS_METHOD]->(m15:Method {name: "handleRequest"})
+            MERGE (class16)-[:HAS_METHOD]->(m16:Method {name: "handleOrder"})
+
+            MERGE (m15)-[:CALLS]->(m1)
+            MERGE (m16)-[:CALLS]->(m2)
+            MERGE (m1)-[:CALLS]->(m4)
+            MERGE (m2)-[:CALLS]->(m5)
             MERGE (m2)-[:CALLS]->(m3)
-            MERGE (m1)-[:CALLS]->(m3)
-
-            // --- 4) Feld- und Typverwendungen ---
-            MERGE (class1)-[:HAS_FIELD]->(f1:Field {name: "helperField"})
-            MERGE (f1)-[:HAS_TYPE]->(class2)
-            MERGE (class2)-[:HAS_FIELD]->(f2:Field {name: "utilField"})
-            MERGE (f2)-[:HAS_TYPE]->(class3)
-            MERGE (class1)-[:USES_TYPE]->(class3)
+            MERGE (m3)-[:CALLS]->(m4)
 
             RETURN
-              [file1, file2, file2modified, file3, file4, file5] AS files,
-              [class1, class2, class2modified, class3, class4, class5] AS classes;
+              [file1, file2, file3, file4, file5, file6, file7, file8,
+               file9, file10, file11, file12, file13, file14, file15, file16] AS files,
+              [class1, class2, class3, class4, class5, class6, class7, class8,
+               class9, class10, class11, class12, class13, class14, class15, class16] AS classes;
             """,
             Map.of("repoName", repoName));
 
@@ -280,7 +349,7 @@ public class ExampleDataResource {
                   });
             });
 
-    return "Successfully created example staticDependencies";
+    return "Successfully created example \"staticDependencies\"";
   }
 
   @SuppressWarnings("unchecked")
