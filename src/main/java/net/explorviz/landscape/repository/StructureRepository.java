@@ -114,101 +114,159 @@ public class StructureRepository {
     return buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME);
   }
 
+  /**
+   * Static structure for an arbitrary number of (repository, commit) pairs. Every entry of {@code
+   * $requests} carries a {@code key} that tags the rows it produces, so a whole batch of pairs is
+   * served by a single round-trip.
+   *
+   * <p>The traversal starts at the file revisions of each commit and walks <em>up</em> to the
+   * owning application root. Since a file revision has exactly one directory parent and a directory
+   * exactly one parent, this only visits nodes that actually end up in the response. Descending
+   * from the application roots instead would have to test every node of the repository against the
+   * commit, which costs orders of magnitude more database hits. Restricting the applications to the
+   * requested repository is implicit: the directory chain of a commit's file revision never leaves
+   * the repository that commit belongs to.
+   */
+  private static final String STATIC_STRUCTURE_QUERY =
+      """
+      UNWIND $requests AS request
+      MATCH (:Landscape {tokenId: $tokenId})
+        -[:CONTAINS]->(:Repository {name: request.repositoryName})
+        -[:CONTAINS]->(c:Commit {hash: request.commitHash})
+
+      MATCH (c)-[:CONTAINS]->(file:FileRevision)
+      MATCH chain = (file) ( ()<-[:CONTAINS]-(:Directory) ){1,} (appRoot:Directory)
+      MATCH (appRoot)<-[:HAS_ROOT]-(a:Application)
+
+      // [application, ...directories below the application root..., file]. The application root
+      // itself is dropped, as it should not become a district.
+      WITH request.key AS resultKey, a, [a] + reverse(nodes(chain))[1..] AS pathToFile
+
+      // Every prefix of such a path denotes one node of the resulting landscape.
+      UNWIND range(0, size(pathToFile) - 1) AS depth
+      WITH DISTINCT resultKey, a, pathToFile[0..depth + 1] AS pathNodes
+
+      WITH resultKey, a, pathNodes, last(pathNodes) AS n
+      RETURN
+        resultKey,
+        id(n) AS id,
+        labels(n) AS labels,
+        properties(n) AS properties,
+        n.name AS name,
+        string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
+        id(a) AS cityId,
+        id(pathNodes[-2]) AS parentId
+      """;
+
+  private static final String SINGLE_RESULT_KEY = "single";
+  private static final String FIRST_RESULT_KEY = "first";
+  private static final String SECOND_RESULT_KEY = "second";
+
   public FlatLandscapeDto fetchFlatLandscapeForStaticData(
       final Session session, final StaticDataRequest request) {
-    final Result result =
-        session.query(
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(r:Repository {name: $repoName})
-              -[:CONTAINS]->(c:Commit {hash: $commitHash})
 
-            // Find relevant applications
-            MATCH (a:Application)-[:HAS_ROOT]->(rootDir:Directory)
-            WHERE (rootDir)<-[:CONTAINS*0..]-(:Directory)<-[:HAS_ROOT]-(r)
+    final Map<String, FlatLandscapeDto> landscapes =
+        fetchStaticLandscapes(
+            session,
+            request.landscapeToken(),
+            List.of(
+                staticRequest(SINGLE_RESULT_KEY, request.repositoryName(), request.commitHash())));
 
-            // Find path from application to all required nodes
-            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(n)
-            WHERE (n)-[:CONTAINS*0..]->(:FileRevision)<-[:CONTAINS]-(c)
-
-            // Remove application root directory from path, as it should not become a district.
-            WITH a, n, nodes(p)[0] + nodes(p)[2..] AS pathNodes
-
-            WITH a, collect(DISTINCT n) AS allMatchedNodes, collect(DISTINCT pathNodes) AS matches
-
-            UNWIND matches AS pathNodes
-            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
-
-            // Determine child IDs, where only previously matched nodes should qualify.
-            // Children of app root directory should be given directly to the application instead.
-            WITH *, [
-              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)
-            ] AS childrenIds
-
-            RETURN
-              id(n) AS id,
-              labels(n) AS labels,
-              properties(n) AS properties,
-              n.name AS name,
-              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
-              id(a) AS cityId,
-              childrenIds,
-              id(pathNodes[-2]) AS parentId
-            """,
-            Map.of(
-                "tokenId", request.landscapeToken(),
-                "repoName", request.repositoryName(),
-                "commitHash", request.commitHash()));
-    return buildFlatLandscape(request.landscapeToken(), result, TypeOfAnalysis.STATIC);
+    return landscapeOrEmpty(landscapes, SINGLE_RESULT_KEY, request.landscapeToken());
   }
 
   public FlatLandscapeDto fetchCombinedFlatLandscape(
       final Session session, final CombinedStaticDataRequest request) {
 
-    final FlatLandscapeDto first =
-        fetchFlatLandscapeForStaticData(
+    final Map<String, FlatLandscapeDto> landscapes =
+        fetchStaticLandscapes(
             session,
-            new StaticDataRequest(
-                request.landscapeToken(), request.repositoryName(), request.firstCommitHash()));
-    final FlatLandscapeDto second =
-        fetchFlatLandscapeForStaticData(
-            session,
-            new StaticDataRequest(
-                request.landscapeToken(), request.repositoryName(), request.secondCommitHash()));
+            request.landscapeToken(),
+            List.of(
+                staticRequest(
+                    FIRST_RESULT_KEY, request.repositoryName(), request.firstCommitHash()),
+                staticRequest(
+                    SECOND_RESULT_KEY, request.repositoryName(), request.secondCommitHash())));
 
-    return LANDSCAPE_MERGER.merge(request.landscapeToken(), first, second);
+    return LANDSCAPE_MERGER.merge(
+        request.landscapeToken(),
+        landscapeOrEmpty(landscapes, FIRST_RESULT_KEY, request.landscapeToken()),
+        landscapeOrEmpty(landscapes, SECOND_RESULT_KEY, request.landscapeToken()));
   }
 
   /**
    * Loads structure for several repositories (each with either one commit or a pair for comparison)
    * and returns their union as one flat landscape. Intended for visualizing multiple repositories
-   * together.
+   * together. All commits of the batch are read in a single query.
    */
   public FlatLandscapeDto fetchFlatLandscapeForEvolutionBatch(
       final Session session,
       final String landscapeToken,
       final List<RepositoryEvolutionSelectionDto> selections) {
 
-    final List<FlatLandscapeDto> parts = new ArrayList<>();
-    for (final RepositoryEvolutionSelectionDto sel : selections) {
-      parts.add(fetchPartForSelection(session, landscapeToken, sel));
+    final List<Map<String, Object>> requests = new ArrayList<>();
+    for (int i = 0; i < selections.size(); i++) {
+      final RepositoryEvolutionSelectionDto selection = selections.get(i);
+      final List<String> hashes = selection.commitHashes();
+      for (int slot = 0; slot < hashes.size(); slot++) {
+        requests.add(
+            staticRequest(selectionKey(i, slot), selection.repositoryName(), hashes.get(slot)));
+      }
+    }
+
+    final Map<String, FlatLandscapeDto> landscapes =
+        fetchStaticLandscapes(session, landscapeToken, requests);
+
+    final List<FlatLandscapeDto> parts = new ArrayList<>(selections.size());
+    for (int i = 0; i < selections.size(); i++) {
+      final FlatLandscapeDto first =
+          landscapeOrEmpty(landscapes, selectionKey(i, 0), landscapeToken);
+
+      if (selections.get(i).commitHashes().size() == 1) {
+        parts.add(first);
+      } else {
+        parts.add(
+            LANDSCAPE_MERGER.merge(
+                landscapeToken,
+                first,
+                landscapeOrEmpty(landscapes, selectionKey(i, 1), landscapeToken)));
+      }
     }
     return unionFlatLandscapes(landscapeToken, parts);
   }
 
-  private FlatLandscapeDto fetchPartForSelection(
+  private Map<String, FlatLandscapeDto> fetchStaticLandscapes(
       final Session session,
       final String landscapeToken,
-      final RepositoryEvolutionSelectionDto sel) {
-    final List<String> hashes = sel.commitHashes();
-    if (hashes.size() == 1) {
-      return fetchFlatLandscapeForStaticData(
-          session, new StaticDataRequest(landscapeToken, sel.repositoryName(), hashes.get(0)));
+      final List<Map<String, Object>> requests) {
+
+    if (requests.isEmpty()) {
+      return Map.of();
     }
-    return fetchCombinedFlatLandscape(
-        session,
-        new CombinedStaticDataRequest(
-            landscapeToken, sel.repositoryName(), hashes.get(0), hashes.get(1)));
+
+    final Result result =
+        session.query(
+            STATIC_STRUCTURE_QUERY, Map.of("tokenId", landscapeToken, "requests", requests));
+
+    return StructureMapper.buildFlatLandscapesByKey(landscapeToken, result, TypeOfAnalysis.STATIC);
+  }
+
+  private static Map<String, Object> staticRequest(
+      final String key, final String repositoryName, final String commitHash) {
+    return Map.of("key", key, "repositoryName", repositoryName, "commitHash", commitHash);
+  }
+
+  private static String selectionKey(final int selectionIndex, final int commitSlot) {
+    return selectionIndex + ":" + commitSlot;
+  }
+
+  private static FlatLandscapeDto landscapeOrEmpty(
+      final Map<String, FlatLandscapeDto> landscapes,
+      final String key,
+      final String landscapeToken) {
+
+    final FlatLandscapeDto landscape = landscapes.get(key);
+    return landscape == null ? FlatLandscapeDto.newEmptyLandscape(landscapeToken) : landscape;
   }
 
   private FlatLandscapeDto unionFlatLandscapes(

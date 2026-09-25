@@ -72,8 +72,12 @@ public final class StructureMapper {
       final String fqn = (String) row.get("fqn");
       final Long cityId = (Long) row.get("cityId");
 
+      // Queries that do not project children leave this null, so that they can be derived from
+      // the parent references of the remaining rows instead.
       final List<Long> childrenIds =
-          row.get("childrenIds") instanceof Long[] arr ? List.of(arr) : List.of();
+          row.containsKey("childrenIds")
+              ? (row.get("childrenIds") instanceof Long[] arr ? List.of(arr) : List.of())
+              : null;
 
       final Long parentId = (Long) row.get("parentId");
 
@@ -96,6 +100,40 @@ public final class StructureMapper {
           nodesById.put(data.id, data);
         });
 
+    return buildFlatLandscape(landscapeToken, nodesById, origin);
+  }
+
+  /**
+   * Splits a result set that covers several independent landscapes into one {@link
+   * FlatLandscapeDto} per {@code resultKey} column value. Used to serve a batch of (repository,
+   * commit) pairs from a single query.
+   */
+  static Map<String, FlatLandscapeDto> buildFlatLandscapesByKey(
+      final String landscapeToken, final Result queryResult, final TypeOfAnalysis origin) {
+
+    final Map<String, Map<Long, NodeData>> nodesByKey = new HashMap<>();
+
+    queryResult.forEach(
+        row -> {
+          final NodeData data = NodeData.fromRow(row);
+          nodesByKey
+              .computeIfAbsent((String) row.get("resultKey"), key -> new HashMap<>())
+              .put(data.id, data);
+        });
+
+    final Map<String, FlatLandscapeDto> landscapes = new HashMap<>();
+    nodesByKey.forEach(
+        (key, nodesById) ->
+            landscapes.put(key, buildFlatLandscape(landscapeToken, nodesById, origin)));
+    return landscapes;
+  }
+
+  private static FlatLandscapeDto buildFlatLandscape(
+      final String landscapeToken,
+      final Map<Long, NodeData> nodesById,
+      final TypeOfAnalysis origin) {
+
+    final Map<Long, List<Long>> derivedChildIds = deriveChildIds(nodesById);
     final Map<String, List<String>> appIdToAllDistrictIds = new HashMap<>();
     final Map<String, List<String>> appIdToAllBuildingIds = new HashMap<>();
 
@@ -112,7 +150,7 @@ public final class StructureMapper {
       final FlatBaseModel model =
           new FlatBaseModel(id, name, fqn, telemetryKey, type, origin, null);
 
-      final ChildIds childIds = getChildIds(nodesById, data);
+      final ChildIds childIds = getChildIds(nodesById, data, derivedChildIds);
 
       final NodeData parent = nodesById.get(data.parentId);
       final String parentDistrictId =
@@ -156,13 +194,35 @@ public final class StructureMapper {
     return landscape;
   }
 
-  private static ChildIds getChildIds(final Map<Long, NodeData> nodesById, final NodeData data) {
+  /** Inverts the parent references of the result set into a parent to children lookup. */
+  private static Map<Long, List<Long>> deriveChildIds(final Map<Long, NodeData> nodesById) {
+    final Map<Long, List<Long>> childIdsByParentId = new HashMap<>();
+    for (final NodeData data : nodesById.values()) {
+      if (data.parentId != null) {
+        childIdsByParentId.computeIfAbsent(data.parentId, k -> new ArrayList<>()).add(data.id);
+      }
+    }
+    return childIdsByParentId;
+  }
+
+  private static ChildIds getChildIds(
+      final Map<Long, NodeData> nodesById,
+      final NodeData data,
+      final Map<Long, List<Long>> derivedChildIds) {
+
+    final List<Long> childrenIds =
+        data.childrenIds == null
+            ? derivedChildIds.getOrDefault(data.id, List.of())
+            : data.childrenIds;
+
     final ChildIds childIds = new ChildIds(new ArrayList<>(), new ArrayList<>());
-    for (final Long childId : data.childrenIds) {
+    for (final Long childId : childrenIds) {
       final NodeData child = nodesById.get(childId);
       final String childIdStr = String.valueOf(childId);
 
-      if (isDistrict(child)) {
+      if (child == null) {
+        Log.warnf("Ignoring child node missing from the result set: %d", childId);
+      } else if (isDistrict(child)) {
         childIds.districts.add(childIdStr);
       } else if (isBuilding(child)) {
         childIds.buildings.add(childIdStr);
