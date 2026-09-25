@@ -59,10 +59,18 @@ public final class RpcTelemetryHandler {
 
             MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+
+            OPTIONAL CALL (sc) {
+              WITH sc
+              WHERE $systemName <> ""
+              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+              RETURN sys
+            }
+
+            WITH coalesce(sys, sc) AS start
 
             // Find longest service path match
-            MATCH p = (sys)-[:CONTAINS]->*(deepestNode:RPCSystem|RPCNamespace|RPCService)
+            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
               AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
@@ -126,10 +134,18 @@ public final class RpcTelemetryHandler {
             MERGE (l:Landscape {tokenId: $tokenId})
             MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+
+            OPTIONAL CALL (sc) {
+              WITH sc
+              WHERE $systemName <> ""
+              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+              RETURN sys
+            }
+
+            WITH coalesce(sys, sc) AS start
 
             // Find longest service path match
-            MATCH p = (sys)-[:CONTAINS]->*(deepestNode:RPCSystem|RPCNamespace|RPCService)
+            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
               AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
