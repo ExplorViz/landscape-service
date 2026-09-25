@@ -28,28 +28,40 @@ public final class StructureMapper {
   private static final String LABEL_RPC_SYSTEM = "RPCSystem";
   private static final String LABEL_RPC_NAMESPACE = "RPCNamespace";
   private static final String LABEL_RPC_SERVICE = "RPCService";
+  private static final String LABEL_RPC_CLIENT = "RPCClient";
+
   private static final String LABEL_HTTP_ENDPOINT = "HTTPEndpoint";
+  private static final String LABEL_HTTP_CLIENT = "HTTPClient";
+
   private static final String LABEL_GENERIC_ENTITY = "GenericTelemetryEntity";
 
-  private static final Set<String> CITY_LABELS = Set.of("Application");
+  private static final Set<String> CITY_LABELS = Set.of(LABEL_APPLICATION);
 
   private static final Set<String> DISTRICT_LABELS =
       Set.of(LABEL_SCOPE, LABEL_DIRECTORY, LABEL_RPC_SYSTEM, LABEL_RPC_NAMESPACE);
 
   private static final Set<String> BUILDING_LABELS =
-      Set.of(LABEL_FILE_REVISION, LABEL_RPC_SERVICE, LABEL_HTTP_ENDPOINT, LABEL_GENERIC_ENTITY);
+      Set.of(
+          LABEL_FILE_REVISION,
+          LABEL_RPC_SERVICE,
+          LABEL_RPC_CLIENT,
+          LABEL_HTTP_ENDPOINT,
+          LABEL_HTTP_CLIENT,
+          LABEL_GENERIC_ENTITY);
 
   private static final Map<String, ModelType> LABEL_TO_TYPE =
-      Map.of(
-          LABEL_APPLICATION, ModelType.SERVICE,
-          LABEL_SCOPE, ModelType.INSTRUMENTATION_SCOPE,
-          LABEL_DIRECTORY, ModelType.CODE,
-          LABEL_FILE_REVISION, ModelType.CODE,
-          LABEL_RPC_SYSTEM, ModelType.RPC,
-          LABEL_RPC_NAMESPACE, ModelType.RPC,
-          LABEL_RPC_SERVICE, ModelType.RPC,
-          LABEL_HTTP_ENDPOINT, ModelType.HTTP,
-          LABEL_GENERIC_ENTITY, ModelType.UNKNOWN);
+      Map.ofEntries(
+          Map.entry(LABEL_APPLICATION, ModelType.SERVICE),
+          Map.entry(LABEL_SCOPE, ModelType.INSTRUMENTATION_SCOPE),
+          Map.entry(LABEL_DIRECTORY, ModelType.CODE),
+          Map.entry(LABEL_FILE_REVISION, ModelType.CODE),
+          Map.entry(LABEL_RPC_SYSTEM, ModelType.RPC),
+          Map.entry(LABEL_RPC_NAMESPACE, ModelType.RPC),
+          Map.entry(LABEL_RPC_SERVICE, ModelType.RPC),
+          Map.entry(LABEL_RPC_CLIENT, ModelType.RPC),
+          Map.entry(LABEL_HTTP_ENDPOINT, ModelType.HTTP),
+          Map.entry(LABEL_HTTP_CLIENT, ModelType.HTTP),
+          Map.entry(LABEL_GENERIC_ENTITY, ModelType.UNKNOWN));
 
   public record NodeData(
       Long id,

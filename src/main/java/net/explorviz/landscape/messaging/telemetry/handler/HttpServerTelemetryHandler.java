@@ -3,24 +3,24 @@ package net.explorviz.landscape.messaging.telemetry.handler;
 import io.quarkus.logging.Log;
 import java.util.Map;
 import net.explorviz.landscape.ogm.http.HttpEndpoint;
-import net.explorviz.landscape.proto.HttpDescriptor;
+import net.explorviz.landscape.proto.HttpServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import org.neo4j.ogm.session.Session;
 
 /**
- * Receives entities extracted from telemetry data that describe HTTP requests and writes the
- * corresponding nodes to the graph.
+ * Receives entities extracted from telemetry data that describe server-side HTTP requests and
+ * writes the corresponding nodes to the graph.
  */
-public final class HttpTelemetryHandler {
+public final class HttpServerTelemetryHandler {
 
-  private HttpTelemetryHandler() {}
+  private HttpServerTelemetryHandler() {}
 
   public static void saveEntity(final Session session, final TelemetryEntity entity) {
-    if (!entity.hasHttpDescriptor()) {
-      throw new IllegalArgumentException("HTTP descriptor is required");
+    if (!entity.hasHttpServerDescriptor()) {
+      throw new IllegalArgumentException("HTTP server descriptor is required");
     }
 
-    final HttpDescriptor descriptor = entity.getHttpDescriptor();
+    final HttpServerDescriptor descriptor = entity.getHttpServerDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureEndpointPathForCommit(session, entity, descriptor);
@@ -28,13 +28,13 @@ public final class HttpTelemetryHandler {
         return;
       }
       Log.debugf(
-          "Could not create HTTP entity for commit %s, creating runtime entity instead",
+          "Could not create HTTP server entity for commit %s, creating runtime entity instead",
           entity.getGitCommitHash());
     }
 
     final boolean success = ensureEndpointPath(session, entity, descriptor);
     if (!success) {
-      Log.errorf("Failed to create runtime HTTP entity");
+      Log.errorf("Failed to create runtime HTTP server entity");
     }
   }
 
@@ -47,7 +47,7 @@ public final class HttpTelemetryHandler {
    * updated to contain that of the provided entity descriptor.
    */
   private static boolean ensureEndpointPathForCommit(
-      final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
+      final Session session, final TelemetryEntity entity, final HttpServerDescriptor descriptor) {
 
     final HttpEndpoint result =
         session.queryForObject(
@@ -86,7 +86,7 @@ public final class HttpTelemetryHandler {
    * updated to contain that of the provided entity descriptor.
    */
   private static boolean ensureEndpointPath(
-      final Session session, final TelemetryEntity entity, final HttpDescriptor descriptor) {
+      final Session session, final TelemetryEntity entity, final HttpServerDescriptor descriptor) {
 
     final HttpEndpoint result =
         session.queryForObject(

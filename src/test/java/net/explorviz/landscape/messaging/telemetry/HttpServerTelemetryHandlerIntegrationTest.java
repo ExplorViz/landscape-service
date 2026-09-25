@@ -14,7 +14,7 @@ import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import java.time.Duration;
 import net.explorviz.landscape.api.v3.StructureResource;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.proto.HttpDescriptor;
+import net.explorviz.landscape.proto.HttpServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.FlatLandscapeBuilder;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
-public class HttpTelemetryHandlerIntegrationTest {
+public class HttpServerTelemetryHandlerIntegrationTest {
 
   @AutoClose KafkaCompanion companion;
 
@@ -50,8 +50,8 @@ public class HttpTelemetryHandlerIntegrationTest {
 
   @Test
   void testSaveEntity() {
-    HttpDescriptor descriptor =
-        HttpDescriptor.newBuilder()
+    HttpServerDescriptor descriptor =
+        HttpServerDescriptor.newBuilder()
             .setApplicationName("hello-world")
             .setRoute("/api/v3/profile/{profileId}")
             .setMethod("GET")
@@ -63,7 +63,7 @@ public class HttpTelemetryHandlerIntegrationTest {
             .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
             .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
             .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
-            .setHttpDescriptor(descriptor)
+            .setHttpServerDescriptor(descriptor)
             .build();
 
     companion

@@ -3,24 +3,24 @@ package net.explorviz.landscape.messaging.telemetry.handler;
 import io.quarkus.logging.Log;
 import java.util.Map;
 import net.explorviz.landscape.ogm.otel.GenericTelemetryEntity;
-import net.explorviz.landscape.proto.GenericServiceDescriptor;
+import net.explorviz.landscape.proto.GenericEntityDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import org.neo4j.ogm.session.Session;
 
 /**
- * Receives entities extracted from telemetry data that describe services that cannot be classified
- * more precisely and writes the corresponding nodes to the graph.
+ * Receives entities extracted from telemetry data that cannot be classified more precisely than by
+ * their service name and writes the corresponding nodes to the graph.
  */
 public final class GenericTelemetryHandler {
 
   private GenericTelemetryHandler() {}
 
   public static void saveEntity(final Session session, final TelemetryEntity entity) {
-    if (!entity.hasGenericServiceDescriptor()) {
+    if (!entity.hasGenericEntityDescriptor()) {
       throw new IllegalArgumentException("Generic descriptor is required");
     }
 
-    final GenericServiceDescriptor descriptor = entity.getGenericServiceDescriptor();
+    final GenericEntityDescriptor descriptor = entity.getGenericEntityDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureEntityPathForCommit(session, entity, descriptor);
@@ -47,7 +47,7 @@ public final class GenericTelemetryHandler {
   private static boolean ensureEntityPath(
       final Session session,
       final TelemetryEntity entity,
-      final GenericServiceDescriptor descriptor) {
+      final GenericEntityDescriptor descriptor) {
 
     final GenericTelemetryEntity result =
         session.queryForObject(
@@ -77,7 +77,7 @@ public final class GenericTelemetryHandler {
                 "serviceName", descriptor.getServiceName(),
                 "scopeName", entity.getInstrumentationScope(),
                 "name", GenericTelemetryEntity.DISPLAY_NAME,
-                "telemetryKey", descriptor.getServiceTelemetryKey()));
+                "telemetryKey", descriptor.getTelemetryKey()));
 
     return result != null;
   }
@@ -92,7 +92,7 @@ public final class GenericTelemetryHandler {
   private static boolean ensureEntityPathForCommit(
       final Session session,
       final TelemetryEntity entity,
-      final GenericServiceDescriptor descriptor) {
+      final GenericEntityDescriptor descriptor) {
 
     final GenericTelemetryEntity result =
         session.queryForObject(
@@ -114,7 +114,7 @@ public final class GenericTelemetryHandler {
                 "commitHash", entity.getGitCommitHash(),
                 "serviceName", descriptor.getServiceName(),
                 "scopeName", entity.getInstrumentationScope(),
-                "telemetryKey", descriptor.getServiceTelemetryKey()));
+                "telemetryKey", descriptor.getTelemetryKey()));
 
     return result != null;
   }
