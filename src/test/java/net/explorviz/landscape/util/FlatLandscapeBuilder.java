@@ -13,11 +13,15 @@ import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.api.v3.model.landscape.ModelType;
+import net.explorviz.landscape.ogm.http.HttpClient;
 import net.explorviz.landscape.ogm.otel.GenericTelemetryEntity;
+import net.explorviz.landscape.ogm.rpc.RpcClient;
 import net.explorviz.landscape.proto.CodeDescriptor;
-import net.explorviz.landscape.proto.GenericServiceDescriptor;
-import net.explorviz.landscape.proto.HttpDescriptor;
-import net.explorviz.landscape.proto.RpcDescriptor;
+import net.explorviz.landscape.proto.GenericEntityDescriptor;
+import net.explorviz.landscape.proto.HttpClientDescriptor;
+import net.explorviz.landscape.proto.HttpServerDescriptor;
+import net.explorviz.landscape.proto.RpcClientDescriptor;
+import net.explorviz.landscape.proto.RpcServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 
 /**
@@ -56,9 +60,11 @@ public class FlatLandscapeBuilder {
   public FlatLandscapeBuilder addModelsFromTelemetryEntity(TelemetryEntity entity) {
     switch (entity.getEntityDescriptorCase()) {
       case CODE_DESCRIPTOR -> addCodeEntity(entity);
-      case RPC_DESCRIPTOR -> addRpcEntity(entity);
-      case HTTP_DESCRIPTOR -> addHttpEntity(entity);
-      case GENERIC_SERVICE_DESCRIPTOR -> addGenericEntity(entity);
+      case RPC_SERVER_DESCRIPTOR -> addRpcServerEntity(entity);
+      case RPC_CLIENT_DESCRIPTOR -> addRpcClientEntity(entity);
+      case HTTP_SERVER_DESCRIPTOR -> addHttpServerEntity(entity);
+      case HTTP_CLIENT_DESCRIPTOR -> addHttpClientEntity(entity);
+      case GENERIC_ENTITY_DESCRIPTOR -> addGenericEntity(entity);
       default -> throw new UnsupportedOperationException("No handler implemented for entity type");
     }
 
@@ -109,10 +115,12 @@ public class FlatLandscapeBuilder {
         createBuilding);
   }
 
-  private void addRpcEntity(TelemetryEntity entity) {
-    RpcDescriptor descriptor = entity.getRpcDescriptor();
+  private void addRpcServerEntity(TelemetryEntity entity) {
+    RpcServerDescriptor descriptor = entity.getRpcServerDescriptor();
     List<String> servicePath = new ArrayList<>();
-    servicePath.add(descriptor.getSystemName());
+    if (descriptor.hasSystemName()) {
+      servicePath.add(descriptor.getSystemName());
+    }
     servicePath.addAll(List.of(descriptor.getServiceName().split("\\.")));
 
     LandscapeModelCreator<DistrictDto> createDistrict =
@@ -155,12 +163,61 @@ public class FlatLandscapeBuilder {
         createBuilding);
   }
 
-  private void addHttpEntity(TelemetryEntity entity) {
-    HttpDescriptor descriptor = entity.getHttpDescriptor();
+  private void addRpcClientEntity(TelemetryEntity entity) {
+    RpcClientDescriptor descriptor = entity.getRpcClientDescriptor();
+
+    List<String> clientPath = new ArrayList<>();
+    if (descriptor.hasSystemName()) {
+      clientPath.add(descriptor.getSystemName());
+    }
+    clientPath.add(RpcClient.DISPLAY_NAME);
+
+    LandscapeModelCreator<DistrictDto> createDistrict =
+        (name, fqn, cityId, parentDistrictId) ->
+            new DistrictDto(
+                new FlatBaseModel(
+                    UUID.randomUUID().toString(),
+                    name,
+                    fqn,
+                    null,
+                    ModelType.RPC,
+                    TypeOfAnalysis.RUNTIME,
+                    null),
+                cityId,
+                parentDistrictId,
+                new ArrayList<>(),
+                new ArrayList<>());
+
+    LandscapeModelCreator<BuildingDto> createBuilding =
+        (name, fqn, cityId, parentDistrictId) ->
+            new BuildingDto(
+                new FlatBaseModel(
+                    UUID.randomUUID().toString(),
+                    name,
+                    fqn,
+                    descriptor.getTelemetryKey(),
+                    ModelType.RPC,
+                    TypeOfAnalysis.RUNTIME,
+                    null),
+                cityId,
+                parentDistrictId,
+                null,
+                Map.of());
+
+    ensureBuildingPath(
+        descriptor.getApplicationName(),
+        entity.getInstrumentationScope(),
+        clientPath.toArray(new String[0]),
+        createDistrict,
+        createBuilding);
+  }
+
+  private void addHttpServerEntity(TelemetryEntity entity) {
+    HttpServerDescriptor descriptor = entity.getHttpServerDescriptor();
 
     LandscapeModelCreator<DistrictDto> createDistrict =
         (name, fqn, cityId, parentDistrictId) -> {
-          throw new IllegalStateException("HTTP entity should not create districts");
+          throw new IllegalStateException("HTTP server entity should not create districts");
         };
 
     LandscapeModelCreator<BuildingDto> createBuilding =
@@ -187,8 +244,40 @@ public class FlatLandscapeBuilder {
         createBuilding);
   }
 
+  private void addHttpClientEntity(TelemetryEntity entity) {
+    HttpClientDescriptor descriptor = entity.getHttpClientDescriptor();
+
+    LandscapeModelCreator<DistrictDto> createDistrict =
+        (name, fqn, cityId, parentDistrictId) -> {
+          throw new IllegalStateException("HTTP client entity should not create districts");
+        };
+
+    LandscapeModelCreator<BuildingDto> createBuilding =
+        (name, fqn, cityId, parentDistrictId) ->
+            new BuildingDto(
+                new FlatBaseModel(
+                    UUID.randomUUID().toString(),
+                    name,
+                    fqn,
+                    descriptor.getTelemetryKey(),
+                    ModelType.HTTP,
+                    TypeOfAnalysis.RUNTIME,
+                    null),
+                cityId,
+                parentDistrictId,
+                null,
+                Map.of());
+
+    ensureBuildingPath(
+        descriptor.getApplicationName(),
+        entity.getInstrumentationScope(),
+        new String[] {HttpClient.DISPLAY_NAME},
+        createDistrict,
+        createBuilding);
+  }
+
   private void addGenericEntity(TelemetryEntity entity) {
-    GenericServiceDescriptor descriptor = entity.getGenericServiceDescriptor();
+    GenericEntityDescriptor descriptor = entity.getGenericEntityDescriptor();
 
     LandscapeModelCreator<DistrictDto> createDistrict =
         (name, fqn, cityId, parentDistrictId) -> {
@@ -202,7 +291,7 @@ public class FlatLandscapeBuilder {
                     UUID.randomUUID().toString(),
                     name,
                     fqn,
-                    descriptor.getServiceTelemetryKey(),
+                    descriptor.getTelemetryKey(),
                     ModelType.UNKNOWN,
                     TypeOfAnalysis.RUNTIME,
                     null),

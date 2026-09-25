@@ -14,7 +14,7 @@ import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import java.time.Duration;
 import net.explorviz.landscape.api.v3.StructureResource;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.proto.GenericEntityDescriptor;
+import net.explorviz.landscape.proto.RpcServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.FlatLandscapeBuilder;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
-public class GenericTelemetryHandlerIntegrationTest {
+public class RpcServerTelemetryHandlerIntegrationTest {
 
   @AutoClose KafkaCompanion companion;
 
@@ -50,10 +50,13 @@ public class GenericTelemetryHandlerIntegrationTest {
 
   @Test
   void testSaveEntity() {
-    GenericEntityDescriptor descriptor =
-        GenericEntityDescriptor.newBuilder()
-            .setServiceName("hello-world")
-            .setTelemetryKey("796f20776164647570")
+    RpcServerDescriptor descriptor =
+        RpcServerDescriptor.newBuilder()
+            .setApplicationName("hello-world")
+            .setServiceName("explorviz.telemetry.TelemetrySevice")
+            .setMethodName("remoteMethod")
+            .setSystemName("grpc")
+            .setServiceTelemetryKey("796f20776164647570")
             .build();
 
     TelemetryEntity entity =
@@ -61,7 +64,56 @@ public class GenericTelemetryHandlerIntegrationTest {
             .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
             .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
             .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
-            .setGenericEntityDescriptor(descriptor)
+            .setRpcServerDescriptor(descriptor)
+            .build();
+
+    companion
+        .produce(String.class, byte[].class)
+        .fromRecords(
+            new ProducerRecord<>(entitiesTopic, DEFAULT_LANDSCAPE_ID, entity.toByteArray()))
+        .awaitCompletion();
+
+    FlatLandscapeDto expectedLandscape =
+        new FlatLandscapeBuilder()
+            .setLandscapeToken(DEFAULT_LANDSCAPE_ID)
+            .addModelsFromTelemetryEntity(entity)
+            .build();
+
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .untilAsserted(
+            () -> {
+              Response response =
+                  given()
+                      .pathParam("landscapeToken", DEFAULT_LANDSCAPE_ID)
+                      .get(getStructureRuntimeUrl);
+
+              response.then().statusCode(200);
+
+              FlatLandscapeDto receivedLandscape =
+                  new ObjectMapper().readValue(response.asString(), FlatLandscapeDto.class);
+
+              assertLandscapeIdsValid(receivedLandscape);
+              assertLandscapeStructureMatching(expectedLandscape, receivedLandscape);
+            });
+  }
+
+  @Test
+  void testSaveEntityNoSystemName() {
+    RpcServerDescriptor descriptor =
+        RpcServerDescriptor.newBuilder()
+            .setApplicationName("hello-world")
+            .setServiceName("explorviz.telemetry.TelemetrySevice")
+            .setMethodName("remoteMethod")
+            .setServiceTelemetryKey("796f20776164647570")
+            .build();
+
+    TelemetryEntity entity =
+        TelemetryEntity.newBuilder()
+            .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
+            .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
+            .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
+            .setRpcServerDescriptor(descriptor)
             .build();
 
     companion
