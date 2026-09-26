@@ -76,7 +76,7 @@ public final class GenericTelemetryHandler {
                 "commitHash", entity.getGitCommitHash(),
                 "serviceName", descriptor.getServiceName(),
                 "scopeName", entity.getInstrumentationScope(),
-                "name", GenericTelemetryEntity.DISPLAY_NAME,
+                "name", descriptor.getName(),
                 "telemetryKey", descriptor.getTelemetryKey()));
 
     return result != null;
@@ -103,7 +103,7 @@ public final class GenericTelemetryHandler {
 
             MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
             MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity)<-[:CONTAINS]-(commit)
+            MERGE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})<-[:CONTAINS]-(commit)
 
             SET e.telemetryKey = $telemetryKey
 
@@ -114,6 +114,7 @@ public final class GenericTelemetryHandler {
                 "commitHash", entity.getGitCommitHash(),
                 "serviceName", descriptor.getServiceName(),
                 "scopeName", entity.getInstrumentationScope(),
+                "name", descriptor.getName(),
                 "telemetryKey", descriptor.getTelemetryKey()));
 
     return result != null;

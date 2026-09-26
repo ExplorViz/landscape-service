@@ -14,7 +14,6 @@ import net.explorviz.landscape.api.v3.model.landscape.FlatBaseModel;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.api.v3.model.landscape.ModelType;
 import net.explorviz.landscape.ogm.http.HttpClient;
-import net.explorviz.landscape.ogm.otel.GenericTelemetryEntity;
 import net.explorviz.landscape.ogm.rpc.RpcClient;
 import net.explorviz.landscape.proto.CodeDescriptor;
 import net.explorviz.landscape.proto.GenericEntityDescriptor;
@@ -303,7 +302,7 @@ public class FlatLandscapeBuilder {
     ensureBuildingPath(
         descriptor.getServiceName(),
         entity.getInstrumentationScope(),
-        new String[] {GenericTelemetryEntity.DISPLAY_NAME},
+        new String[] {descriptor.getName()},
         createDistrict,
         createBuilding);
   }

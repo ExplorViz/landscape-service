@@ -34,7 +34,8 @@ message TelemetryEntity {
  */
 message GenericEntityDescriptor {
   string service_name = 1;
-  string telemetry_key = 2; // Lookup key for retrieving telemetry for this entity
+  string name = 2; // Unqualified variant of the instrumentation scope name
+  string telemetry_key = 3; // Lookup key for retrieving telemetry for this entity
 }
 
 /**

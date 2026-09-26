@@ -53,6 +53,7 @@ public class GenericTelemetryHandlerIntegrationTest {
     GenericEntityDescriptor descriptor =
         GenericEntityDescriptor.newBuilder()
             .setServiceName("hello-world")
+            .setName("name")
             .setTelemetryKey("796f20776164647570")
             .build();
 
