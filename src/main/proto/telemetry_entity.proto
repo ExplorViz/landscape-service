@@ -21,10 +21,11 @@ message TelemetryEntity {
   oneof entity_descriptor {
     GenericEntityDescriptor generic_entity_descriptor = 5;
     CodeDescriptor code_descriptor = 6;
-    RpcServerDescriptor rpc_server_descriptor = 7;
-    RpcClientDescriptor rpc_client_descriptor = 8;
-    HttpServerDescriptor http_server_descriptor = 9;
-    HttpClientDescriptor http_client_descriptor = 10;
+    DatabaseDescriptor database_descriptor = 7;
+    RpcServerDescriptor rpc_server_descriptor = 8;
+    RpcClientDescriptor rpc_client_descriptor = 9;
+    HttpServerDescriptor http_server_descriptor = 10;
+    HttpClientDescriptor http_client_descriptor = 11;
   }
 }
 
@@ -52,6 +53,17 @@ message CodeDescriptor {
 
   optional string class_name = 6; // Inner classes may be separated by "."
   optional string language = 7; // Programming language, e.g. "java"
+}
+
+/**
+ * DatabaseDescriptor describes a database management system,
+ * and potentially a database and / or table within.
+ */
+message DatabaseDescriptor {
+  string system_name = 1; // Name of the database management system
+  string telemetry_key = 2; // Lookup key for retrieving telemetry for this database system
+  optional string database_name = 3;
+  optional string table_name = 4;
 }
 
 /**

@@ -25,6 +25,8 @@ public final class StructureMapper {
   private static final String LABEL_DIRECTORY = "Directory";
   private static final String LABEL_FILE_REVISION = "FileRevision";
 
+  private static final String LABEL_DATABASE_SYSTEM = "DatabaseSystem";
+
   private static final String LABEL_RPC_SYSTEM = "RPCSystem";
   private static final String LABEL_RPC_NAMESPACE = "RPCNamespace";
   private static final String LABEL_RPC_SERVICE = "RPCService";
@@ -35,7 +37,7 @@ public final class StructureMapper {
 
   private static final String LABEL_GENERIC_ENTITY = "GenericTelemetryEntity";
 
-  private static final Set<String> CITY_LABELS = Set.of(LABEL_APPLICATION);
+  private static final Set<String> CITY_LABELS = Set.of(LABEL_APPLICATION, LABEL_DATABASE_SYSTEM);
 
   private static final Set<String> DISTRICT_LABELS =
       Set.of(LABEL_SCOPE, LABEL_DIRECTORY, LABEL_RPC_SYSTEM, LABEL_RPC_NAMESPACE);
@@ -55,6 +57,7 @@ public final class StructureMapper {
           Map.entry(LABEL_SCOPE, ModelType.INSTRUMENTATION_SCOPE),
           Map.entry(LABEL_DIRECTORY, ModelType.CODE),
           Map.entry(LABEL_FILE_REVISION, ModelType.CODE),
+          Map.entry(LABEL_DATABASE_SYSTEM, ModelType.DATABASE),
           Map.entry(LABEL_RPC_SYSTEM, ModelType.RPC),
           Map.entry(LABEL_RPC_NAMESPACE, ModelType.RPC),
           Map.entry(LABEL_RPC_SERVICE, ModelType.RPC),

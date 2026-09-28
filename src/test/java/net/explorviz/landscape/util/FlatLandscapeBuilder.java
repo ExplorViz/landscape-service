@@ -16,6 +16,7 @@ import net.explorviz.landscape.api.v3.model.landscape.ModelType;
 import net.explorviz.landscape.ogm.http.HttpClient;
 import net.explorviz.landscape.ogm.rpc.RpcClient;
 import net.explorviz.landscape.proto.CodeDescriptor;
+import net.explorviz.landscape.proto.DatabaseDescriptor;
 import net.explorviz.landscape.proto.GenericEntityDescriptor;
 import net.explorviz.landscape.proto.HttpClientDescriptor;
 import net.explorviz.landscape.proto.HttpServerDescriptor;
@@ -59,6 +60,7 @@ public class FlatLandscapeBuilder {
   public FlatLandscapeBuilder addModelsFromTelemetryEntity(TelemetryEntity entity) {
     switch (entity.getEntityDescriptorCase()) {
       case CODE_DESCRIPTOR -> addCodeEntity(entity);
+      case DATABASE_DESCRIPTOR -> addDatabaseEntity(entity);
       case RPC_SERVER_DESCRIPTOR -> addRpcServerEntity(entity);
       case RPC_CLIENT_DESCRIPTOR -> addRpcClientEntity(entity);
       case HTTP_SERVER_DESCRIPTOR -> addHttpServerEntity(entity);
@@ -112,6 +114,26 @@ public class FlatLandscapeBuilder {
         filePath,
         createDistrict,
         createBuilding);
+  }
+
+  private void addDatabaseEntity(TelemetryEntity entity) {
+    DatabaseDescriptor descriptor = entity.getDatabaseDescriptor();
+    if (findCityByName(descriptor.getSystemName()).isEmpty()) {
+      cities.add(
+          new CityDto(
+              new FlatBaseModel(
+                  UUID.randomUUID().toString(),
+                  descriptor.getSystemName(),
+                  null,
+                  descriptor.getTelemetryKey(),
+                  ModelType.DATABASE,
+                  TypeOfAnalysis.RUNTIME,
+                  null),
+              List.of(),
+              List.of(),
+              List.of(),
+              List.of()));
+    }
   }
 
   private void addRpcServerEntity(TelemetryEntity entity) {
@@ -349,30 +371,33 @@ public class FlatLandscapeBuilder {
       this.cities.add(city);
     }
 
-    DistrictDto scopeDistrict =
-        findOrCreateDistrict(
-            city,
-            null,
-            scopeName,
-            scopeName,
-            (name, fqn, cityId, parentDistrictId) ->
-                new DistrictDto(
-                    new FlatBaseModel(
-                        UUID.randomUUID().toString(),
-                        name,
-                        fqn,
-                        null,
-                        ModelType.INSTRUMENTATION_SCOPE,
-                        TypeOfAnalysis.RUNTIME,
-                        null),
-                    cityId,
-                    parentDistrictId,
-                    new ArrayList<>(),
-                    new ArrayList<>()));
-
     List<String> fqn = new ArrayList<>();
-    fqn.add(scopeDistrict.flatBaseModel().name());
-    DistrictDto parentDistrict = scopeDistrict;
+    DistrictDto parentDistrict = null;
+
+    if (scopeName != null) {
+      parentDistrict =
+          findOrCreateDistrict(
+              city,
+              null,
+              scopeName,
+              scopeName,
+              (name, districtFqn, cityId, parentDistrictId) ->
+                  new DistrictDto(
+                      new FlatBaseModel(
+                          UUID.randomUUID().toString(),
+                          name,
+                          districtFqn,
+                          null,
+                          ModelType.INSTRUMENTATION_SCOPE,
+                          TypeOfAnalysis.RUNTIME,
+                          null),
+                      cityId,
+                      parentDistrictId,
+                      new ArrayList<>(),
+                      new ArrayList<>()));
+
+      fqn.add(parentDistrict.flatBaseModel().name());
+    }
 
     for (int i = 0; i < buildingPath.length; i++) {
       String pathName = buildingPath[i];

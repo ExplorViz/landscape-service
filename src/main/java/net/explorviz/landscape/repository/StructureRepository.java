@@ -74,7 +74,7 @@ public class StructureRepository {
     final Result result =
         session.query(
             """
-            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application|DatabaseSystem)
             OPTIONAL MATCH (a)-[:HAS_ROOT]->(rootDir:Directory)
 
             MATCH p = (a)-[:CONTAINS]->*(n)
@@ -82,7 +82,7 @@ public class StructureRepository {
               (rootDir IS NULL OR n <> rootDir) // Application root shouldn't become a district
               AND EXISTS {
                 MATCH (n)
-                  -[:CONTAINS]->*(end:FileRevision|RPCService|RPCClient|HTTPEndpoint|HTTPClient|GenericTelemetryEntity)
+                  -[:CONTAINS]->*(end:FileRevision|DatabaseSystem|RPCService|RPCClient|HTTPEndpoint|HTTPClient|GenericTelemetryEntity)
                 WHERE
                   end.telemetryKey IS NOT NULL
                   AND NOT (:Commit)-[:CONTAINS]->(end)

@@ -8,6 +8,7 @@ import jakarta.inject.Inject;
 import java.util.EnumMap;
 import java.util.Map;
 import net.explorviz.landscape.messaging.telemetry.handler.CodeTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.DatabaseTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.GenericTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.HttpClientTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.HttpServerTelemetryHandler;
@@ -31,6 +32,7 @@ public class TelemetryConsumer {
       new EnumMap<>(
           Map.of(
               EntityDescriptorCase.CODE_DESCRIPTOR, CodeTelemetryHandler::saveEntity,
+              EntityDescriptorCase.DATABASE_DESCRIPTOR, DatabaseTelemetryHandler::saveEntity,
               EntityDescriptorCase.RPC_SERVER_DESCRIPTOR, RpcServerTelemetryHandler::saveEntity,
               EntityDescriptorCase.RPC_CLIENT_DESCRIPTOR, RpcClientTelemetryHandler::saveEntity,
               EntityDescriptorCase.HTTP_SERVER_DESCRIPTOR, HttpServerTelemetryHandler::saveEntity,

@@ -21,6 +21,9 @@ public enum ModelType {
   /** Models originating from source code analysis. */
   CODE("code"),
 
+  /** Models originating from database call analysis. */
+  DATABASE("database"),
+
   /** Models originating from remote procedure call analysis. */
   RPC("rpc"),
 
