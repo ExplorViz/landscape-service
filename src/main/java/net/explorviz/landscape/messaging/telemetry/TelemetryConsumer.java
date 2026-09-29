@@ -8,9 +8,12 @@ import jakarta.inject.Inject;
 import java.util.EnumMap;
 import java.util.Map;
 import net.explorviz.landscape.messaging.telemetry.handler.CodeTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.DatabaseTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.GenericTelemetryHandler;
-import net.explorviz.landscape.messaging.telemetry.handler.HttpTelemetryHandler;
-import net.explorviz.landscape.messaging.telemetry.handler.RpcTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.HttpClientTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.HttpServerTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.RpcClientTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.RpcServerTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.TelemetryHandler;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.proto.TelemetryEntity.EntityDescriptorCase;
@@ -29,10 +32,12 @@ public class TelemetryConsumer {
       new EnumMap<>(
           Map.of(
               EntityDescriptorCase.CODE_DESCRIPTOR, CodeTelemetryHandler::saveEntity,
-              EntityDescriptorCase.RPC_DESCRIPTOR, RpcTelemetryHandler::saveEntity,
-              EntityDescriptorCase.HTTP_DESCRIPTOR, HttpTelemetryHandler::saveEntity,
-              EntityDescriptorCase.GENERIC_SERVICE_DESCRIPTOR,
-                  GenericTelemetryHandler::saveEntity));
+              EntityDescriptorCase.DATABASE_DESCRIPTOR, DatabaseTelemetryHandler::saveEntity,
+              EntityDescriptorCase.RPC_SERVER_DESCRIPTOR, RpcServerTelemetryHandler::saveEntity,
+              EntityDescriptorCase.RPC_CLIENT_DESCRIPTOR, RpcClientTelemetryHandler::saveEntity,
+              EntityDescriptorCase.HTTP_SERVER_DESCRIPTOR, HttpServerTelemetryHandler::saveEntity,
+              EntityDescriptorCase.HTTP_CLIENT_DESCRIPTOR, HttpClientTelemetryHandler::saveEntity,
+              EntityDescriptorCase.GENERIC_ENTITY_DESCRIPTOR, GenericTelemetryHandler::saveEntity));
 
   @Blocking
   @Incoming("telemetry-entities")

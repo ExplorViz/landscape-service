@@ -7,17 +7,9 @@ import org.neo4j.ogm.annotation.NodeEntity;
 /** Represents an entity extracted from telemetry which cannot be further classified. */
 @NodeEntity
 public class GenericTelemetryEntity {
-
-  /**
-   * Name that is given to buildings representing generic entities by default, since these do not
-   * have a natural name that can be derived from its attributes.
-   */
-  public static final String DISPLAY_NAME = "Unclassified Entity";
-
   @Id @GeneratedValue private Long id;
 
-  @SuppressWarnings("PMD.FinalFieldCouldBeStatic")
-  private final String name = DISPLAY_NAME;
+  private String name;
 
   /**
    * Identifier for looking up telemetry data related to this entity (e.g. finding communication).

@@ -3,38 +3,40 @@ package net.explorviz.landscape.messaging.telemetry.handler;
 import io.quarkus.logging.Log;
 import java.util.Map;
 import net.explorviz.landscape.ogm.rpc.RpcMethod;
-import net.explorviz.landscape.proto.RpcDescriptor;
+import net.explorviz.landscape.proto.RpcServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import org.neo4j.ogm.session.Session;
 
 /**
- * Receives entities extracted from telemetry data that describe remote procedure calls and writes
- * the corresponding nodes to the graph.
+ * Receives entities extracted from telemetry data that describe server-side remote procedure calls
+ * and writes the corresponding nodes to the graph.
  */
-public final class RpcTelemetryHandler {
+public final class RpcServerTelemetryHandler {
 
-  private RpcTelemetryHandler() {}
+  private RpcServerTelemetryHandler() {}
 
   public static void saveEntity(final Session session, final TelemetryEntity entity) {
-    if (!entity.hasRpcDescriptor()) {
-      throw new IllegalArgumentException("RPC descriptor is required");
+    if (!entity.hasRpcServerDescriptor()) {
+      throw new IllegalArgumentException("RPC server descriptor is required");
     }
 
-    final RpcDescriptor descriptor = entity.getRpcDescriptor();
+    final RpcServerDescriptor descriptor = entity.getRpcServerDescriptor();
 
     if (entity.hasGitCommitHash() && !entity.getGitCommitHash().isEmpty()) {
       final boolean success = ensureMethodPathForCommit(session, entity, descriptor);
+
       if (success) {
         return;
       }
       Log.debugf(
-          "Could not create RPC entity for commit %s, creating runtime entity instead",
+          "Could not create RPC server entity for commit %s, creating runtime entity instead",
           entity.getGitCommitHash());
     }
 
     final boolean success = ensureMethodPath(session, entity, descriptor);
+
     if (!success) {
-      Log.errorf("Failed to create runtime RPC entity");
+      Log.errorf("Failed to create runtime RPC server entity");
     }
   }
 
@@ -46,7 +48,7 @@ public final class RpcTelemetryHandler {
    * method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
   private static boolean ensureMethodPathForCommit(
-      final Session session, final TelemetryEntity entity, final RpcDescriptor descriptor) {
+      final Session session, final TelemetryEntity entity, final RpcServerDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");
 
@@ -59,10 +61,18 @@ public final class RpcTelemetryHandler {
 
             MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+
+            OPTIONAL CALL (sc) {
+              WITH sc
+              WHERE $systemName <> ""
+              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+              RETURN sys
+            }
+
+            WITH coalesce(sys, sc) AS start
 
             // Find longest service path match
-            MATCH p = (sys)-[:CONTAINS]->*(deepestNode:RPCSystem|RPCNamespace|RPCService)
+            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
               AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
@@ -115,7 +125,7 @@ public final class RpcTelemetryHandler {
    * and method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
   private static boolean ensureMethodPath(
-      final Session session, final TelemetryEntity entity, final RpcDescriptor descriptor) {
+      final Session session, final TelemetryEntity entity, final RpcServerDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");
 
@@ -126,10 +136,18 @@ public final class RpcTelemetryHandler {
             MERGE (l:Landscape {tokenId: $tokenId})
             MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
             MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+
+            OPTIONAL CALL (sc) {
+              WITH sc
+              WHERE $systemName <> ""
+              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+              RETURN sys
+            }
+
+            WITH coalesce(sys, sc) AS start
 
             // Find longest service path match
-            MATCH p = (sys)-[:CONTAINS]->*(deepestNode:RPCSystem|RPCNamespace|RPCService)
+            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
             WHERE
               all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
               AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))

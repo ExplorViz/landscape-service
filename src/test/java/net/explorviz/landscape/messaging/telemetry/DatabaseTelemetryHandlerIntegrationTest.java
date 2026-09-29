@@ -14,7 +14,7 @@ import io.smallrye.reactive.messaging.kafka.companion.KafkaCompanion;
 import java.time.Duration;
 import net.explorviz.landscape.api.v3.StructureResource;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.proto.GenericEntityDescriptor;
+import net.explorviz.landscape.proto.DatabaseDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
 import net.explorviz.landscape.util.FlatLandscapeBuilder;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
-public class GenericTelemetryHandlerIntegrationTest {
+public class DatabaseTelemetryHandlerIntegrationTest {
 
   @AutoClose KafkaCompanion companion;
 
@@ -49,20 +49,52 @@ public class GenericTelemetryHandlerIntegrationTest {
   }
 
   @Test
-  void testSaveEntity() {
-    GenericEntityDescriptor descriptor =
-        GenericEntityDescriptor.newBuilder()
-            .setServiceName("hello-world")
-            .setName("name")
+  void testSaveEntityAllProvided() {
+    testSaveEntity(
+        DatabaseDescriptor.newBuilder()
+            .setSystemName("postgresql")
             .setTelemetryKey("796f20776164647570")
-            .build();
+            .setDatabaseName("mydatabase")
+            .setTableName("mytable")
+            .build());
+  }
 
+  @Test
+  void testSaveEntityNoDatabase() {
+    testSaveEntity(
+        DatabaseDescriptor.newBuilder()
+            .setSystemName("postgresql")
+            .setTelemetryKey("796f20776164647570")
+            .setTableName("mytable")
+            .build());
+  }
+
+  @Test
+  void testSaveEntityNoTable() {
+    testSaveEntity(
+        DatabaseDescriptor.newBuilder()
+            .setSystemName("postgresql")
+            .setTelemetryKey("796f20776164647570")
+            .setDatabaseName("mydatabase")
+            .build());
+  }
+
+  @Test
+  void testSaveEntityOnlySystem() {
+    testSaveEntity(
+        DatabaseDescriptor.newBuilder()
+            .setSystemName("postgresql")
+            .setTelemetryKey("796f20776164647570")
+            .build());
+  }
+
+  private void testSaveEntity(DatabaseDescriptor descriptor) {
     TelemetryEntity entity =
         TelemetryEntity.newBuilder()
             .setLandscapeTokenId(DEFAULT_LANDSCAPE_ID)
             .setLandscapeTokenSecret(DEFAULT_LANDSCAPE_SECRET)
             .setInstrumentationScope(DEFAULT_INSTRUMENTATION_SCOPE)
-            .setGenericEntityDescriptor(descriptor)
+            .setDatabaseDescriptor(descriptor)
             .build();
 
     companion
