@@ -14,14 +14,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDeltaDto;
-import net.explorviz.landscape.api.v3.model.landscape.AnimationFrameDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
-import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingChangeDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
@@ -37,7 +36,7 @@ import org.neo4j.ogm.session.Session;
 public class StructureRepository {
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
-  private static final int SCOPED_ROUTE_COMMIT_CAP = 1500;
+  private static final int SCOPED_ROUTE_COMMIT_CAP = 2400;
   private static final long SCOPED_ROUTE_PAIR_CAP = 3000000L;
 
   @Inject StructureMapper mapper;
@@ -226,50 +225,7 @@ public class StructureRepository {
     return counts;
   }
 
-  /**
-   * Builds an ordered sequence of flat landscape for every consecutive commit pair in the given
-   * repository, used for commit-based animation. Each entry represents the structural diff between
-   * one commit and its predesessor, with values set relative to later commit.
-   */
-  /*public List<AnimationFrameDto> fetchFlatLandscapeForAnimation(
-      final Session session, final String landscapeToken, final String repositoryName) {
-
-    final List<CommitMeta> commits =
-        fetchOrderedCommits(session, landscapeToken, repositoryName);
-
-    if (commits.isEmpty()) {
-      return List.of();
-    }
-
-    final List<AnimationFrameDto> frames = new ArrayList<>();
-
-    // First commit
-    final CommitMeta first = commits.get(0);
-    final FlatLandscapeDto firstSnapshot =
-        fetchFlatLandscapeForStaticData(
-            session, new StaticDataRequest(landscapeToken, repositoryName, first.hash()));
-    final FlatLandscapeDto emptyBaseline =
-        new FlatLandscapeDto(landscapeToken, Map.of(), Map.of(), Map.of());
-    final FlatLandscapeDto firstFrame =
-        LANDSCAPE_MERGER.merge(landscapeToken, emptyBaseline, firstSnapshot);
-    frames.add(new AnimationFrameDto(first.hash(), first.authorDate(), 0, firstFrame));
-
-    // Divs between commits
-    for (int i = 1; i < commits.size(); i++) {
-      final CommitMeta target = commits.get(i);
-      frames.add(
-          new AnimationFrameDto(
-              target.hash(),
-              target.authorDate(),
-              i,
-              fetchCombinedFlatLandscape(
-                  session,
-                  new CombinedStaticDataRequest(
-                      landscapeToken, repositoryName, commits.get(i - 1).hash(), target.hash()))));
-    }
-
-    return frames;
-  }*/
+  // Fetches file history for the pop up window
   public List<FileHistoryDto> fetchFileHistory(
       final Session session,
       final String landscapeToken,
@@ -456,62 +412,7 @@ public class StructureRepository {
     return new CommitMeta((String) row.get("hash"), date instanceof Number n ? n.longValue() : 0L);
   }
 
-  public AnimationWindowDto fetchAnimationWindow(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final int start,
-      final int count,
-      final int granularity,
-      final String groupBy,
-      final long bucketSize) {
-
-    final List<CommitMeta> commits =
-        fetchOrderedCommits(session, landscapeToken, repositoryName, 0, 0);
-
-    final int commitCount = commits.size();
-    if (commitCount == 0) {
-      return new AnimationWindowDto(0, 0, List.of());
-    }
-    final List<Integer> targets =
-        "time".equals(groupBy)
-            ? timeBucketTargets(commits, Math.max(1, bucketSize))
-            : commitBucketTargets(commitCount, Math.max(1, granularity));
-
-    final int totalFrames = targets.size();
-
-    final int from = Math.max(0, start);
-    if (from >= totalFrames) {
-      return new AnimationWindowDto(totalFrames, totalFrames, List.of());
-    }
-    final int to = count < 0 ? totalFrames : Math.min(totalFrames, from + count);
-
-    final List<AnimationFrameDto> frames = new ArrayList<>();
-    for (int i = from; i < to; i++) {
-      final CommitMeta target = commits.get(targets.get(i));
-      final FlatLandscapeDto landscape;
-      if (i == 0) {
-        final FlatLandscapeDto snapshot =
-            fetchFlatLandscapeForStaticData(
-                session, new StaticDataRequest(landscapeToken, repositoryName, target.hash()));
-        landscape =
-            LANDSCAPE_MERGER.merge(
-                landscapeToken,
-                new FlatLandscapeDto(landscapeToken, Map.of(), Map.of(), Map.of()),
-                snapshot);
-      } else {
-        final CommitMeta prevLast = commits.get(targets.get(i - 1));
-        landscape =
-            fetchCombinedFlatLandscape(
-                session,
-                new CombinedStaticDataRequest(
-                    landscapeToken, repositoryName, prevLast.hash(), target.hash()));
-      }
-      frames.add(new AnimationFrameDto(target.hash(), target.authorDate(), i, landscape));
-    }
-    return new AnimationWindowDto(totalFrames, from, frames);
-  }
-
+  // Return the frames of one window
   public AnimationWindowDeltaDto fetchAnimationDeltaWindow(
       final Session session,
       final String landscapeToken,
@@ -527,6 +428,8 @@ public class StructureRepository {
       final String languages,
       final String heightMetric) {
 
+    // Grouping Commits for the differen aggregation options
+
     final String metricKey = heightMetric.isBlank() ? "" : "metrics." + heightMetric;
     final List<String> languageFilter = parseLanguages(languages);
     final List<CommitMeta> commits =
@@ -535,7 +438,6 @@ public class StructureRepository {
     if (commitCount == 0) {
       return new AnimationWindowDeltaDto(0, 0, List.of());
     }
-
     final List<Integer> targets =
         "time".equals(groupBy)
             ? timeBucketTargets(commits, Math.max(1, bucketSize))
@@ -553,6 +455,7 @@ public class StructureRepository {
     final long firstTs = commits.get(0).authorDate();
     final long lastTs = commits.get(commits.size() - 1).authorDate();
 
+    // Every parameter that changes the walks outcome
     final String cacheKey =
         landscapeToken
             + '|'
@@ -575,6 +478,7 @@ public class StructureRepository {
             + String.join(",", languageFilter);
     final WalkState cached = walkStateCache.get(cacheKey);
 
+    // Resume from the cashed walk or the last commit, or minStart
     final int walkFrom;
     final Map<String, Integer> lastChangeOrdinal;
     final Map<String, Long> lastChangeDate;
@@ -686,6 +590,8 @@ public class StructureRepository {
     return new AnimationWindowDeltaDto(totalFrames, from, frames);
   }
 
+  // Needed for aging
+  // Returns how many frames previous to a window the walk has to cover (walk through the animation)
   private int lookbackFrames(
       final List<CommitMeta> commits,
       final List<Integer> targets,
@@ -704,6 +610,7 @@ public class StructureRepository {
     return from;
   }
 
+  // Returns the files existing in each of the given commits
   private Map<String, Map<String, PresentFile>> fetchPresentSets(
       final Session session,
       final String landscapeToken,
@@ -756,6 +663,8 @@ public class StructureRepository {
     return presentByCommit;
   }
 
+  // Returns the changes between two commits
+  //
   private List<BuildingChangeDto> diffPresentSets(
       final Map<String, PresentFile> prev, final Map<String, PresentFile> cur) {
 
@@ -804,6 +713,7 @@ public class StructureRepository {
     return changes;
   }
 
+  // Function to detect Moved and renamed files
   private String findCounterpart(
       final String newPath, final String newHash, final Map<String, PresentFile> removed) {
     final String name = baseName(newPath);
@@ -832,13 +742,8 @@ public class StructureRepository {
     return slash < 0 ? path : path.substring(slash + 1);
   }
 
-  /*Builds the state a keyframe carries for every file the client has to know about.
-   *Besides the files present at the frame this includes the ones whose last action was a
-   * removal, because the client can be asked to keep removed files visible and still needs their
-   * aging information. Such a file carries no metric, since it does not exist at this commit.
-   * Returns one entry per file, containing its last change, and its metric
-   * */
-
+  // Lists every building that exists at this commit with its last changes,
+  // and the deleted files the walk state has seen
   private List<BuildingStateDto> buildKeyframeState(
       final Map<String, PresentFile> present,
       final Map<String, Integer> lastChangeOrdinal,
@@ -866,6 +771,7 @@ public class StructureRepository {
     return state;
   }
 
+  // Returns the position in the commit list at which each file path first appeared
   private Map<String, Integer> computeFqnFirstOrdinals(
       final Session session,
       final String landscapeToken,
@@ -923,6 +829,8 @@ public class StructureRepository {
     return fqnToFirstOrdinal;
   }
 
+  // Returns the whole union with the first appearance of every file,
+  // and commit hashes and dates in order
   public AnimationSkeletonDto fetchAnimationSkeleton(
       final Session session,
       final String landscapeToken,
@@ -952,6 +860,7 @@ public class StructureRepository {
         landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
   }
 
+  // Used to decide if the skeleton query is the cheaper one
   private boolean useScopedRoute(
       final Session session,
       final String landscapeToken,
@@ -969,6 +878,8 @@ public class StructureRepository {
         <= SCOPED_ROUTE_PAIR_CAP;
   }
 
+  // Computes the pairs in the selected range
+  // Implemented because scoped route gets to expensive over a certain treshhold
   private long countCommitFilePairs(
       final Session session,
       final String landscapeToken,
@@ -1003,6 +914,7 @@ public class StructureRepository {
     return Long.MAX_VALUE;
   }
 
+  // Returns the landscape built by walking the directory tree to every file revision
   private FlatLandscapeDto buildFullSkeleton(
       final Session session,
       final String landscapeToken,
@@ -1039,6 +951,7 @@ public class StructureRepository {
         mapper.buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC, repositoryName));
   }
 
+  // Return the landscape build from every commit in the range
   private FlatLandscapeDto buildScopedSkeleton(
       final Session session,
       final String landscapeToken,
@@ -1047,6 +960,7 @@ public class StructureRepository {
       final long rangeTo,
       final List<String> languages) {
 
+    // Query walking throw the commits to the files getting their paths
     final String fileQuery =
         """
         MATCH (:Landscape {tokenId: $tokenId})
@@ -1070,7 +984,7 @@ public class StructureRepository {
             [k IN keys(rep) WHERE k STARTS WITH 'metrics.' | [k, rep[k]]]
           ) AS metrics
         """;
-
+    // Query fetching the directories
     final String dirQuery =
         """
         MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
@@ -1087,6 +1001,7 @@ public class StructureRepository {
     final Map<String, Long> realDirIdByPath = new HashMap<>();
     final Map<String, String> dirNameByPath = new HashMap<>();
     long cityId = -1L;
+    // Index directories by their path
     String cityName = repositoryName;
     for (final Map<String, Object> row : dirResult) {
       cityId = ((Number) row.get("cityId")).longValue();
@@ -1106,11 +1021,14 @@ public class StructureRepository {
                 "rangeTo", rangeTo,
                 "languages", languages));
 
-    final List<Map<String, Object>> rows = new ArrayList<>();
+    // Rebuild the hirarchy
+    // nodeRows = row per node with the properties the tree route gets from neo4j
+    final List<Map<String, Object>> nodeRows = new ArrayList<>();
     final Map<String, List<Long>> childrenByDir = new HashMap<>();
     final Set<String> neededDirs = new LinkedHashSet<>();
     neededDirs.add("");
 
+    //
     for (final Map<String, Object> row : fileResult) {
       final String filePath = (String) row.get("filePath");
       if (filePath == null) {
@@ -1124,7 +1042,7 @@ public class StructureRepository {
       if (row.get("metrics") instanceof Map<?, ?> metrics) {
         metrics.forEach((k, v) -> properties.put(String.valueOf(k), v));
       }
-      rows.add(nodeRow(id, "FileRevision", properties, cityId, List.of()));
+      nodeRows.add(nodeRow(id, "FileRevision", properties, cityId, List.of()));
 
       final String parent = parentPath(filePath);
       childrenByDir.computeIfAbsent(parent, k -> new ArrayList<>()).add(id);
@@ -1138,6 +1056,7 @@ public class StructureRepository {
       final Long real = realDirIdByPath.get(path);
       dirIdByPath.put(path, real != null ? real : syntheticId--);
     }
+    // Wiring each directory in its parent's children list
     for (final String path : neededDirs) {
       if (!path.isEmpty()) {
         childrenByDir
@@ -1148,7 +1067,7 @@ public class StructureRepository {
     for (final String path : neededDirs) {
       final Map<String, Object> properties = new HashMap<>();
       properties.put("name", dirNameByPath.getOrDefault(path, lastSegment(path)));
-      rows.add(
+      nodeRows.add(
           nodeRow(
               dirIdByPath.get(path),
               "Directory",
@@ -1159,9 +1078,11 @@ public class StructureRepository {
 
     final Map<String, Object> appProperties = new HashMap<>();
     appProperties.put("name", cityName);
-    rows.add(nodeRow(cityId, "Application", appProperties, cityId, List.of(dirIdByPath.get(""))));
+    nodeRows.add(
+        nodeRow(cityId, "Application", appProperties, cityId, List.of(dirIdByPath.get(""))));
 
-    return mapper.buildFlatLandscape(landscapeToken, rows, TypeOfAnalysis.STATIC, repositoryName);
+    return mapper.buildFlatLandscape(
+        landscapeToken, nodeRows, TypeOfAnalysis.STATIC, repositoryName);
   }
 
   /** One node row in the shape {@code StructureMapper.parseNodeData} expects. */
@@ -1210,10 +1131,12 @@ public class StructureRepository {
     return joined.toString();
   }
 
+  // Returns the landscape with one building per FQN, rewiring every district to the surviving id
   private FlatLandscapeDto deduplicateBuildingsByFqn(final FlatLandscapeDto raw) {
     final Map<String, String> fqnToCanonicalId = new HashMap<>();
     final Map<String, String> idToFqn = new HashMap<>();
     final Map<String, BuildingDto> buildings = new HashMap<>();
+    // Picks a building per path and remember which path every id has
     for (final BuildingDto b : raw.buildings().values()) {
       final String id = b.flatBaseModel().id();
       final String fqn = b.flatBaseModel().fqn();
@@ -1225,12 +1148,14 @@ public class StructureRepository {
         buildings.put(id, b);
       }
     }
-
-    final java.util.function.Function<String, String> canonical =
+    // Helper function doing the mapping
+    final Function<String, String> canonical =
         bid -> {
           final String fqn = idToFqn.get(bid);
           return fqn == null ? bid : fqnToCanonicalId.getOrDefault(fqn, bid);
         };
+    // Rewrites each district's building list, so that every id maps to the surviving one
+    // and collapses them
     final Map<String, DistrictDto> districts = new HashMap<>();
     raw.districts()
         .forEach(
@@ -1261,6 +1186,7 @@ public class StructureRepository {
   }
 
   // Helper Functions
+  // Returns the last commit of each bucket of commits as a position in the list.
   private List<Integer> commitBucketTargets(final int commitCount, final int granul) {
     final int totalFrames = (commitCount + granul - 1) / granul;
     final List<Integer> targets = new ArrayList<>();
@@ -1270,6 +1196,8 @@ public class StructureRepository {
     return targets;
   }
 
+  // Returns the last commit of each time bucket as a position in the commit list.
+  // Empty buckets get the same positions aus there previous one
   private List<Integer> timeBucketTargets(final List<CommitMeta> commits, final long bucketSize) {
     final long t0 = commits.get(0).authorDate();
     final long tEnd = commits.get(commits.size() - 1).authorDate();
@@ -1286,6 +1214,7 @@ public class StructureRepository {
     return targets;
   }
 
+  // Returns the filter split into the single languages
   private static List<String> parseLanguages(final String languages) {
     if (languages == null || languages.isBlank()) {
       return List.of();

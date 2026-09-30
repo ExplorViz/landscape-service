@@ -16,7 +16,6 @@ import net.explorviz.landscape.api.v3.model.FileDetailedDto;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDeltaDto;
-import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
 import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.api.v3.model.landscape.LanguageCountDto;
@@ -144,30 +143,6 @@ public class StructureResource {
         .findFileDetailedContext(session, landscapeToken, revisionId)
         .map(context -> fileDetailedMapper.map(context, commitHash))
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
-  }
-
-  /**
-   * Retrieve structure data gathered from static analysis for a particular application and commit.
-   *
-   * @param landscapeToken String identifier of the landscape
-   * @param repositoryName Name of the repository for which to retrieve structure data
-   * @return The flat landscape containing the applications of the repository at the given commit,
-   *     where each application represents a city
-   */
-  @GET
-  @Produces(MediaType.APPLICATION_JSON)
-  @Path("/evolution/{repositoryName}/animation")
-  public AnimationWindowDto getEvolutionAnimation(
-      @RestPath final String landscapeToken,
-      @RestPath final String repositoryName,
-      @RestQuery @DefaultValue("0") final int start,
-      @RestQuery @DefaultValue("-1") final int count,
-      @RestQuery @DefaultValue("1") final int granularity,
-      @RestQuery @DefaultValue("commit") final String groupBy,
-      @RestQuery @DefaultValue("86400000") final long bucketSize) {
-    final Session session = sessionFactory.openSession();
-    return structureRepository.fetchAnimationWindow(
-        session, landscapeToken, repositoryName, start, count, granularity, groupBy, bucketSize);
   }
 
   @GET
