@@ -36,6 +36,18 @@ public class FileRevisionRepository {
       ORDER BY c.commitDate DESC
       LIMIT 1
       """;
+
+  private static final String FIND_REVISION_AT_COMMIT =
+      """
+      MATCH (f0:FileRevision) WHERE id(f0) = $fileRevId
+      WITH f0.filePath AS path
+      MATCH (:Landscape {tokenId: $landscapeToken})-[:CONTAINS]->(:Repository)
+        -[:CONTAINS]->(c:Commit {hash: $commitHash})
+      MATCH (c)-[:CONTAINS]->(f:FileRevision {filePath: path})
+      RETURN id(f) AS fileRevisionId
+      LIMIT 1
+      """;
+  private static final String PARAM_COMMIT_HASH = "commitHash";
   private static final Logger LOGGER = Logger.getLogger(FileRevisionRepository.class);
   public static final int COMMIT_FILE_BATCH_SIZE = 2000;
 
@@ -251,7 +263,12 @@ public class FileRevisionRepository {
               apoc.text.join(nodeNames, "/") AS filePath;
             """,
             Map.of(
-                "tokenId", landscapeToken, "appName", applicationName, "commitHash", commitHash));
+                "tokenId",
+                landscapeToken,
+                "appName",
+                applicationName,
+                PARAM_COMMIT_HASH,
+                commitHash));
 
     result
         .queryResults()
@@ -284,7 +301,7 @@ public class FileRevisionRepository {
               f AS file,
               apoc.text.join(nodeNames, "/") AS filePath;
             """,
-            Map.of("tokenId", landscapeToken, "repoName", repoName, "commitHash", commitHash));
+            Map.of("tokenId", landscapeToken, "repoName", repoName, PARAM_COMMIT_HASH, commitHash));
 
     result
         .queryResults()
@@ -318,5 +335,29 @@ public class FileRevisionRepository {
             (String) row.get("repositoryName"),
             (String) row.get("commitHash"),
             (String) row.get("fqn")));
+  }
+
+  /** Resolves the revision of the same file path as {@code fileRevisionId} in the given commit. */
+  public Optional<Long> findRevisionAtCommit(
+      final Session session,
+      final String landscapeToken,
+      final Long fileRevisionId,
+      final String commitHash) {
+    final Result result =
+        session.query(
+            FIND_REVISION_AT_COMMIT,
+            Map.of(
+                "landscapeToken",
+                landscapeToken,
+                "fileRevId",
+                fileRevisionId,
+                PARAM_COMMIT_HASH,
+                commitHash));
+
+    final Iterator<Map<String, Object>> resultIterator = result.queryResults().iterator();
+    if (!resultIterator.hasNext()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable((Long) resultIterator.next().get("fileRevisionId"));
   }
 }

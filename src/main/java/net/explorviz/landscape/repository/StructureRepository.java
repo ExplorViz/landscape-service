@@ -49,8 +49,15 @@ public class StructureRepository {
       Map<String, Integer> lastChangeOrdinal,
       Map<String, Long> lastChangeDate,
       Map<String, String> lastAction,
-      Map<String, String> present,
+      Map<String, PresentFile> present,
       int targetId) {}
+
+  /** A file as it exists in one commit: its content hash and the requested sizing metric. */
+  private record PresentFile(String hash, Double metric) {}
+
+  private static Double toDouble(final Object value) {
+    return value instanceof Number number ? number.doubleValue() : null;
+  }
 
   private final Map<String, WalkState> walkStateCache = new ConcurrentHashMap<>();
 
@@ -353,8 +360,8 @@ public class StructureRepository {
       return;
     }
 
-    final Map<String, Map<String, String>> present =
-        fetchPresentSets(session, landscapeToken, repositoryName, needed, List.of());
+    final Map<String, Map<String, PresentFile>> present =
+        fetchPresentSets(session, landscapeToken, repositoryName, needed, List.of(), "");
 
     for (int i = 0; i < entries.size(); i++) {
       final FileHistoryDto e = entries.get(i);
@@ -466,7 +473,6 @@ public class StructureRepository {
     if (commitCount == 0) {
       return new AnimationWindowDto(0, 0, List.of());
     }
-    // final int granul = Math.max(1, granularity);
     final List<Integer> targets =
         "time".equals(groupBy)
             ? timeBucketTargets(commits, Math.max(1, bucketSize))
@@ -518,8 +524,10 @@ public class StructureRepository {
       final long agingWindow,
       final long rangeFrom,
       final long rangeTo,
-      final String languages) {
+      final String languages,
+      final String heightMetric) {
 
+    final String metricKey = heightMetric.isBlank() ? "" : "metrics." + heightMetric;
     final List<String> languageFilter = parseLanguages(languages);
     final List<CommitMeta> commits =
         fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
@@ -558,6 +566,12 @@ public class StructureRepository {
             + '|'
             + agingWindow
             + '|'
+            + rangeFrom
+            + '|'
+            + rangeTo
+            + '|'
+            + metricKey
+            + '|'
             + String.join(",", languageFilter);
     final WalkState cached = walkStateCache.get(cacheKey);
 
@@ -565,7 +579,7 @@ public class StructureRepository {
     final Map<String, Integer> lastChangeOrdinal;
     final Map<String, Long> lastChangeDate;
     final Map<String, String> lastAction;
-    Map<String, String> prevPresent;
+    Map<String, PresentFile> prevPresent;
     int prevTargetId;
     final int lookback = Math.max(1, lookbackFrames(commits, targets, from, timeMode, agingWindow));
     final int minStart = Math.max(0, from - lookback);
@@ -599,8 +613,9 @@ public class StructureRepository {
     for (int i = walkFrom; i < to; i++) {
       neededHashes.add(commits.get(targets.get(i)).hash());
     }
-    final Map<String, Map<String, String>> presentByCommit =
-        fetchPresentSets(session, landscapeToken, repositoryName, neededHashes, languageFilter);
+    final Map<String, Map<String, PresentFile>> presentByCommit =
+        fetchPresentSets(
+            session, landscapeToken, repositoryName, neededHashes, languageFilter, metricKey);
     if (seed != null) {
       prevPresent = presentByCommit.getOrDefault(seed.hash(), Map.of());
       final int agedOrdinal = walkFrom - lookback - 1;
@@ -623,7 +638,8 @@ public class StructureRepository {
         tsFrom = commits.get(Math.max(0, prevTargetId + 1)).authorDate();
         tsTo = target.authorDate();
       }
-      final Map<String, String> curPresent = presentByCommit.getOrDefault(target.hash(), Map.of());
+      final Map<String, PresentFile> curPresent =
+          presentByCommit.getOrDefault(target.hash(), Map.of());
       final List<BuildingChangeDto> changes = diffPresentSets(prevPresent, curPresent);
 
       for (final BuildingChangeDto change : changes) {
@@ -688,12 +704,13 @@ public class StructureRepository {
     return from;
   }
 
-  private Map<String, Map<String, String>> fetchPresentSets(
+  private Map<String, Map<String, PresentFile>> fetchPresentSets(
       final Session session,
       final String landscapeToken,
       final String repositoryName,
       final Collection<String> commitHashes,
-      final List<String> languages) {
+      final List<String> languages,
+      final String metricKey) {
     if (commitHashes.isEmpty()) {
       return Map.of();
     }
@@ -706,7 +723,7 @@ public class StructureRepository {
         MATCH (c)-[:CONTAINS]->(f:FileRevision)
         WHERE size($languages) = 0
           OR coalesce(f.language, 'LANGUAGE_UNSPECIFIED') IN $languages
-        RETURN c.hash AS hash, f.filePath AS fqn, f.hash AS fileHash
+        RETURN c.hash AS hash, f.filePath AS fqn, f.hash AS fileHash, f[$metricKey] AS metric
         """;
 
     final Result result =
@@ -720,9 +737,11 @@ public class StructureRepository {
                 "hashes",
                 List.copyOf(commitHashes),
                 "languages",
-                languages));
+                languages,
+                "metricKey",
+                metricKey));
 
-    final Map<String, Map<String, String>> presentByCommit = new HashMap<>();
+    final Map<String, Map<String, PresentFile>> presentByCommit = new HashMap<>();
     result.forEach(
         row -> {
           final String hash = (String) row.get("hash");
@@ -732,45 +751,50 @@ public class StructureRepository {
           }
           presentByCommit
               .computeIfAbsent(hash, key -> new HashMap<>())
-              .put(fqn, (String) row.get("fileHash"));
+              .put(fqn, new PresentFile((String) row.get("fileHash"), toDouble(row.get("metric"))));
         });
     return presentByCommit;
   }
 
   private List<BuildingChangeDto> diffPresentSets(
-      final Map<String, String> prev, final Map<String, String> cur) {
+      final Map<String, PresentFile> prev, final Map<String, PresentFile> cur) {
 
     final List<BuildingChangeDto> changes = new ArrayList<>();
     final List<String> added = new ArrayList<>();
-    final Map<String, String> removed = new HashMap<>();
+    final Map<String, PresentFile> removed = new HashMap<>();
 
     cur.forEach(
-        (fqn, fileHash) -> {
-          final String prevHash = prev.get(fqn);
-          if (prevHash == null) {
+        (fqn, file) -> {
+          final PresentFile prevFile = prev.get(fqn);
+          if (prevFile == null) {
             added.add(fqn);
-          } else if (!prevHash.equals(fileHash)) {
-            changes.add(new BuildingChangeDto(fqn, CommitComparison.MODIFIED.toString()));
+          } else if (!prevFile.hash().equals(file.hash())) {
+            changes.add(
+                new BuildingChangeDto(fqn, CommitComparison.MODIFIED.toString(), file.metric()));
           }
         });
     prev.forEach(
-        (fqn, fileHash) -> {
+        (fqn, file) -> {
           if (!cur.containsKey(fqn)) {
-            removed.put(fqn, fileHash);
+            removed.put(fqn, file);
           }
         });
     added.sort(null);
     for (final String newPath : added) {
-      final String oldPath = findCounterpart(newPath, cur.get(newPath), removed);
+      final PresentFile newFile = cur.get(newPath);
+      final String oldPath = findCounterpart(newPath, newFile.hash(), removed);
       if (oldPath == null) {
-        changes.add(new BuildingChangeDto(newPath, CommitComparison.ADDED.toString()));
+        changes.add(
+            new BuildingChangeDto(newPath, CommitComparison.ADDED.toString(), newFile.metric()));
         continue;
       }
       removed.remove(oldPath);
       final boolean sameName = baseName(oldPath).equals(baseName(newPath));
       changes.add(
           new BuildingChangeDto(
-              newPath, (sameName ? CommitComparison.MOVED : CommitComparison.RENAMED).toString()));
+              newPath,
+              (sameName ? CommitComparison.MOVED : CommitComparison.RENAMED).toString(),
+              newFile.metric()));
       changes.add(new BuildingChangeDto(oldPath, CommitComparison.REMOVED.toString()));
     }
     removed
@@ -781,7 +805,7 @@ public class StructureRepository {
   }
 
   private String findCounterpart(
-      final String newPath, final String newHash, final Map<String, String> removed) {
+      final String newPath, final String newHash, final Map<String, PresentFile> removed) {
     final String name = baseName(newPath);
 
     final List<String> byName =
@@ -791,12 +815,15 @@ public class StructureRepository {
     }
     if (byName.size() > 1) {
       final List<String> exact =
-          byName.stream().filter(old -> removed.get(old).equals(newHash)).toList();
+          byName.stream().filter(old -> removed.get(old).hash().equals(newHash)).toList();
       return exact.size() == 1 ? exact.get(0) : null;
     }
 
     final List<String> byHash =
-        removed.keySet().stream().filter(old -> removed.get(old).equals(newHash)).sorted().toList();
+        removed.keySet().stream()
+            .filter(old -> removed.get(old).hash().equals(newHash))
+            .sorted()
+            .toList();
     return byHash.size() == 1 ? byHash.get(0) : null;
   }
 
@@ -805,8 +832,15 @@ public class StructureRepository {
     return slash < 0 ? path : path.substring(slash + 1);
   }
 
+  /*Builds the state a keyframe carries for every file the client has to know about.
+   *Besides the files present at the frame this includes the ones whose last action was a
+   * removal, because the client can be asked to keep removed files visible and still needs their
+   * aging information. Such a file carries no metric, since it does not exist at this commit.
+   * Returns one entry per file, containing its last change, and its metric
+   * */
+
   private List<BuildingStateDto> buildKeyframeState(
-      final Map<String, String> present,
+      final Map<String, PresentFile> present,
       final Map<String, Integer> lastChangeOrdinal,
       final Map<String, Long> lastChangeDate,
       final Map<String, String> lastAction) {
@@ -819,13 +853,16 @@ public class StructureRepository {
         });
     final List<BuildingStateDto> state = new ArrayList<>();
     fqns.forEach(
-        fqn ->
-            state.add(
-                new BuildingStateDto(
-                    fqn,
-                    lastChangeOrdinal.getOrDefault(fqn, 0),
-                    lastChangeDate.getOrDefault(fqn, 0L),
-                    lastAction.getOrDefault(fqn, CommitComparison.UNCHANGED.toString()))));
+        fqn -> {
+          final PresentFile file = present.get(fqn);
+          state.add(
+              new BuildingStateDto(
+                  fqn,
+                  lastChangeOrdinal.getOrDefault(fqn, 0),
+                  lastChangeDate.getOrDefault(fqn, 0L),
+                  lastAction.getOrDefault(fqn, CommitComparison.UNCHANGED.toString()),
+                  file == null ? null : file.metric()));
+        });
     return state;
   }
 

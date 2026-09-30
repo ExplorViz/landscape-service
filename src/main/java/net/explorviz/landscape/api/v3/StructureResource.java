@@ -126,11 +126,22 @@ public class StructureResource {
   public FileDetailedDto getFileDetailsById(
       @RestPath final String landscapeToken,
       @RestPath final Long id,
-      @QueryParam("commitHash") final String commitHash) {
+      @QueryParam("commitHash") final String commitHash,
+      @QueryParam("atCommit") final String atCommit) {
     final Session session = sessionFactory.openSession();
 
+    // The animation addresses newest file revision
+    // atCommit resolves revision at the commit currently shown;
+    // if the file did not exist there, the original revision is kept.
+    final Long revisionId =
+        atCommit == null || atCommit.isBlank()
+            ? id
+            : fileRevisionRepository
+                .findRevisionAtCommit(session, landscapeToken, id, atCommit)
+                .orElse(id);
+
     return fileRevisionRepository
-        .findFileDetailedContext(session, landscapeToken, id)
+        .findFileDetailedContext(session, landscapeToken, revisionId)
         .map(context -> fileDetailedMapper.map(context, commitHash))
         .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
   }
@@ -143,17 +154,6 @@ public class StructureResource {
    * @return The flat landscape containing the applications of the repository at the given commit,
    *     where each application represents a city
    */
-  /*
-  @GET
-  @Produces(MediaType.APPLICATION_JSON)
-  @Path("/evolution/{repositoryName}/animation")
-  public List<AnimationFrameDto> getEvolutionAnimation(
-      @RestPath final String landscapeToken, @RestPath final String repositoryName) {
-    final Session session = sessionFactory.openSession();
-
-    return structureRepository.fetchFlatLandscapeForAnimation(
-        session, landscapeToken, repositoryName);
-        }*/
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/{repositoryName}/animation")
@@ -184,7 +184,8 @@ public class StructureResource {
       @RestQuery @DefaultValue("1") final long agingWindow,
       @RestQuery @DefaultValue("0") final long rangeFrom,
       @RestQuery @DefaultValue("0") final long rangeTo,
-      @RestQuery @DefaultValue("") final String languages) {
+      @RestQuery @DefaultValue("") final String languages,
+      @RestQuery @DefaultValue("") final String heightMetric) {
     final Session session = sessionFactory.openSession();
     return structureRepository.fetchAnimationDeltaWindow(
         session,
@@ -198,7 +199,8 @@ public class StructureResource {
         agingWindow,
         rangeFrom,
         rangeTo,
-        languages);
+        languages,
+        heightMetric);
   }
 
   @GET
