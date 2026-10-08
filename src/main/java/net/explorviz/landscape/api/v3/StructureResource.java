@@ -20,6 +20,7 @@ import net.explorviz.landscape.api.v3.model.landscape.AnimationWindowDto;
 import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import net.explorviz.landscape.repository.FileDetailedMapper;
+import net.explorviz.landscape.repository.FileHistoryRepository;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.StructureRepository;
 import org.jboss.resteasy.reactive.RestPath;
@@ -36,6 +37,7 @@ public class StructureResource {
   @Inject StructureRepository structureRepository;
   @Inject FileDetailedMapper fileDetailedMapper;
   @Inject FileRevisionRepository fileRevisionRepository;
+  @Inject FileHistoryRepository fileHistoryRepository;
 
   /** Retrieve all structure data gathered from runtime analysis. */
   @GET
@@ -220,6 +222,6 @@ public class StructureResource {
       @RestPath final String repositoryName,
       @RestPath final long fileRevisionId) {
     final Session session = sessionFactory.openSession();
-    return structureRepository.fetchFileHistory(session, fileRevisionId);
+    return fileHistoryRepository.fetchFileHistory(session, fileRevisionId);
   }
 }

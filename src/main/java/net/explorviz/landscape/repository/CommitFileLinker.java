@@ -20,6 +20,7 @@ public class CommitFileLinker {
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
   @Inject FileRevisionRepository fileRevisionRepository;
   @Inject CommitStaleFileRevisionUnlinker commitStaleFileRevisionUnlinker;
+  @Inject CommitRenamedFileLinker commitRenamedFileLinker;
 
   public CommitFileLinkTimings linkCommitFiles(
       final Session session,
@@ -122,6 +123,8 @@ public class CommitFileLinker {
             session, commit.getId(), commitData.getRepositoryName(), modifiedPaths, addedPaths);
         unlinkStaleRevisionsMs = elapsedMillis(stepStart);
       }
+
+      commitRenamedFileLinker.linkRenamedFiles(session, commitData);
     }
 
     return CommitFileLinkTimings.analyzed(

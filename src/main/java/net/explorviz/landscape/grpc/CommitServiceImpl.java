@@ -8,7 +8,10 @@ import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Contributor;
@@ -16,6 +19,7 @@ import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.ogm.Tag;
 import net.explorviz.landscape.proto.CommitData;
 import net.explorviz.landscape.proto.CommitService;
+import net.explorviz.landscape.proto.FileRename;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
 import net.explorviz.landscape.repository.CommitDeletedFileUnlinker;
@@ -107,8 +111,20 @@ public class CommitServiceImpl implements CommitService {
 
     final long unlinkDeletedStart = System.nanoTime();
     if (fileLinkTimings.shouldUnlinkDeletedFiles() && !fileLinkTimings.deletedPaths().isEmpty()) {
+      final List<String> parentCommitIds = resolveParentCommitIds(commitData);
+      final Set<String> renamedOldPaths =
+          commitData.getRenamedFilesList().stream()
+              .map(FileRename::getOldFile)
+              .map(file -> file.getFilePath())
+              .collect(Collectors.toCollection(HashSet::new));
       commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(
-          session, commit.getId(), fileLinkTimings.deletedPaths());
+          session,
+          commit.getId(),
+          fileLinkTimings.deletedPaths(),
+          renamedOldPaths,
+          commitData.getLandscapeToken(),
+          commitData.getRepositoryName(),
+          parentCommitIds.isEmpty() ? null : parentCommitIds.get(0));
     }
     final long unlinkDeletedFilesMs = elapsedMillis(unlinkDeletedStart);
 

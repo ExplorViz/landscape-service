@@ -22,7 +22,6 @@ import net.explorviz.landscape.api.v3.model.landscape.BuildingDto;
 import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
-import net.explorviz.landscape.api.v3.model.landscape.FileHistoryDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
@@ -283,31 +282,6 @@ public class StructureRepository {
     }
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
-  }
-
-  public List<FileHistoryDto> fetchFileHistory(final Session session, final long fileRevisionId) {
-    final String query =
-        """
-        MATCH (clicked:FileRevision) WHERE id(clicked) = $id
-        MATCH (dir:Directory)-[:CONTAINS]->(clicked)
-        MATCH (dir)-[:CONTAINS]->(rev:FileRevision) WHERE rev.name = clicked.name
-        MATCH (c:Commit)-[r:ADDED|MODIFIED|DELETED]->(rev)
-        RETURN c.hash AS hash, coalesce(c.authorDate, 0) AS date, type(r) AS action
-        ORDER BY date ASC
-        """;
-    final Result result = session.query(query, Map.of("id", fileRevisionId));
-
-    final List<FileHistoryDto> entries = new ArrayList<>();
-    result.forEach(
-        row -> {
-          final Object date = row.get("date");
-          entries.add(
-              new FileHistoryDto(
-                  (String) row.get("hash"),
-                  date instanceof Number n ? n.longValue() : 0L,
-                  (String) row.get("action")));
-        });
-    return entries;
   }
 
   private List<CommitMeta> fetchOrderedCommits(
