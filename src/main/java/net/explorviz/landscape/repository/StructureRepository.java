@@ -27,7 +27,8 @@ public class StructureRepository {
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
   private static final String PARAM_TOKEN_ID = "tokenId";
   private static final String PARAM_COMMIT_HASH = "commitHash";
-  private static final String PARAM_FILE_NAME = "fileName";
+  private static final String PARAM_FILE_PATH = "filePath";
+  private static final String PARAM_SOURCE_NAME = "sourceName";
   private static final String PARAM_TARGET_NAME = "targetName";
   private static final Set<String> PRIMITIVE_OR_KNOWN_NON_CLASS_TYPES =
       Set.of(
@@ -99,7 +100,6 @@ public class StructureRepository {
         MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:EXTENDS]->(target:Clazz)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
-        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
           id(sourceFile) AS sourceId,
           id(targetFile) AS targetId,
@@ -125,7 +125,6 @@ public class StructureRepository {
         MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
         MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:IMPLEMENTS]->(target:Clazz)
-        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
           id(sourceFile) AS sourceId,
@@ -178,7 +177,6 @@ public class StructureRepository {
         MATCH (c)-[:CONTAINS]->(sourceFile:FileRevision)
         MATCH (sourceFile)-[:CONTAINS]->(source:Clazz)
         MATCH (source)-[r:USES_TYPE]->(target:Clazz)
-        MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         MATCH (targetFile:FileRevision)-[:CONTAINS]->(target)
         RETURN DISTINCT
           id(sourceFile) AS sourceId,
@@ -329,23 +327,21 @@ public class StructureRepository {
   }
 
   public void saveStaticDependencies(final Session session, final FileData fileData) {
-    final String fileName =
-        fileData.getFilePath().contains("/")
-            ? fileData.getFilePath().substring(fileData.getFilePath().lastIndexOf('/') + 1)
-            : fileData.getFilePath();
+    final String filePath = fileData.getFilePath();
 
-    saveImportDependencies(session, fileData, fileName);
+    saveImportDependencies(session, fileData, filePath);
 
     for (final ClassData classData : fileData.getClassesList()) {
-      saveExtendsDependencies(session, classData, fileName);
-      saveImplementsDependencies(session, classData, fileName);
-      saveCallsDependencies(session, classData, fileName);
-      saveUsesTypeDependencies(session, classData, fileName);
+      final String sourceClassName = classData.getName();
+      saveExtendsDependencies(session, classData, filePath, sourceClassName);
+      saveImplementsDependencies(session, classData, filePath, sourceClassName);
+      saveCallsDependencies(session, classData, filePath, sourceClassName);
+      saveUsesTypeDependencies(session, classData, filePath, sourceClassName);
     }
   }
 
   private void saveImportDependencies(
-      final Session session, final FileData fileData, final String fileName) {
+      final Session session, final FileData fileData, final String filePath) {
     for (final String importName : fileData.getImportNamesList()) {
       final String shortName =
           importName.contains(".")
@@ -354,20 +350,23 @@ public class StructureRepository {
 
       final String query =
           """
-          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MATCH (sourceFile:FileRevision {filePath: $filePath})-[:CONTAINS]->(source:Clazz)
           MERGE (target:Clazz {name: $targetName})
           MERGE (source)-[:IMPORT]->(target)
           """;
       session.query(
           query,
           Map.of(
-              PARAM_FILE_NAME, fileName,
+              PARAM_FILE_PATH, filePath,
               PARAM_TARGET_NAME, shortName));
     }
   }
 
   private void saveExtendsDependencies(
-      final Session session, final ClassData classData, final String fileName) {
+      final Session session,
+      final ClassData classData,
+      final String filePath,
+      final String sourceClassName) {
     for (final String superClass : classData.getSuperclassesList()) {
       final String targetClassName =
           superClass.contains("::")
@@ -376,20 +375,24 @@ public class StructureRepository {
 
       final String extendsQuery =
           """
-          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MATCH (sourceFile:FileRevision {filePath: $filePath})-[:CONTAINS]->(source:Clazz {name: $sourceName})
           MERGE (target:Clazz {name: $targetName})
           MERGE (source)-[:EXTENDS]->(target)
           """;
       session.query(
           extendsQuery,
           Map.of(
-              PARAM_FILE_NAME, fileName,
+              PARAM_FILE_PATH, filePath,
+              PARAM_SOURCE_NAME, sourceClassName,
               PARAM_TARGET_NAME, targetClassName));
     }
   }
 
   private void saveImplementsDependencies(
-      final Session session, final ClassData classData, final String fileName) {
+      final Session session,
+      final ClassData classData,
+      final String filePath,
+      final String sourceClassName) {
     for (final String iface : classData.getImplementedInterfacesList()) {
       final String targetInterfaceName =
           iface.contains("::")
@@ -398,20 +401,24 @@ public class StructureRepository {
 
       final String implementsQuery =
           """
-          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MATCH (sourceFile:FileRevision {filePath: $filePath})-[:CONTAINS]->(source:Clazz {name: $sourceName})
           MERGE (target:Clazz {name: $targetName})
           MERGE (source)-[:IMPLEMENTS]->(target)
           """;
       session.query(
           implementsQuery,
           Map.of(
-              PARAM_FILE_NAME, fileName,
+              PARAM_FILE_PATH, filePath,
+              PARAM_SOURCE_NAME, sourceClassName,
               PARAM_TARGET_NAME, targetInterfaceName));
     }
   }
 
   private void saveCallsDependencies(
-      final Session session, final ClassData classData, final String fileName) {
+      final Session session,
+      final ClassData classData,
+      final String filePath,
+      final String sourceClassName) {
     for (final FunctionData function : classData.getFunctionsList()) {
       for (final String calledTarget : function.getOutgoingMethodCallsList()) {
         final String targetClassName =
@@ -421,21 +428,25 @@ public class StructureRepository {
 
         final String callsQuery =
             """
-            MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+            MATCH (sourceFile:FileRevision {filePath: $filePath})-[:CONTAINS]->(source:Clazz {name: $sourceName})
             MERGE (target:Clazz {name: $targetName})
             MERGE (source)-[:CALLS]->(target)
             """;
         session.query(
             callsQuery,
             Map.of(
-                PARAM_FILE_NAME, fileName,
+                PARAM_FILE_PATH, filePath,
+                PARAM_SOURCE_NAME, sourceClassName,
                 PARAM_TARGET_NAME, targetClassName));
       }
     }
   }
 
   private void saveUsesTypeDependencies(
-      final Session session, final ClassData classData, final String fileName) {
+      final Session session,
+      final ClassData classData,
+      final String filePath,
+      final String sourceClassName) {
     for (final FieldData field : classData.getFieldsList()) {
       final String fieldType = field.getType();
       if (fieldType == null || fieldType.isEmpty()) {
@@ -458,14 +469,15 @@ public class StructureRepository {
 
       final String usesTypeQuery =
           """
-          MATCH (sourceFile:FileRevision {name: $fileName})-[:CONTAINS]->(source:Clazz)
+          MATCH (sourceFile:FileRevision {filePath: $filePath})-[:CONTAINS]->(source:Clazz {name: $sourceName})
           MERGE (target:Clazz {name: $targetName})
           MERGE (source)-[:USES_TYPE]->(target)
           """;
       session.query(
           usesTypeQuery,
           Map.of(
-              PARAM_FILE_NAME, fileName,
+              PARAM_FILE_PATH, filePath,
+              PARAM_SOURCE_NAME, sourceClassName,
               PARAM_TARGET_NAME, simpleTypeName));
     }
   }
