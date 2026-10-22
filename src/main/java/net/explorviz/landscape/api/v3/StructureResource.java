@@ -1,15 +1,21 @@
 package net.explorviz.landscape.api.v3;
 
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import java.util.List;
+import java.util.Map;
+import net.explorviz.landscape.api.v3.model.CityRenameRequest;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.EvolutionStructureBatchRequest;
 import net.explorviz.landscape.api.v3.model.FileDetailedDto;
@@ -47,6 +53,40 @@ public class StructureResource {
     final Session session = sessionFactory.openSession();
 
     return structureRepository.fetchFlatLandscapeForRuntimeData(session, landscapeToken);
+  }
+
+  /**
+   * Renames a city (Application or DatabaseSystem) by setting its user-facing display name in
+   * Neo4j. The identity {@code name} used by telemetry MERGE is left unchanged.
+   */
+  @PATCH
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/cities/{cityId}")
+  public Response renameCity(
+      @RestPath final String landscapeToken,
+      @RestPath final String cityId,
+      final CityRenameRequest request) {
+    if (request == null || request.name() == null || request.name().isBlank()) {
+      throw new BadRequestException("City name must be non-blank");
+    }
+
+    final long neo4jId;
+    try {
+      neo4jId = Long.parseLong(cityId);
+    } catch (final NumberFormatException e) {
+      throw new BadRequestException("City id must be a numeric Neo4j node id", e);
+    }
+
+    final Session session = sessionFactory.openSession();
+    final String effectiveName =
+        structureRepository.renameCity(session, landscapeToken, neo4jId, request.name().trim());
+
+    if (effectiveName == null) {
+      throw new NotFoundException("City not found in landscape");
+    }
+
+    return Response.ok(Map.of("id", cityId, "name", effectiveName)).build();
   }
 
   /**
@@ -133,7 +173,7 @@ public class StructureResource {
     return fileRevisionRepository
         .findFileDetailedContext(session, landscapeToken, id)
         .map(context -> fileDetailedMapper.map(context, commitHash))
-        .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("File revision not found"));
+        .orElseThrow(() -> new NotFoundException("File revision not found"));
   }
 
   /**

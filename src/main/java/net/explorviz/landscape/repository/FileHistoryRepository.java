@@ -180,7 +180,7 @@ public class FileHistoryRepository {
     String action = (String) row.get("action");
     String previousPath = null;
 
-    if ("ADDED".equals(action)) {
+    if (FileHistoryDto.ADDED.equals(action)) {
       previousPath = previousPaths.get(new RenamedRevision((Long) row.get("fileRevId"), hash));
       if (previousPath != null) {
         action = FileHistoryDto.RENAMED;

@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -960,5 +961,30 @@ public class StructureRepository {
       targets.add(cursor);
     }
     return targets;
+  }
+
+  /**
+   * Persists a user-facing display name for a city without changing the identity {@code name} used
+   * by telemetry MERGE.
+   *
+   * @return the effective display name, or {@code null} if no matching city exists in the landscape
+   */
+  public String renameCity(
+      final Session session, final String landscapeToken, final long cityId, final String newName) {
+    final Result result =
+        session.query(
+            """
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(city:Application|DatabaseSystem)
+            WHERE id(city) = $cityId
+            SET city.displayName = $name
+            RETURN coalesce(city.displayName, city.name) AS name
+            """,
+            Map.of("tokenId", landscapeToken, "cityId", cityId, "name", newName));
+
+    final Iterator<Map<String, Object>> rows = result.queryResults().iterator();
+    if (!rows.hasNext()) {
+      return null;
+    }
+    return (String) rows.next().get("name");
   }
 }

@@ -83,7 +83,11 @@ public final class StructureMapper {
       @SuppressWarnings("unchecked")
       final Map<String, Object> properties = (Map<String, Object>) row.get("properties");
 
-      final String name = (String) row.get("name");
+      // Prefer user-assigned displayName over the identity name used by telemetry MERGE keys.
+      final String fallbackName = (String) row.get("name");
+      final Object displayName = properties != null ? properties.get("displayName") : null;
+      final String name =
+          displayName instanceof String value && !value.isBlank() ? value : fallbackName;
       final String fqn = (String) row.get("fqn");
       final Long cityId = (Long) row.get("cityId");
 

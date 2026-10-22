@@ -19,6 +19,7 @@ import net.explorviz.landscape.ogm.Repository;
 import net.explorviz.landscape.ogm.Tag;
 import net.explorviz.landscape.proto.CommitData;
 import net.explorviz.landscape.proto.CommitService;
+import net.explorviz.landscape.proto.FileIdentifier;
 import net.explorviz.landscape.proto.FileRename;
 import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
@@ -115,7 +116,7 @@ public class CommitServiceImpl implements CommitService {
       final Set<String> renamedOldPaths =
           commitData.getRenamedFilesList().stream()
               .map(FileRename::getOldFile)
-              .map(file -> file.getFilePath())
+              .map(FileIdentifier::getFilePath)
               .collect(Collectors.toCollection(HashSet::new));
       commitDeletedFileUnlinker.unlinkDeletedFilesFromCommit(
           session,

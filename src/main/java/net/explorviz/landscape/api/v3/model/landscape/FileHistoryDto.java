@@ -22,6 +22,9 @@ public record FileHistoryDto(
     String authorName,
     boolean mergeCommit) {
 
+  /** The file was introduced at this path in the commit. */
+  public static final String ADDED = "ADDED";
+
   /** The file was moved to its current path, possibly with modifications. */
   public static final String RENAMED = "RENAMED";
 }
