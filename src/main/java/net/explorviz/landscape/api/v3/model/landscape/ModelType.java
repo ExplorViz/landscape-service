@@ -28,7 +28,10 @@ public enum ModelType {
   RPC("rpc"),
 
   /** Models originating from HTTP API analysis. */
-  HTTP("http");
+  HTTP("http"),
+
+  /** Models originating from message broker operation analysis. */
+  MESSAGING("messaging");
 
   private final String name;
 

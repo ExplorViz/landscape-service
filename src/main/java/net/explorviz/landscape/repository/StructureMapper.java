@@ -35,6 +35,8 @@ public final class StructureMapper {
   private static final String LABEL_HTTP_ENDPOINT = "HTTPEndpoint";
   private static final String LABEL_HTTP_CLIENT = "HTTPClient";
 
+  private static final String LABEL_MESSAGING_DESTINATION = "MessagingDestination";
+
   private static final String LABEL_GENERIC_ENTITY = "GenericTelemetryEntity";
 
   private static final Set<String> CITY_LABELS = Set.of(LABEL_APPLICATION, LABEL_DATABASE_SYSTEM);
@@ -49,6 +51,7 @@ public final class StructureMapper {
           LABEL_RPC_CLIENT,
           LABEL_HTTP_ENDPOINT,
           LABEL_HTTP_CLIENT,
+          LABEL_MESSAGING_DESTINATION,
           LABEL_GENERIC_ENTITY);
 
   private static final Map<String, ModelType> LABEL_TO_TYPE =
@@ -64,6 +67,7 @@ public final class StructureMapper {
           Map.entry(LABEL_RPC_CLIENT, ModelType.RPC),
           Map.entry(LABEL_HTTP_ENDPOINT, ModelType.HTTP),
           Map.entry(LABEL_HTTP_CLIENT, ModelType.HTTP),
+          Map.entry(LABEL_MESSAGING_DESTINATION, ModelType.MESSAGING),
           Map.entry(LABEL_GENERIC_ENTITY, ModelType.UNKNOWN));
 
   public record NodeData(
