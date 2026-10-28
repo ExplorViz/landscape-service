@@ -12,6 +12,7 @@ import net.explorviz.landscape.messaging.telemetry.handler.DatabaseTelemetryHand
 import net.explorviz.landscape.messaging.telemetry.handler.GenericTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.HttpClientTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.HttpServerTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.MessagingTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.RpcClientTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.RpcServerTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.TelemetryHandler;
@@ -37,6 +38,7 @@ public class TelemetryConsumer {
               EntityDescriptorCase.RPC_CLIENT_DESCRIPTOR, RpcClientTelemetryHandler::saveEntity,
               EntityDescriptorCase.HTTP_SERVER_DESCRIPTOR, HttpServerTelemetryHandler::saveEntity,
               EntityDescriptorCase.HTTP_CLIENT_DESCRIPTOR, HttpClientTelemetryHandler::saveEntity,
+              EntityDescriptorCase.MESSAGING_DESCRIPTOR, MessagingTelemetryHandler::saveEntity,
               EntityDescriptorCase.GENERIC_ENTITY_DESCRIPTOR, GenericTelemetryHandler::saveEntity));
 
   @Blocking

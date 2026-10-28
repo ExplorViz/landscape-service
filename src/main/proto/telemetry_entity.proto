@@ -26,6 +26,7 @@ message TelemetryEntity {
     RpcClientDescriptor rpc_client_descriptor = 9;
     HttpServerDescriptor http_server_descriptor = 10;
     HttpClientDescriptor http_client_descriptor = 11;
+    MessagingDescriptor messaging_descriptor = 12;
   }
 }
 
@@ -109,4 +110,13 @@ message HttpServerDescriptor {
 message HttpClientDescriptor {
   string application_name = 1; // Name of the application or service of which the HTTP client is part
   string telemetry_key = 2;
+}
+
+/**
+ * MessagingDescriptor describes a message destination (e.g. topic) within a message broker system (e.g. Kafka).
+ */
+message MessagingDescriptor {
+  string system_name = 1; // Name of the message broker system (e.g. "kafka")
+  string destination_name = 2; // Name or template of the message destination (e.g. topic, queue name) within the system
+  string telemetry_key = 3; // Lookup key for retrieving telemetry for this message destination
 }

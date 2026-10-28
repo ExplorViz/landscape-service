@@ -20,6 +20,7 @@ import net.explorviz.landscape.proto.DatabaseDescriptor;
 import net.explorviz.landscape.proto.GenericEntityDescriptor;
 import net.explorviz.landscape.proto.HttpClientDescriptor;
 import net.explorviz.landscape.proto.HttpServerDescriptor;
+import net.explorviz.landscape.proto.MessagingDescriptor;
 import net.explorviz.landscape.proto.RpcClientDescriptor;
 import net.explorviz.landscape.proto.RpcServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
@@ -65,6 +66,7 @@ public class FlatLandscapeBuilder {
       case RPC_CLIENT_DESCRIPTOR -> addRpcClientEntity(entity);
       case HTTP_SERVER_DESCRIPTOR -> addHttpServerEntity(entity);
       case HTTP_CLIENT_DESCRIPTOR -> addHttpClientEntity(entity);
+      case MESSAGING_DESCRIPTOR -> addMessagingEntity(entity);
       case GENERIC_ENTITY_DESCRIPTOR -> addGenericEntity(entity);
       default -> throw new UnsupportedOperationException("No handler implemented for entity type");
     }
@@ -297,6 +299,38 @@ public class FlatLandscapeBuilder {
         createBuilding);
   }
 
+  private void addMessagingEntity(TelemetryEntity entity) {
+    MessagingDescriptor descriptor = entity.getMessagingDescriptor();
+
+    LandscapeModelCreator<DistrictDto> createDistrict =
+        (name, fqn, cityId, parentDistrictId) -> {
+          throw new IllegalStateException("Messaging entity should not create districts");
+        };
+
+    LandscapeModelCreator<BuildingDto> createBuilding =
+        (name, fqn, cityId, parentDistrictId) ->
+            new BuildingDto(
+                new FlatBaseModel(
+                    UUID.randomUUID().toString(),
+                    name,
+                    fqn,
+                    descriptor.getTelemetryKey(),
+                    ModelType.MESSAGING,
+                    TypeOfAnalysis.RUNTIME,
+                    null),
+                cityId,
+                parentDistrictId,
+                null,
+                Map.of());
+
+    ensureBuildingPath(
+        descriptor.getSystemName(),
+        null,
+        new String[] {descriptor.getDestinationName()},
+        createDistrict,
+        createBuilding);
+  }
+
   private void addGenericEntity(TelemetryEntity entity) {
     GenericEntityDescriptor descriptor = entity.getGenericEntityDescriptor();
 
@@ -335,7 +369,8 @@ public class FlatLandscapeBuilder {
    * When a model with the required name already exists for a segment, no new node is created.
    *
    * @param cityName Name of the city to be found or created
-   * @param scopeName Name of the instrumentation scope within the city
+   * @param scopeName Name of the instrumentation scope within the city. If null, no scope district
+   *     is created.
    * @param buildingPath List of names to follow within the city, where the last element is the
    *     building name and all prior names are district names.
    * @param districtCreator Function that supplies a new district whenever one needs to be created
