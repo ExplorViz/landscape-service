@@ -1,5 +1,6 @@
 package net.explorviz.landscape.grpc;
 
+import io.grpc.Status;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
@@ -7,6 +8,7 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.ogm.Application;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
@@ -32,6 +34,8 @@ import org.neo4j.ogm.transaction.Transaction;
 @GrpcService
 public class StateDataServiceImpl implements StateDataService {
 
+  @Inject DemoMode demoMode;
+
   @Inject SessionFactory sessionFactory;
 
   @Inject ApplicationRepository applicationRepository;
@@ -53,6 +57,10 @@ public class StateDataServiceImpl implements StateDataService {
   @Blocking
   @Override
   public Uni<StateData> getStateData(final StateDataRequest request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     final Session session = sessionFactory.openSession();
     try (Transaction tx = session.beginTransaction()) {
       saveStateData(session, request);

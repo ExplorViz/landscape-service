@@ -5,6 +5,7 @@ import io.quarkus.logging.Log;
 import io.smallrye.reactive.messaging.annotations.Blocking;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.messaging.service.LandscapeDeletionService;
 import net.explorviz.proto.EventType;
 import net.explorviz.proto.TokenEvent;
@@ -14,11 +15,16 @@ import org.eclipse.microprofile.reactive.messaging.Incoming;
 @ApplicationScoped
 public class TokenEventConsumer {
 
+  @Inject DemoMode demoMode;
+
   @Inject LandscapeDeletionService landscapeDeletionService;
 
   @Blocking
   @Incoming("token-events")
   public void consume(final ConsumerRecord<String, byte[]> record) {
+    if (demoMode.isEnabled()) {
+      return;
+    }
     final TokenEvent event = parseEvent(record.value());
     final String tokenId = resolveTokenId(record, event);
 

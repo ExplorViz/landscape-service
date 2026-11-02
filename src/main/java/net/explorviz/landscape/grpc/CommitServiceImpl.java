@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
 import net.explorviz.landscape.ogm.Contributor;
@@ -48,6 +49,8 @@ public class CommitServiceImpl implements CommitService {
 
   private static final String NO_PARENT_ID = "NONE";
 
+  @Inject DemoMode demoMode;
+
   @Inject ApplicationRepository applicationRepository;
   @Inject BranchRepository branchRepository;
   @Inject CommitRepository commitRepository;
@@ -66,6 +69,10 @@ public class CommitServiceImpl implements CommitService {
   @Blocking
   @Override
   public Uni<Empty> persistCommit(final CommitData request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     try {
       commitPersistenceCoordinator.runExclusive(
           request.getLandscapeToken(),

@@ -7,6 +7,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.EnumMap;
 import java.util.Map;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.messaging.telemetry.handler.CodeTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.DatabaseTelemetryHandler;
 import net.explorviz.landscape.messaging.telemetry.handler.GenericTelemetryHandler;
@@ -27,6 +28,8 @@ import org.neo4j.ogm.transaction.Transaction;
 @ApplicationScoped
 public class TelemetryConsumer {
 
+  @Inject DemoMode demoMode;
+
   @Inject SessionFactory sessionFactory;
 
   private static final Map<EntityDescriptorCase, TelemetryHandler> DESCRIPTOR_TO_HANDLER =
@@ -44,6 +47,9 @@ public class TelemetryConsumer {
   @Blocking
   @Incoming("telemetry-entities")
   public void consume(final byte[] bytes) {
+    if (demoMode.isEnabled()) {
+      return;
+    }
     final TelemetryEntity entity;
     try {
       entity = TelemetryEntity.parseFrom(bytes);

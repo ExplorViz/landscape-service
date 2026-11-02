@@ -9,6 +9,7 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.ogm.AnnotationType;
 import net.explorviz.landscape.ogm.Issue;
 import net.explorviz.landscape.ogm.PullRequest;
@@ -34,6 +35,8 @@ import org.neo4j.ogm.transaction.Transaction;
 @GrpcService
 public class TrackableResourceServiceImpl implements TrackableResourceService {
 
+  @Inject DemoMode demoMode;
+
   @Inject RepositoryRepository repositoryRepository;
   @Inject ContributorRepository contributorRepository;
   @Inject SessionFactory sessionFactory;
@@ -43,6 +46,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   @Override
   @Blocking
   public Uni<Empty> persistTrackableResourceEvent(final TrackableResourceEvent request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     final Session session = sessionFactory.openSession();
     try (Transaction tx = session.beginTransaction()) {
       saveTrackableResourceEvent(session, request);
@@ -58,6 +65,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   @Override
   @Blocking
   public Uni<Empty> persistTrackableResourceEvents(final TrackableResourceEventBatch request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     if (request.getEventsList().isEmpty()) {
       return Uni.createFrom().item(Empty.getDefaultInstance());
     }
@@ -87,6 +98,10 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
   @Override
   @Blocking
   public Uni<Empty> relinkResources(final RelinkResourcesRequest request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     try {
       commitPersistenceCoordinator.runExclusive(
           request.getLandscapeToken(),

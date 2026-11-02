@@ -1,6 +1,7 @@
 package net.explorviz.landscape.grpc;
 
 import com.google.protobuf.Empty;
+import io.grpc.Status;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Multi;
@@ -8,6 +9,7 @@ import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.inject.Inject;
 import java.util.List;
+import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.FileDataService;
 import net.explorviz.landscape.repository.CommitMetricsAccumulator;
@@ -19,6 +21,8 @@ import org.neo4j.ogm.transaction.Transaction;
 @GrpcService
 public class FileDataServiceImpl implements FileDataService {
 
+  @Inject DemoMode demoMode;
+
   @Inject SessionFactory sessionFactory;
   @Inject FileDataBatchWriter fileDataBatchWriter;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
@@ -26,6 +30,10 @@ public class FileDataServiceImpl implements FileDataService {
   @Blocking
   @Override
   public Uni<Empty> persistFile(final FileData request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     return persistBatch(List.of(request));
   }
 
@@ -36,6 +44,10 @@ public class FileDataServiceImpl implements FileDataService {
    */
   @Override
   public Uni<Empty> persistFiles(final Multi<FileData> request) {
+    if (demoMode.isEnabled()) {
+      return Uni.createFrom()
+          .failure(Status.PERMISSION_DENIED.withDescription(DemoMode.MESSAGE).asRuntimeException());
+    }
     return request
         .collect()
         .asList()
