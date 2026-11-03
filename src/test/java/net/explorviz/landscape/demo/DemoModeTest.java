@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Response;
@@ -19,9 +20,34 @@ import net.explorviz.landscape.grpc.StateDataServiceImpl;
 import net.explorviz.landscape.grpc.TrackableResourceServiceImpl;
 import net.explorviz.landscape.messaging.TokenEventConsumer;
 import net.explorviz.landscape.messaging.telemetry.TelemetryConsumer;
+import net.explorviz.landscape.messaging.telemetry.handler.CodeTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.DatabaseTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.GenericTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.HttpClientTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.HttpServerTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.MessagingTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.RpcClientTelemetryHandler;
+import net.explorviz.landscape.messaging.telemetry.handler.RpcServerTelemetryHandler;
 import org.junit.jupiter.api.Test;
 
 class DemoModeTest {
+
+  @Inject CodeTelemetryHandler codeTelemetryHandler;
+
+  @Inject DatabaseTelemetryHandler databaseTelemetryHandler;
+
+  @Inject RpcServerTelemetryHandler rpcServerTelemetryHandler;
+
+  @Inject RpcClientTelemetryHandler rpcClientTelemetryHandler;
+
+  @Inject HttpServerTelemetryHandler httpServerTelemetryHandler;
+
+  @Inject HttpClientTelemetryHandler httpClientTelemetryHandler;
+
+  @Inject MessagingTelemetryHandler messagingTelemetryHandler;
+
+  @Inject GenericTelemetryHandler genericTelemetryHandler;
+
   private final DemoMode mode = new DemoMode();
 
   @Test
@@ -75,7 +101,16 @@ class DemoModeTest {
     var tokens = new TokenEventConsumer();
     injectMode(tokens);
     tokens.consume(null);
-    var telemetry = new TelemetryConsumer();
+    var telemetry =
+        new TelemetryConsumer(
+            codeTelemetryHandler,
+            databaseTelemetryHandler,
+            rpcServerTelemetryHandler,
+            rpcClientTelemetryHandler,
+            httpServerTelemetryHandler,
+            httpClientTelemetryHandler,
+            messagingTelemetryHandler,
+            genericTelemetryHandler);
     injectMode(telemetry);
     telemetry.consume(null);
   }

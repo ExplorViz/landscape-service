@@ -26,6 +26,9 @@ dependencies {
 
     implementation("io.quarkus:quarkus-messaging-kafka")
 
+    implementation("io.quarkus:quarkus-opentelemetry")
+    implementation("io.opentelemetry.semconv:opentelemetry-semconv:1.44.0")
+
     testImplementation("io.quarkus:quarkus-junit")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("io.rest-assured:rest-assured")
