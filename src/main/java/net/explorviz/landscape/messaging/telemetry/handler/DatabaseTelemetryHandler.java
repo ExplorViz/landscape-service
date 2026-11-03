@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.database.DatabaseSystem;
 import net.explorviz.landscape.proto.DatabaseDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that describe database queries and writes the
  * corresponding nodes to the graph.
  */
-public final class DatabaseTelemetryHandler {
+@ApplicationScoped
+public final class DatabaseTelemetryHandler implements TelemetryHandler {
 
-  private DatabaseTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasDatabaseDescriptor()) {
       throw new IllegalArgumentException("Database descriptor is required");
     }
@@ -46,41 +56,45 @@ public final class DatabaseTelemetryHandler {
    * path are created. For the database system node, a telemetry key is set regardless of whether
    * the node previously existed.
    */
-  private static boolean ensureDatabasePathForCommit(
+  private boolean ensureDatabasePathForCommit(
       final Session session, final TelemetryEntity entity, final DatabaseDescriptor descriptor) {
 
-    final DatabaseSystem result =
-        session.queryForObject(
-            DatabaseSystem.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
 
-            MERGE (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})<-[:CONTAINS]-(commit)
-            SET sys.telemetryKey = $telemetryKey
+        MERGE (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})<-[:CONTAINS]-(commit)
+        SET sys.telemetryKey = $telemetryKey
 
-            OPTIONAL CALL (sys) {
-              WITH sys
-              WHERE $databaseName <> ""
-              MERGE (sys)-[:CONTAINS]->(db:Database {name: $databaseName})
-              RETURN db
-            }
+        OPTIONAL CALL (sys) {
+          WITH sys
+          WHERE $databaseName <> ""
+          MERGE (sys)-[:CONTAINS]->(db:Database {name: $databaseName})
+          RETURN db
+        }
 
-            OPTIONAL CALL (db, sys) {
-              WITH coalesce(db, sys) AS parent
-              WHERE $tableName <> ""
-              MERGE (parent)-[:CONTAINS]->(:DatabaseTable {name: $tableName})
-            }
+        OPTIONAL CALL (db, sys) {
+          WITH coalesce(db, sys) AS parent
+          WHERE $tableName <> ""
+          MERGE (parent)-[:CONTAINS]->(:DatabaseTable {name: $tableName})
+        }
 
-            RETURN sys;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "systemName", descriptor.getSystemName(),
-                "telemetryKey", descriptor.getTelemetryKey(),
-                "databaseName", descriptor.getDatabaseName(),
-                "tableName", descriptor.getTableName()));
+        RETURN sys;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "systemName", descriptor.getSystemName(),
+            "telemetryKey", descriptor.getTelemetryKey(),
+            "databaseName", descriptor.getDatabaseName(),
+            "tableName", descriptor.getTableName());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final DatabaseSystem result = session.queryForObject(DatabaseSystem.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -92,49 +106,53 @@ public final class DatabaseTelemetryHandler {
    * a database and / or table within the system are also created if they do not yet exist. For the
    * database system, a telemetry key is set regardless of whether the node previously existed.
    */
-  private static boolean ensureDatabasePath(
+  private boolean ensureDatabasePath(
       final Session session, final TelemetryEntity entity, final DatabaseDescriptor descriptor) {
 
-    final DatabaseSystem result =
-        session.queryForObject(
-            DatabaseSystem.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
 
-            OPTIONAL CALL (l) {
-              MATCH (l) WHERE NOT EXISTS {
-                MATCH (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})
-                WHERE NOT (:Commit)-[:CONTAINS]->(sys)
-              }
-              // Only executed if previous match was successful
-              CREATE (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})
-            }
+        OPTIONAL CALL (l) {
+          MATCH (l) WHERE NOT EXISTS {
             MATCH (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})
             WHERE NOT (:Commit)-[:CONTAINS]->(sys)
-            SET sys.telemetryKey = $telemetryKey
+          }
+          // Only executed if previous match was successful
+          CREATE (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})
+        }
+        MATCH (l)-[:CONTAINS]->(sys:DatabaseSystem {name: $systemName})
+        WHERE NOT (:Commit)-[:CONTAINS]->(sys)
+        SET sys.telemetryKey = $telemetryKey
 
-            OPTIONAL CALL (sys) {
-              WITH sys
-              WHERE $databaseName <> ""
-              MERGE (sys)-[:CONTAINS]->(db:Database {name: $databaseName})
-              RETURN db
-            }
+        OPTIONAL CALL (sys) {
+          WITH sys
+          WHERE $databaseName <> ""
+          MERGE (sys)-[:CONTAINS]->(db:Database {name: $databaseName})
+          RETURN db
+        }
 
-            OPTIONAL CALL (db, sys) {
-              WITH coalesce(db, sys) AS parent
-              WHERE $tableName <> ""
-              MERGE (parent)-[:CONTAINS]->(:DatabaseTable {name: $tableName})
-            }
+        OPTIONAL CALL (db, sys) {
+          WITH coalesce(db, sys) AS parent
+          WHERE $tableName <> ""
+          MERGE (parent)-[:CONTAINS]->(:DatabaseTable {name: $tableName})
+        }
 
-            RETURN sys;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "systemName", descriptor.getSystemName(),
-                "telemetryKey", descriptor.getTelemetryKey(),
-                "databaseName", descriptor.getDatabaseName(),
-                "tableName", descriptor.getTableName()));
+        RETURN sys;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "systemName", descriptor.getSystemName(),
+            "telemetryKey", descriptor.getTelemetryKey(),
+            "databaseName", descriptor.getDatabaseName(),
+            "tableName", descriptor.getTableName());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final DatabaseSystem result = session.queryForObject(DatabaseSystem.class, query, params);
+    span.end();
 
     return result != null;
   }
