@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.otel.GenericTelemetryEntity;
 import net.explorviz.landscape.proto.GenericEntityDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that cannot be classified more precisely than by
  * their service name and writes the corresponding nodes to the graph.
  */
-public final class GenericTelemetryHandler {
+@ApplicationScoped
+public final class GenericTelemetryHandler implements TelemetryHandler {
 
-  private GenericTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasGenericEntityDescriptor()) {
       throw new IllegalArgumentException("Generic descriptor is required");
     }
@@ -44,40 +54,45 @@ public final class GenericTelemetryHandler {
    * any commit. All missing nodes along the path are created. For the endpoint, a telemetry key is
    * set regardless of whether the node previously existed.
    */
-  private static boolean ensureEntityPath(
+  private boolean ensureEntityPath(
       final Session session,
       final TelemetryEntity entity,
       final GenericEntityDescriptor descriptor) {
 
-    final GenericTelemetryEntity result =
-        session.queryForObject(
-            GenericTelemetryEntity.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
-            MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
-            MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            CALL (sc) {
-              MATCH (sc) WHERE NOT EXISTS {
-                MATCH (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
-                WHERE NOT (:Commit)-[:CONTAINS]->(e)
-              }
-              // Only executed if previous match was successful
-              CREATE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
-            }
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
+        MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
+        MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        CALL (sc) {
+          MATCH (sc) WHERE NOT EXISTS {
             MATCH (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
             WHERE NOT (:Commit)-[:CONTAINS]->(e)
+          }
+          // Only executed if previous match was successful
+          CREATE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
+        }
+        MATCH (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})
+        WHERE NOT (:Commit)-[:CONTAINS]->(e)
 
-            SET e.telemetryKey = $telemetryKey
+        SET e.telemetryKey = $telemetryKey
 
-            RETURN e;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "serviceName", descriptor.getServiceName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "name", descriptor.getName(),
-                "telemetryKey", descriptor.getTelemetryKey()));
+        RETURN e;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "serviceName", descriptor.getServiceName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "name", descriptor.getName(),
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final GenericTelemetryEntity result =
+        session.queryForObject(GenericTelemetryEntity.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -89,33 +104,38 @@ public final class GenericTelemetryHandler {
    * All remaining missing nodes along the path are created. For the entity node, a telemetry key is
    * set regardless of whether the node previously existed.
    */
-  private static boolean ensureEntityPathForCommit(
+  private boolean ensureEntityPathForCommit(
       final Session session,
       final TelemetryEntity entity,
       final GenericEntityDescriptor descriptor) {
 
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+
+        MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
+        MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        MERGE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})<-[:CONTAINS]-(commit)
+
+        SET e.telemetryKey = $telemetryKey
+
+        RETURN e;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "serviceName", descriptor.getServiceName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "name", descriptor.getName(),
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
     final GenericTelemetryEntity result =
-        session.queryForObject(
-            GenericTelemetryEntity.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
-
-            MERGE (l)-[:CONTAINS]->(app:Application {name: $serviceName})
-            MERGE (app)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(e:GenericTelemetryEntity {name: $name})<-[:CONTAINS]-(commit)
-
-            SET e.telemetryKey = $telemetryKey
-
-            RETURN e;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "serviceName", descriptor.getServiceName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "name", descriptor.getName(),
-                "telemetryKey", descriptor.getTelemetryKey()));
+        session.queryForObject(GenericTelemetryEntity.class, query, params);
+    span.end();
 
     return result != null;
   }

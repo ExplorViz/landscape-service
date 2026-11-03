@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.http.HttpEndpoint;
 import net.explorviz.landscape.proto.HttpServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that describe server-side HTTP requests and
  * writes the corresponding nodes to the graph.
  */
-public final class HttpServerTelemetryHandler {
+@ApplicationScoped
+public final class HttpServerTelemetryHandler implements TelemetryHandler {
 
-  private HttpServerTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasHttpServerDescriptor()) {
       throw new IllegalArgumentException("HTTP server descriptor is required");
     }
@@ -46,34 +56,38 @@ public final class HttpServerTelemetryHandler {
    * is set regardless of whether the node previously existed. The endpoint's supported methods are
    * updated to contain that of the provided entity descriptor.
    */
-  private static boolean ensureEndpointPathForCommit(
+  private boolean ensureEndpointPathForCommit(
       final Session session, final TelemetryEntity entity, final HttpServerDescriptor descriptor) {
 
-    final HttpEndpoint result =
-        session.queryForObject(
-            HttpEndpoint.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
 
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})<-[:CONTAINS]-(commit)
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        MERGE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})<-[:CONTAINS]-(commit)
 
-            SET e.telemetryKey = $endpointTelemetryKey
-            SET e.supportedMethods =
-              [method IN coalesce(e.supportedMethods, []) WHERE method <> $method] + [$method]
+        SET e.telemetryKey = $endpointTelemetryKey
+        SET e.supportedMethods =
+          [method IN coalesce(e.supportedMethods, []) WHERE method <> $method] + [$method]
 
-            RETURN e;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "endpointRoute", descriptor.getRoute(),
-                "endpointTelemetryKey", descriptor.getTelemetryKey(),
-                "method", descriptor.getMethod()));
+        RETURN e;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "endpointRoute", descriptor.getRoute(),
+            "endpointTelemetryKey", descriptor.getTelemetryKey(),
+            "method", descriptor.getMethod());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final HttpEndpoint result = session.queryForObject(HttpEndpoint.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -85,41 +99,45 @@ public final class HttpServerTelemetryHandler {
    * set regardless of whether the node previously existed. The endpoint's supported methods are
    * updated to contain that of the provided entity descriptor.
    */
-  private static boolean ensureEndpointPath(
+  private boolean ensureEndpointPath(
       final Session session, final TelemetryEntity entity, final HttpServerDescriptor descriptor) {
 
-    final HttpEndpoint result =
-        session.queryForObject(
-            HttpEndpoint.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            OPTIONAL CALL (sc) {
-              MATCH (sc) WHERE NOT EXISTS {
-                MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
-                WHERE NOT (:Commit)-[:CONTAINS]->(e)
-              }
-              // Only executed if previous match was successful
-              CREATE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
-            }
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        OPTIONAL CALL (sc) {
+          MATCH (sc) WHERE NOT EXISTS {
             MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
             WHERE NOT (:Commit)-[:CONTAINS]->(e)
+          }
+          // Only executed if previous match was successful
+          CREATE (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
+        }
+        MATCH (sc)-[:CONTAINS]->(e:HTTPEndpoint {name: $endpointRoute})
+        WHERE NOT (:Commit)-[:CONTAINS]->(e)
 
-            SET e.telemetryKey = $endpointTelemetryKey
-            SET e.supportedMethods =
-              [method IN coalesce(e.supportedMethods, []) WHERE method <> $method] + [$method]
+        SET e.telemetryKey = $endpointTelemetryKey
+        SET e.supportedMethods =
+          [method IN coalesce(e.supportedMethods, []) WHERE method <> $method] + [$method]
 
-            RETURN e;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "endpointRoute", descriptor.getRoute(),
-                "endpointTelemetryKey", descriptor.getTelemetryKey(),
-                "method", descriptor.getMethod()));
+        RETURN e;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "endpointRoute", descriptor.getRoute(),
+            "endpointTelemetryKey", descriptor.getTelemetryKey(),
+            "method", descriptor.getMethod());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final HttpEndpoint result = session.queryForObject(HttpEndpoint.class, query, params);
+    span.end();
 
     return result != null;
   }

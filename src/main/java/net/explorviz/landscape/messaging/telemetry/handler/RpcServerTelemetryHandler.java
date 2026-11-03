@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.rpc.RpcMethod;
 import net.explorviz.landscape.proto.RpcServerDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that describe server-side remote procedure calls
  * and writes the corresponding nodes to the graph.
  */
-public final class RpcServerTelemetryHandler {
+@ApplicationScoped
+public final class RpcServerTelemetryHandler implements TelemetryHandler {
 
-  private RpcServerTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasRpcServerDescriptor()) {
       throw new IllegalArgumentException("RPC server descriptor is required");
     }
@@ -47,73 +57,77 @@ public final class RpcServerTelemetryHandler {
    * some repository. All remaining missing nodes along the path are created. For the service and
    * method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
-  private static boolean ensureMethodPathForCommit(
+  private boolean ensureMethodPathForCommit(
       final Session session, final TelemetryEntity entity, final RpcServerDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");
 
-    final RpcMethod result =
-        session.queryForObject(
-            RpcMethod.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
 
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
 
-            OPTIONAL CALL (sc) {
-              WITH sc
-              WHERE $systemName <> ""
-              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
-              RETURN sys
-            }
+        OPTIONAL CALL (sc) {
+          WITH sc
+          WHERE $systemName <> ""
+          MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+          RETURN sys
+        }
 
-            WITH coalesce(sys, sc) AS start
+        WITH coalesce(sys, sc) AS start
 
-            // Find longest service path match
-            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
-            WHERE
-              all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
-              AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
-              AND ((commit)-[:CONTAINS]->(deepestNode) XOR NOT "RPCService" IN labels(deepestNode))
-            WITH deepestNode, p, commit
-            ORDER BY length(p) DESC
-            LIMIT 1
+        // Find longest service path match
+        MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
+        WHERE
+          all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
+          AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
+          AND ((commit)-[:CONTAINS]->(deepestNode) XOR NOT "RPCService" IN labels(deepestNode))
+        WITH deepestNode, p, commit
+        ORDER BY length(p) DESC
+        LIMIT 1
 
-            // Create missing namespaces + service, if necessary
-            WITH *, $servicePath[length(p)..] AS remainingServicePath
-            OPTIONAL CALL (*) {
-              UNWIND [x in range(0, size(remainingServicePath)-1) | x] AS idx
-              CREATE (n:RPCNamespace {name: remainingServicePath[idx]})
-              ORDER BY idx ASC
-              WITH collect(n) AS newNodes
-              WITH [deepestNode] + newNodes AS nodes
-              CALL apoc.nodes.link(nodes, "CONTAINS")
-              WITH last(nodes) AS lastCreated
-              REMOVE lastCreated:RPCNamespace
-              SET lastCreated:RPCService
-              CREATE (commit)-[:CONTAINS]->(lastCreated)
-              RETURN lastCreated
-            }
-            WITH coalesce(lastCreated, deepestNode) AS service
-            SET service.telemetryKey = $serviceTelemetryKey
+        // Create missing namespaces + service, if necessary
+        WITH *, $servicePath[length(p)..] AS remainingServicePath
+        OPTIONAL CALL (*) {
+          UNWIND [x in range(0, size(remainingServicePath)-1) | x] AS idx
+          CREATE (n:RPCNamespace {name: remainingServicePath[idx]})
+          ORDER BY idx ASC
+          WITH collect(n) AS newNodes
+          WITH [deepestNode] + newNodes AS nodes
+          CALL apoc.nodes.link(nodes, "CONTAINS")
+          WITH last(nodes) AS lastCreated
+          REMOVE lastCreated:RPCNamespace
+          SET lastCreated:RPCService
+          CREATE (commit)-[:CONTAINS]->(lastCreated)
+          RETURN lastCreated
+        }
+        WITH coalesce(lastCreated, deepestNode) AS service
+        SET service.telemetryKey = $serviceTelemetryKey
 
-            MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
-            SET m.telemetryKey = $methodTelemetryKey
+        MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
+        SET m.telemetryKey = $methodTelemetryKey
 
-            RETURN m;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "systemName", descriptor.getSystemName(),
-                "servicePath", servicePath,
-                "serviceTelemetryKey", descriptor.getServiceTelemetryKey(),
-                "methodName", descriptor.getMethodName(),
-                "methodTelemetryKey", descriptor.getMethodTelemetryKey()));
+        RETURN m;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "systemName", descriptor.getSystemName(),
+            "servicePath", servicePath,
+            "serviceTelemetryKey", descriptor.getServiceTelemetryKey(),
+            "methodName", descriptor.getMethodName(),
+            "methodTelemetryKey", descriptor.getMethodTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final RpcMethod result = session.queryForObject(RpcMethod.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -124,69 +138,73 @@ public final class RpcServerTelemetryHandler {
    * not be contained in any commit. All missing nodes along the path are created. For the service
    * and method nodes, a telemetry key is set regardless of whether the nodes previously existed.
    */
-  private static boolean ensureMethodPath(
+  private boolean ensureMethodPath(
       final Session session, final TelemetryEntity entity, final RpcServerDescriptor descriptor) {
 
     final String[] servicePath = descriptor.getServiceName().split("\\.");
 
-    final RpcMethod result =
-        session.queryForObject(
-            RpcMethod.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
 
-            OPTIONAL CALL (sc) {
-              WITH sc
-              WHERE $systemName <> ""
-              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
-              RETURN sys
-            }
+        OPTIONAL CALL (sc) {
+          WITH sc
+          WHERE $systemName <> ""
+          MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+          RETURN sys
+        }
 
-            WITH coalesce(sys, sc) AS start
+        WITH coalesce(sys, sc) AS start
 
-            // Find longest service path match
-            MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
-            WHERE
-              all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
-              AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
-              AND NOT (:Commit)-[:CONTAINS]->(deepestNode)
-            WITH deepestNode, p
-            ORDER BY length(p) DESC
-            LIMIT 1
+        // Find longest service path match
+        MATCH p = (start)-[:CONTAINS]->*(deepestNode:Scope|RPCSystem|RPCNamespace|RPCService)
+        WHERE
+          all(j IN range(1, length(p)) WHERE nodes(p)[j].name = $servicePath[j-1])
+          AND (length(p) < size($servicePath) XOR "RPCService" IN labels(deepestNode))
+          AND NOT (:Commit)-[:CONTAINS]->(deepestNode)
+        WITH deepestNode, p
+        ORDER BY length(p) DESC
+        LIMIT 1
 
-            // Create missing namespaces + service, if necessary
-            WITH *, $servicePath[length(p)..] AS remainingServicePath
-            OPTIONAL CALL (*) {
-              UNWIND [x in range(0, size(remainingServicePath)-1) | x] AS idx
-              CREATE (n:RPCNamespace {name: remainingServicePath[idx]})
-              ORDER BY idx ASC
-              WITH collect(n) AS newNodes
-              WITH [deepestNode] + newNodes AS nodes
-              CALL apoc.nodes.link(nodes, "CONTAINS")
-              WITH last(nodes) AS lastCreated
-              REMOVE lastCreated:RPCNamespace
-              SET lastCreated:RPCService
-              RETURN lastCreated
-            }
-            WITH coalesce(lastCreated, deepestNode) AS service
-            SET service.telemetryKey = $serviceTelemetryKey
+        // Create missing namespaces + service, if necessary
+        WITH *, $servicePath[length(p)..] AS remainingServicePath
+        OPTIONAL CALL (*) {
+          UNWIND [x in range(0, size(remainingServicePath)-1) | x] AS idx
+          CREATE (n:RPCNamespace {name: remainingServicePath[idx]})
+          ORDER BY idx ASC
+          WITH collect(n) AS newNodes
+          WITH [deepestNode] + newNodes AS nodes
+          CALL apoc.nodes.link(nodes, "CONTAINS")
+          WITH last(nodes) AS lastCreated
+          REMOVE lastCreated:RPCNamespace
+          SET lastCreated:RPCService
+          RETURN lastCreated
+        }
+        WITH coalesce(lastCreated, deepestNode) AS service
+        SET service.telemetryKey = $serviceTelemetryKey
 
-            MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
-            SET m.telemetryKey = $methodTelemetryKey
+        MERGE (service)-[:CONTAINS]->(m:RPCMethod {name: $methodName})
+        SET m.telemetryKey = $methodTelemetryKey
 
-            RETURN m;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "servicePath", servicePath,
-                "serviceTelemetryKey", descriptor.getServiceTelemetryKey(),
-                "methodName", descriptor.getMethodName(),
-                "methodTelemetryKey", descriptor.getMethodTelemetryKey(),
-                "systemName", descriptor.getSystemName()));
+        RETURN m;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "servicePath", servicePath,
+            "serviceTelemetryKey", descriptor.getServiceTelemetryKey(),
+            "methodName", descriptor.getMethodName(),
+            "methodTelemetryKey", descriptor.getMethodTelemetryKey(),
+            "systemName", descriptor.getSystemName());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final RpcMethod result = session.queryForObject(RpcMethod.class, query, params);
+    span.end();
 
     return result != null;
   }

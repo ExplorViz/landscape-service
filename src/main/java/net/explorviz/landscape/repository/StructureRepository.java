@@ -2,7 +2,12 @@ package net.explorviz.landscape.repository;
 
 import static net.explorviz.landscape.repository.StructureMapper.buildFlatLandscape;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -24,6 +29,7 @@ import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -44,6 +50,8 @@ import org.neo4j.ogm.session.Session;
 })
 @ApplicationScoped
 public class StructureRepository {
+
+  @Inject Tracer tracer;
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
   private static final int SCOPED_ROUTE_COMMIT_CAP = 1500;
@@ -69,47 +77,53 @@ public class StructureRepository {
       String firstCommitHash,
       String secondCommitHash) {}
 
+  @WithSpan
   public FlatLandscapeDto fetchFlatLandscapeForRuntimeData(
       final Session session, final String landscapeToken) {
-    final Result result =
-        session.query(
-            """
-            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application|DatabaseSystem)
-            OPTIONAL MATCH (a)-[:HAS_ROOT]->(rootDir:Directory)
 
-            MATCH p = (a)-[:CONTAINS]->*(n)
+    final String query =
+        """
+        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application|DatabaseSystem)
+        OPTIONAL MATCH (a)-[:HAS_ROOT]->(rootDir:Directory)
+
+        MATCH p = (a)-[:CONTAINS]->*(n)
+        WHERE
+          (rootDir IS NULL OR n <> rootDir) // Application root shouldn't become a district
+          AND EXISTS {
+            MATCH (n)
+              -[:CONTAINS]->*(end:FileRevision|DatabaseSystem|RPCService|RPCClient|HTTPEndpoint|HTTPClient|MessagingDestination|GenericTelemetryEntity)
             WHERE
-              (rootDir IS NULL OR n <> rootDir) // Application root shouldn't become a district
-              AND EXISTS {
-                MATCH (n)
-                  -[:CONTAINS]->*(end:FileRevision|DatabaseSystem|RPCService|RPCClient|HTTPEndpoint|HTTPClient|MessagingDestination|GenericTelemetryEntity)
-                WHERE
-                  end.telemetryKey IS NOT NULL
-                  AND NOT (:Commit)-[:CONTAINS]->(end)
-              }
+              end.telemetryKey IS NOT NULL
+              AND NOT (:Commit)-[:CONTAINS]->(end)
+          }
 
-            // Remove application root directory from path, as it should not become a district.
-            WITH a, n, [x IN nodes(p) WHERE coalesce(x <> rootDir, true)] AS pathNodes
+        // Remove application root directory from path, as it should not become a district.
+        WITH a, n, [x IN nodes(p) WHERE coalesce(x <> rootDir, true)] AS pathNodes
 
-            WITH a, collect(DISTINCT n) AS allMatchedNodes, collect(DISTINCT pathNodes) AS matches
+        WITH a, collect(DISTINCT n) AS allMatchedNodes, collect(DISTINCT pathNodes) AS matches
 
-            UNWIND matches AS pathNodes
-            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
+        UNWIND matches AS pathNodes
+        WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
 
-            // Determine child IDs, where only previously matched nodes should qualify.
-            WITH *, [(n)-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)] AS childrenIds
+        // Determine child IDs, where only previously matched nodes should qualify.
+        WITH *, [(n)-[:CONTAINS]->(c) WHERE c IN allMatchedNodes | id(c)] AS childrenIds
 
-            RETURN
-              id(n) AS id,
-              labels(n) AS labels,
-              properties(n) AS properties,
-              n.name AS name,
-              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
-              id(a) AS cityId,
-              childrenIds,
-              id(pathNodes[-2]) AS parentId
-            """,
-            Map.of("tokenId", landscapeToken));
+        RETURN
+          id(n) AS id,
+          labels(n) AS labels,
+          properties(n) AS properties,
+          n.name AS name,
+          string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
+          id(a) AS cityId,
+          childrenIds,
+          id(pathNodes[-2]) AS parentId
+        """;
+
+    final Map<String, Serializable> params = Map.of("tokenId", landscapeToken);
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MATCH", query, params);
+    final Result result = session.query(query, params);
+    span.end();
 
     return buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.RUNTIME);
   }
