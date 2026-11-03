@@ -58,7 +58,8 @@ For development instructions, continue reading below. If you just want to run Ex
 
 ## Prerequisites
 
-- **Java**: JDK 17 or higher
+- **Java**: JDK 21
+- **Build**: Use the included Gradle 9.7 wrapper (`./gradlew`); Quarkus 3.40.1.1 LTS manages the platform dependencies
 - **Docker**: Installed and running, since the landscape-service starts its own Docker container in dev mode and when running tests
 
 ## Code Style

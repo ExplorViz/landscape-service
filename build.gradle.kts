@@ -1,20 +1,19 @@
 plugins {
     java
     id("io.quarkus")
-    id("com.diffplug.spotless") version "8.4.0"
+    id("com.diffplug.spotless") version "8.10.4"
     checkstyle
     pmd
 }
 
 repositories {
     mavenCentral()
-    mavenLocal()
     gradlePluginPortal()
 }
 
-val quarkusPlatformGroupId: String by project
-val quarkusPlatformArtifactId: String by project
-val quarkusPlatformVersion: String by project
+val quarkusPlatformGroupId = providers.gradleProperty("quarkusPlatformGroupId").get()
+val quarkusPlatformArtifactId = providers.gradleProperty("quarkusPlatformArtifactId").get()
+val quarkusPlatformVersion = providers.gradleProperty("quarkusPlatformVersion").get()
 
 dependencies {
     implementation(enforcedPlatform("${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
@@ -27,7 +26,8 @@ dependencies {
 
     implementation("io.quarkus:quarkus-messaging-kafka")
 
-    testImplementation("io.quarkus:quarkus-junit5")
+    testImplementation("io.quarkus:quarkus-junit")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("io.rest-assured:rest-assured")
     testImplementation("io.quarkus:quarkus-test-kafka-companion")
 }
@@ -36,15 +36,17 @@ group = "net.explorviz"
 version = "1.0.0-SNAPSHOT"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 sourceSets["main"].java {
     srcDir("build/classes/java/quarkus-generated-sources/grpc")
 }
 
-tasks.withType<Test> {
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
     systemProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager")
     jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
 
@@ -53,7 +55,8 @@ tasks.withType<Test> {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
-tasks.withType<JavaCompile> {
+tasks.withType<JavaCompile>().configureEach {
+    options.release = 21
     options.encoding = "UTF-8"
     options.compilerArgs.add("-parameters")
 }
