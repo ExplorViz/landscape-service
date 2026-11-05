@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import static net.explorviz.landscape.repository.AnimationCommitReader.fetchOrderedCommits;
 import static net.explorviz.landscape.repository.StructureMapper.buildFlatLandscape;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -24,6 +25,7 @@ import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
+import net.explorviz.landscape.repository.AnimationCommitReader.CommitMeta;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -37,19 +39,13 @@ import org.neo4j.ogm.session.Session;
   "PMD.FieldDeclarationsShouldBeAtStartOfClass",
   "PMD.NPathComplexity",
   "PMD.NcssCount",
-  "PMD.SimplifyBooleanReturns",
   "PMD.TooManyMethods",
-  "PMD.UseUnderscoresInNumericLiterals",
   "PMD.UselessParentheses"
 })
 @ApplicationScoped
 public class StructureRepository {
 
   private static final FlatLandscapeMerger LANDSCAPE_MERGER = new FlatLandscapeMerger();
-  private static final int SCOPED_ROUTE_COMMIT_CAP = 1500;
-  private static final long SCOPED_ROUTE_PAIR_CAP = 3000000L;
-
-  private record CommitMeta(String hash, long authorDate) {}
 
   private record WalkState(
       int frameIndex,
@@ -283,47 +279,6 @@ public class StructureRepository {
     }
 
     return new FlatLandscapeDto(landscapeToken, cities, districts, buildings);
-  }
-
-  private List<CommitMeta> fetchOrderedCommits(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final long rangeFrom,
-      final long rangeTo) {
-    final String query =
-        """
-        MATCH (:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(c:Commit)
-        WHERE coalesce(c.authorDate, 0) <> 0
-          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
-          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
-        RETURN c.hash AS hash, c.authorDate AS authorDate
-        ORDER BY c.authorDate ASC, c.hash ASC
-        """;
-
-    final Result result =
-        session.query(
-            query,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "repoName",
-                repositoryName,
-                "rangeFrom",
-                rangeFrom,
-                "rangeTo",
-                rangeTo));
-
-    final List<CommitMeta> commits = new ArrayList<>();
-    result.forEach(
-        row -> {
-          final Object date = row.get("authorDate");
-          final long authorDate = date instanceof Number n ? n.longValue() : 0L;
-          commits.add(new CommitMeta((String) row.get("hash"), authorDate));
-        });
-    return commits;
   }
 
   public AnimationWindowDto fetchAnimationWindow(
@@ -627,314 +582,15 @@ public class StructureRepository {
     return state;
   }
 
-  private Map<String, Integer> computeFqnFirstOrdinals(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final List<CommitMeta> commits,
-      final long rangeFrom,
-      final long rangeTo) {
-    final Map<Long, Integer> ordinalByDate = new HashMap<>();
-    for (int i = 0; i < commits.size(); i++) {
-      ordinalByDate.putIfAbsent(commits.get(i).authorDate(), i);
-    }
-
-    final String query =
-        """
-        MATCH (l:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(c:Commit)
-        WHERE coalesce(c.authorDate, 0) <> 0
-            AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
-            AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
-        MATCH (c)-[:CONTAINS]->(f:FileRevision)
-        RETURN f.filePath AS fqn, min(c.authorDate) AS firstAppearance
-        """;
-    final Result result =
-        session.query(
-            query,
-            Map.of(
-                "tokenId",
-                landscapeToken,
-                "repoName",
-                repositoryName,
-                "rangeFrom",
-                rangeFrom,
-                "rangeTo",
-                rangeTo));
-
-    final Map<String, Integer> fqnToFirstOrdinal = new HashMap<>();
-    result.forEach(
-        row -> {
-          final String fqn = (String) row.get("fqn");
-          final Object date = row.get("firstAppearance");
-          if (fqn == null || !(date instanceof Number n)) {
-            return;
-          }
-          final Integer ordinal = ordinalByDate.get(n.longValue());
-          if (ordinal != null) {
-            fqnToFirstOrdinal.put(fqn, ordinal);
-          }
-        });
-    return fqnToFirstOrdinal;
-  }
-
   public AnimationSkeletonDto fetchAnimationSkeleton(
       final Session session,
       final String landscapeToken,
       final String repositoryName,
       final long rangeFrom,
       final long rangeTo) {
-
     final List<CommitMeta> commits =
         fetchOrderedCommits(session, landscapeToken, repositoryName, rangeFrom, rangeTo);
-    final boolean scoped =
-        useScopedRoute(session, landscapeToken, repositoryName, rangeFrom, rangeTo, commits);
-    final FlatLandscapeDto landscape =
-        scoped
-            ? buildScopedSkeleton(session, landscapeToken, repositoryName, rangeFrom, rangeTo)
-            : buildFullSkeleton(session, landscapeToken, repositoryName);
-    final List<String> orderedCommitHashes = commits.stream().map(CommitMeta::hash).toList();
-    final List<Long> orderedCommitTimeStamps =
-        commits.stream().map(CommitMeta::authorDate).toList();
-    final Map<String, Integer> fqnToFirstOrdinal =
-        computeFqnFirstOrdinals(
-            session, landscapeToken, repositoryName, commits, rangeFrom, rangeTo);
-
-    return new AnimationSkeletonDto(
-        landscape, fqnToFirstOrdinal, orderedCommitHashes, orderedCommitTimeStamps);
-  }
-
-  private boolean useScopedRoute(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final long rangeFrom,
-      final long rangeTo,
-      final List<CommitMeta> commits) {
-    if (rangeFrom == 0 && rangeTo == 0) {
-      return false;
-    }
-    if (commits.size() > SCOPED_ROUTE_COMMIT_CAP) {
-      return false;
-    }
-    return countCommitFilePairs(session, landscapeToken, repositoryName, rangeFrom, rangeTo)
-        <= SCOPED_ROUTE_PAIR_CAP;
-  }
-
-  private long countCommitFilePairs(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final long rangeFrom,
-      final long rangeTo) {
-    final String query =
-        """
-        MATCH (:Landscape {tokenId: $tokenId})
-          -[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(c:Commit)
-        WHERE coalesce(c.authorDate, 0) <> 0
-          AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
-          AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
-        RETURN sum(COUNT { (c)-[:CONTAINS]->() }) AS pairs
-        """;
-
-    final Result result =
-        session.query(
-            query,
-            Map.of(
-                "tokenId", landscapeToken,
-                "repoName", repositoryName,
-                "rangeFrom", rangeFrom,
-                "rangeTo", rangeTo));
-
-    for (final Map<String, Object> row : result) {
-      if (row.get("pairs") instanceof Number pairs) {
-        return pairs.longValue();
-      }
-    }
-    return Long.MAX_VALUE;
-  }
-
-  /**
-   * Fetches the structure landscape data for all files in the given repository across all commits.
-   * The resulting structure can be used to animate changes between commits.
-   *
-   * @param session OGM session object
-   * @param landscapeToken String identifier of the landscape
-   * @param repositoryName Name of the repository for which to retrieve structure data
-   * @return The structure data for all commits in the provided repository
-   */
-  private FlatLandscapeDto buildFullSkeleton(
-      final Session session, final String landscapeToken, final String repositoryName) {
-    final Result result =
-        session.query(
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application)
-            MATCH p = (a)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*]->(n:Directory|FileRevision)
-            WHERE (n)-[:CONTAINS*0..]->(:FileRevision {repoName: $repoName})
-
-            // Remove application root directory from path, as it should not become a district.
-            WITH a, n, nodes(p)[0] + nodes(p)[2..] AS pathNodes
-
-            WITH a,
-              [a] + collect(DISTINCT n) AS allMatchedNodes,
-              [[a]] + collect(DISTINCT pathNodes) AS matches
-
-            UNWIND matches AS pathNodes
-            WITH a, allMatchedNodes, pathNodes, last(pathNodes) AS n
-
-            // Determine child IDs, where only previously matched nodes should qualify.
-            // Children of app root directory should be given directly to the application instead.
-            WITH *, [
-              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(m) WHERE m IN allMatchedNodes | id(m)
-            ] AS childrenIds
-
-            RETURN
-              id(n) AS id,
-              labels(n) AS labels,
-              apoc.map.fromPairs(
-                [k IN keys(n)
-                 WHERE k = 'language' OR k STARTS WITH 'metrics.'
-                 | [k, n[k]]]
-              ) AS properties,
-              n.name AS name,
-              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
-              id(a) AS cityId,
-              childrenIds,
-              id(pathNodes[-2]) AS parentId
-            """,
-            Map.of(
-                "tokenId", landscapeToken,
-                "repoName", repositoryName));
-    return deduplicateBuildingsByFqn(
-        buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC));
-  }
-
-  /**
-   * Fetches the structure landscape data for all files in the repository that appear in at least
-   * one commit whose author date falls within the provided time range. The resulting structure can
-   * be used to animate changes between commits.
-   *
-   * @param session OGM session object
-   * @param landscapeToken String identifier of the landscape
-   * @param repositoryName Name of the repository for which to retrieve structure data
-   * @param rangeFrom Start of searched commit time range in nanoseconds since Unix epoch, inclusive
-   * @param rangeTo Start of searched commit time range in nanoseconds since Unix epoch, inclusive
-   * @return The structure data for all commits in the provided time range
-   */
-  private FlatLandscapeDto buildScopedSkeleton(
-      final Session session,
-      final String landscapeToken,
-      final String repositoryName,
-      final long rangeFrom,
-      final long rangeTo) {
-
-    final Result result =
-        session.query(
-            """
-            MATCH (:Landscape {tokenId: $tokenId})
-              -[:CONTAINS]->(:Repository {name: $repoName})
-              -[:CONTAINS]->(c:Commit)
-            WHERE
-              coalesce(c.authorDate, 0) <> 0
-              AND ($rangeFrom = 0 OR c.authorDate >= $rangeFrom)
-              AND ($rangeTo = 0 OR c.authorDate <= $rangeTo)
-            MATCH (c)-[:CONTAINS]->(f:FileRevision)
-            WITH f, c.authorDate AS d
-            ORDER BY d DESC
-            WITH f.filePath AS filePath, head(collect(f)) AS rep
-
-            // Match all relevant ancestor nodes in the application structure.
-            // The application's root directory is excluded since should not become a district.
-            MATCH (n:Application|Directory|FileRevision)-[:CONTAINS|HAS_ROOT]->*(rep)
-            WHERE NOT (:Application)-[:HAS_ROOT]->(n)
-
-            WITH collect(DISTINCT n) AS allMatchedNodes
-            UNWIND allMatchedNodes AS n
-
-            // Find full path from application to node
-            CALL (n) {
-              MATCH p = (a:Application)-[:CONTAINS|HAS_ROOT]->*(n)
-              RETURN p, a
-              LIMIT 1
-            }
-
-            // Remove application root directory from the path, as it should not contribute to fqn
-            WITH a, n, allMatchedNodes, nodes(p)[0] + nodes(p)[2..] AS pathNodes
-
-            // When determining child IDs, include children of app root directory in app's children
-            WITH *, [
-              (n)-[:HAS_ROOT*0..1]->()-[:CONTAINS]->(m) WHERE m IN allMatchedNodes | id(m)
-            ] AS childrenIds
-
-            RETURN
-              id(n) AS id,
-              labels(n) AS labels,
-              properties(n) AS properties,
-              n.name AS name,
-              string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
-              id(a) AS cityId,
-              childrenIds,
-              id(pathNodes[-2]) AS parentId
-            """,
-            Map.of(
-                "tokenId", landscapeToken,
-                "repoName", repositoryName,
-                "rangeFrom", rangeFrom,
-                "rangeTo", rangeTo));
-
-    return buildFlatLandscape(landscapeToken, result, TypeOfAnalysis.STATIC);
-  }
-
-  private FlatLandscapeDto deduplicateBuildingsByFqn(final FlatLandscapeDto raw) {
-    final Map<String, String> fqnToCanonicalId = new HashMap<>();
-    final Map<String, String> idToFqn = new HashMap<>();
-    final Map<String, BuildingDto> buildings = new HashMap<>();
-    for (final BuildingDto b : raw.buildings().values()) {
-      final String id = b.flatBaseModel().id();
-      final String fqn = b.flatBaseModel().fqn();
-      idToFqn.put(id, fqn);
-      if (fqn == null) {
-        buildings.put(id, b);
-      } else if (!fqnToCanonicalId.containsKey(fqn)) {
-        fqnToCanonicalId.put(fqn, id);
-        buildings.put(id, b);
-      }
-    }
-
-    final java.util.function.Function<String, String> canonical =
-        bid -> {
-          final String fqn = idToFqn.get(bid);
-          return fqn == null ? bid : fqnToCanonicalId.getOrDefault(fqn, bid);
-        };
-    final Map<String, DistrictDto> districts = new HashMap<>();
-    raw.districts()
-        .forEach(
-            (id, d) ->
-                districts.put(
-                    id,
-                    new DistrictDto(
-                        d.flatBaseModel(),
-                        d.parentCityId(),
-                        d.parentDistrictId(),
-                        d.districtIds(),
-                        d.buildingIds().stream().map(canonical).distinct().toList())));
-
-    final Map<String, CityDto> cities = new HashMap<>();
-    raw.cities()
-        .forEach(
-            (id, c) ->
-                cities.put(
-                    id,
-                    new CityDto(
-                        c.flatBaseModel(),
-                        c.districtIds(),
-                        c.buildingIds().stream().map(canonical).distinct().toList(),
-                        c.allContainedDistrictIds(),
-                        c.allContainedBuildingIds().stream().map(canonical).distinct().toList())));
-
-    return new FlatLandscapeDto(raw.landscapeToken(), cities, districts, buildings);
+    return AnimationSkeletonReader.fetchSkeleton(session, landscapeToken, repositoryName, commits);
   }
 
   // Helper Functions
