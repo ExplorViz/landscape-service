@@ -63,7 +63,7 @@ pmd:
 .db-test:
   stage: test
   services:
-    - name: neo4j:2026.07.1
+    - name: neo4j:2026.10.1
       alias: neo4j
     - name: apache/kafka-native:4.3.1
       alias: kafka

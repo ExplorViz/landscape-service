@@ -1,6 +1,6 @@
 services:
   neo4j:
-    image: neo4j:2026.07.1
+    image: neo4j:2026.10.1
     hostname: ${NEO4J_HOSTNAME}
     ports:
       - ${NEO4J_BROWSER_PORT}:7474

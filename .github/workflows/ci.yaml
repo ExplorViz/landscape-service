@@ -76,7 +76,7 @@ jobs:
     needs: build
     services:
       neo4j:
-        image: neo4j:2026.07.1
+        image: neo4j:2026.10.1
         env:
           NEO4J_AUTH: none
           NEO4J_PLUGINS: '["apoc", "apoc-extended"]'
