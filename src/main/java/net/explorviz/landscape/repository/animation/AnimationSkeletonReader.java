@@ -33,16 +33,20 @@ final class AnimationSkeletonReader {
       ordinals.put(commits.get(i).hash(), i);
     }
     // Aggregate commit/file edges once, before expanding any application or directory paths.
-    // Map lookup avoids testing every commit against a potentially large list of hashes.
+    // Map lookup avoids testing every commit against a potentially large list of hashes. The
+    // ordinal is looked up once per commit, and the label of the file is checked only after the
+    // aggregation: the edges of all commits to their files are by far the largest part of the
+    // graph that is read, so no per-edge work other than the aggregation should be done for them.
     final Result files =
         session.query(
             """
             MATCH (:Landscape {tokenId: $tokenId})
               -[:CONTAINS]->(:Repository {name: $repoName})-[:CONTAINS]->(c:Commit)
-            WHERE $ordinals[c.hash] IS NOT NULL
-            MATCH (c)-[:CONTAINS]->(f:FileRevision)
-            WITH f, min($ordinals[c.hash]) AS firstOrdinal,
-              max($ordinals[c.hash]) AS lastOrdinal
+            WITH c, $ordinals[c.hash] AS ordinal
+            WHERE ordinal IS NOT NULL
+            MATCH (c)-[:CONTAINS]->(f)
+            WITH f, min(ordinal) AS firstOrdinal, max(ordinal) AS lastOrdinal
+            WHERE f:FileRevision
             ORDER BY lastOrdinal DESC, id(f) DESC
             RETURN f.filePath AS fqn, min(firstOrdinal) AS firstOrdinal,
               head(collect(id(f))) AS revisionId
@@ -75,14 +79,17 @@ final class AnimationSkeletonReader {
         session.query(
             """
             CYPHER 25
-            UNWIND $revisionIds AS revisionId
-            MATCH (rep:FileRevision) WHERE id(rep) = revisionId
-            // Enter the directory tree directly, avoiding the file's incoming commit edges.
-            MATCH (parent:Directory)-[:CONTAINS]->(rep)
-            MATCH p = (a:Application)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(parent)
-            WHERE (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a)
+            MATCH (revision:FileRevision) WHERE id(revision) IN $revisionIds
+            WITH collect(revision) AS revisions
+            // Walk the directory tree down from the application roots, avoiding the file's
+            // incoming commit edges, and keep the files of interest (hash lookup).
+            MATCH (:Landscape {tokenId: $tokenId})
+              -[:CONTAINS]->(a:Application)-[:HAS_ROOT]->(appRoot:Directory)
+            MATCH chain = (appRoot) ( ()-[:CONTAINS]->(:Directory) )* (parent:Directory)
+              -[:CONTAINS]->(rep:FileRevision)
+            WHERE rep IN revisions
             // Omit the application's root directory from both the hierarchy and file paths.
-            WITH a, [a] + nodes(p)[2..] + [rep] AS pathNodes
+            WITH a, [a] + nodes(chain)[1..] AS pathNodes
             UNWIND range(0, size(pathNodes) - 1) AS position
             WITH a, pathNodes, position, pathNodes[position] AS n
             RETURN DISTINCT

@@ -8,8 +8,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.explorviz.landscape.api.v3.model.CommitComparison;
 import net.explorviz.landscape.api.v3.model.RepositoryEvolutionSelectionDto;
@@ -115,28 +117,47 @@ public class StructureRepository {
    * $requests} carries a {@code key} that tags the rows it produces, so a whole batch of pairs is
    * served by a single round-trip.
    *
-   * <p>The traversal starts at the file revisions of each commit and walks <em>up</em> to the
-   * owning application root. Since a file revision has exactly one directory parent and a directory
-   * exactly one parent, this only visits nodes that actually end up in the response. Descending
-   * from the application roots instead would have to test every node of the repository against the
-   * commit, which costs orders of magnitude more database hits. Restricting the applications to the
-   * requested repository is implicit: the directory chain of a commit's file revision never leaves
-   * the repository that commit belongs to.
+   * <p>The file revisions of each commit are collected first. The directory tree of the
+   * repository's applications is then walked <em>down</em> from the application roots, and a file
+   * revision is only kept if it belongs to the commit (hash lookup). Walking up from the file
+   * revisions instead would expand every incoming {@code CONTAINS} relationship of each file, and
+   * these are dominated by the relationships of all commits that contain the unchanged file, i.e.
+   * the work would grow with the number of commits of the repository. The size of the directory
+   * tree does not depend on the number of commits.
+   *
+   * <p>Only the properties that are mapped into the response are returned.
    */
   private static final String STATIC_STRUCTURE_QUERY =
       """
+      CYPHER 25
       UNWIND $requests AS request
       MATCH (:Landscape {tokenId: $tokenId})
-        -[:CONTAINS]->(:Repository {name: request.repositoryName})
+        -[:CONTAINS]->(repo:Repository {name: request.repositoryName})
         -[:CONTAINS]->(c:Commit {hash: request.commitHash})
+      MATCH (c)-[:CONTAINS]->(f:FileRevision)
+      WITH request, repo, collect(f) AS files
 
-      MATCH (c)-[:CONTAINS]->(file:FileRevision)
-      MATCH chain = (file) ( ()<-[:CONTAINS]-(:Directory) ){1,} (appRoot:Directory)
-      MATCH (appRoot)<-[:HAS_ROOT]-(a:Application)
+      // Applications of the repository. Their roots lie in the directory tree of the repository.
+      // Should a repository not have a root directory, all applications of the landscape qualify.
+      CALL (repo) {
+        MATCH (repo)-[:HAS_ROOT]->(:Directory)
+          ( ()-[:CONTAINS]->(:Directory) )* (appRoot:Directory)<-[:HAS_ROOT]-(a:Application)
+        RETURN a, appRoot
+        UNION
+        MATCH (:Landscape {tokenId: $tokenId})
+          -[:CONTAINS]->(a:Application)-[:HAS_ROOT]->(appRoot:Directory)
+        WHERE NOT EXISTS { (repo)-[:HAS_ROOT]->(:Directory) }
+        RETURN a, appRoot
+      }
+      WITH request, files, a, appRoot
+
+      MATCH chain = (appRoot) ( ()-[:CONTAINS]->(:Directory) )* (parent:Directory)
+        -[:CONTAINS]->(file:FileRevision)
+      WHERE file IN files
 
       // [application, ...directories below the application root..., file]. The application root
       // itself is dropped, as it should not become a district.
-      WITH request.key AS resultKey, a, [a] + reverse(nodes(chain))[1..] AS pathToFile
+      WITH request.key AS resultKey, a, [a] + nodes(chain)[1..] AS pathToFile
 
       // Every prefix of such a path denotes one node of the resulting landscape.
       UNWIND range(0, size(pathToFile) - 1) AS depth
@@ -147,12 +168,16 @@ public class StructureRepository {
         resultKey,
         id(n) AS id,
         labels(n) AS labels,
-        properties(n) AS properties,
+        {k IN keys(n)
+         WHERE k IN ['language', 'hash', 'telemetryKey', 'displayName'] OR k STARTS WITH 'metrics.'
+         | k: n[k]} AS properties,
         n.name AS name,
         string.join([node IN pathNodes[1..] | node.name], "/") as fqn,
         id(a) AS cityId,
         id(pathNodes[-2]) AS parentId
       """;
+
+  private static final int STATIC_COMMIT_BATCH_SIZE = 25;
 
   private static final String SINGLE_RESULT_KEY = "single";
   private static final String FIRST_RESULT_KEY = "first";
@@ -312,30 +337,59 @@ public class StructureRepository {
     }
     final int to = count < 0 ? totalFrames : Math.min(totalFrames, from + count);
 
+    // Consecutive frames share a commit (target of one frame, baseline of the next), so every
+    // commit is read once and in batches instead of once per frame and in separate round-trips.
+    final Set<String> hashes = new LinkedHashSet<>();
+    for (int i = from; i < to; i++) {
+      hashes.add(commits.get(targets.get(i)).hash());
+      if (i > 0) {
+        hashes.add(commits.get(targets.get(i - 1)).hash());
+      }
+    }
+    final Map<String, FlatLandscapeDto> landscapesByHash =
+        fetchStaticLandscapesByCommit(session, landscapeToken, repositoryName, hashes);
+
+    final FlatLandscapeDto emptyLandscape =
+        new FlatLandscapeDto(landscapeToken, Map.of(), Map.of(), Map.of());
+
     final List<AnimationFrameDto> frames = new ArrayList<>();
     for (int i = from; i < to; i++) {
       final CommitMeta target = commits.get(targets.get(i));
-      final FlatLandscapeDto landscape;
-      if (i == 0) {
-        final FlatLandscapeDto snapshot =
-            fetchFlatLandscapeForStaticData(
-                session, new StaticDataRequest(landscapeToken, repositoryName, target.hash()));
-        landscape =
-            LANDSCAPE_MERGER.merge(
-                landscapeToken,
-                new FlatLandscapeDto(landscapeToken, Map.of(), Map.of(), Map.of()),
-                snapshot);
-      } else {
-        final CommitMeta prevLast = commits.get(targets.get(i - 1));
-        landscape =
-            fetchCombinedFlatLandscape(
-                session,
-                new CombinedStaticDataRequest(
-                    landscapeToken, repositoryName, prevLast.hash(), target.hash()));
-      }
-      frames.add(new AnimationFrameDto(target.hash(), target.authorDate(), i, landscape));
+      final FlatLandscapeDto targetLandscape =
+          landscapeOrEmpty(landscapesByHash, target.hash(), landscapeToken);
+      final FlatLandscapeDto baseline =
+          i == 0
+              ? emptyLandscape
+              : landscapeOrEmpty(
+                  landscapesByHash, commits.get(targets.get(i - 1)).hash(), landscapeToken);
+      frames.add(
+          new AnimationFrameDto(
+              target.hash(),
+              target.authorDate(),
+              i,
+              LANDSCAPE_MERGER.merge(landscapeToken, baseline, targetLandscape)));
     }
     return new AnimationWindowDto(totalFrames, from, frames);
+  }
+
+  /** Reads the static structure of the given commits of one repository, keyed by commit hash. */
+  private Map<String, FlatLandscapeDto> fetchStaticLandscapesByCommit(
+      final Session session,
+      final String landscapeToken,
+      final String repositoryName,
+      final Collection<String> commitHashes) {
+
+    final Map<String, FlatLandscapeDto> landscapes = new HashMap<>();
+    final List<Map<String, Object>> batch = new ArrayList<>();
+    for (final String hash : commitHashes) {
+      batch.add(staticRequest(hash, repositoryName, hash));
+      if (batch.size() == STATIC_COMMIT_BATCH_SIZE) {
+        landscapes.putAll(fetchStaticLandscapes(session, landscapeToken, batch));
+        batch.clear();
+      }
+    }
+    landscapes.putAll(fetchStaticLandscapes(session, landscapeToken, batch));
+    return landscapes;
   }
 
   public AnimationWindowDeltaDto fetchAnimationDeltaWindow(
