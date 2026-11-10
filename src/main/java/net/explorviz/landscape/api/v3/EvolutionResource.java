@@ -100,11 +100,7 @@ public class EvolutionResource {
     populateBranchMappings(commits, branchToCommitMap, branchToBranchPointMap);
 
     final Map<String, CommitRepository.CommitAuthorProjection> authorsByCommitHash =
-        commitRepository.findAuthorsByCommitHashes(
-            session,
-            landscapeToken,
-            repositoryName,
-            commits.stream().map(Commit::getHash).collect(Collectors.toSet()));
+        commitRepository.findAuthorsForRepository(session, landscapeToken, repositoryName);
 
     final List<BranchDto> branches =
         branchToCommitMap.entrySet().stream()
@@ -151,6 +147,7 @@ public class EvolutionResource {
       if (!hasParentInSameBranch) {
         commit
             .getFirstParentCommit()
+            .filter(parentCommit -> parentCommit.getBranch() != null)
             .ifPresent(
                 parentCommit ->
                     branchToBranchPointMap.putIfAbsent(

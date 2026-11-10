@@ -8,12 +8,16 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import net.explorviz.landscape.api.v3.EvolutionResource;
 import net.explorviz.landscape.ogm.Branch;
 import net.explorviz.landscape.ogm.Commit;
+import net.explorviz.landscape.ogm.Contributor;
 import net.explorviz.landscape.ogm.FileRevision;
 import net.explorviz.landscape.ogm.Landscape;
 import net.explorviz.landscape.ogm.Repository;
+import net.explorviz.landscape.ogm.Tag;
 import net.explorviz.landscape.repository.CommitRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,10 +31,87 @@ class CommitRepositoryTest {
 
   @Inject SessionFactory sessionFactory;
 
+  @Inject EvolutionResource evolutionResource;
+
   @BeforeEach
   void cleanup() {
     Session session = sessionFactory.openSession();
     resetDatabase(session);
+  }
+
+  @Test
+  void commitTreePreservesMergeTopologyMetricsTagsAndAuthors() {
+    final Session session = sessionFactory.openSession();
+    final Branch main = new Branch("main");
+    final Branch feature = new Branch("feature");
+    final Commit root = new Commit("root");
+    root.setBranch(main);
+    root.setCommitDate(Instant.ofEpochMilli(1000));
+    final Commit side = new Commit("side");
+    side.setBranch(feature);
+    side.setFirstParentCommit(root);
+    side.setCommitDate(Instant.ofEpochMilli(2000));
+    final Commit merge = new Commit("merge");
+    merge.setBranch(main);
+    merge.setFirstParentCommit(root);
+    merge.addMiscParentCommit(side);
+    merge.setCommitDate(Instant.ofEpochMilli(3000));
+    merge.setMetrics(Map.of("fileCount", 42.0, "lineCount", 1234.0));
+    merge.setHasAccumulatedMetrics(true);
+    merge.addTag(new Tag("v2"));
+    merge.addTag(new Tag("v1"));
+    merge.setAuthor(new Contributor("author", "author@example.org"));
+    final Repository repository = new Repository("repo");
+    repository.addBranch(main);
+    repository.addBranch(feature);
+    repository.addCommit(root);
+    repository.addCommit(side);
+    repository.addCommit(merge);
+    final Landscape landscape = new Landscape("token");
+    landscape.addRepository(repository);
+    session.save(landscape);
+    session.clear();
+
+    final var tree =
+        evolutionResource.getCommitTreeForRepositoryAndLandscape(
+            "token", "repo", null, null, "none", false);
+    final var mainBranch =
+        tree.branches().stream()
+            .filter(branch -> branch.name().equals("main"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(
+        List.of("root", "merge"),
+        mainBranch.commits().stream().map(commit -> commit.hash()).toList());
+    final var mergeDto = mainBranch.commits().get(1);
+    assertEquals(merge.getMetrics(), mergeDto.metrics());
+    assertTrue(mergeDto.hasAccumulatedMetrics());
+    assertEquals(List.of("v1", "v2"), mergeDto.tags());
+    assertEquals("author", mergeDto.author().gitUsername());
+    assertEquals("author@example.org", mergeDto.author().email());
+    final var featureBranch =
+        tree.branches().stream()
+            .filter(branch -> branch.name().equals("feature"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals("root", featureBranch.branchPoint().commit());
+    assertEquals("main", featureBranch.branchPoint().name());
+
+    final var loaded =
+        commitRepository.findCommitsWithBranchForRepositoryAndLandscapeToken(
+            sessionFactory.openSession(), "token", "repo");
+    final Commit loadedMerge =
+        loaded.stream()
+            .filter(commit -> commit.getHash().equals("merge"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals("side", loadedMerge.getMiscParentCommits().iterator().next().getHash());
+    assertTrue(loadedMerge.getFileRevisions().isEmpty());
+    assertTrue(
+        commitRepository
+            .findCommitsWithBranchForRepositoryAndLandscapeToken(
+                sessionFactory.openSession(), "other-token", "repo")
+            .isEmpty());
   }
 
   @Test
