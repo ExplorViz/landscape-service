@@ -67,6 +67,24 @@ public class StructureRepository {
       String firstCommitHash,
       String secondCommitHash) {}
 
+  public boolean hasData(final Session session, final String landscapeToken) {
+    return Boolean.TRUE.equals(
+        session.queryForObject(
+            Boolean.class,
+            """
+            RETURN EXISTS {
+              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository)
+                -[:CONTAINS]->(:Commit)
+            } OR EXISTS {
+              MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Application|DatabaseSystem)
+                -[:CONTAINS]->*(end:FileRevision|DatabaseSystem|RPCService|RPCClient|HTTPEndpoint|HTTPClient|GenericTelemetryEntity)
+              WHERE end.telemetryKey IS NOT NULL
+                AND NOT (:Commit)-[:CONTAINS]->(end)
+            } AS hasData
+            """,
+            Map.of("tokenId", landscapeToken)));
+  }
+
   public FlatLandscapeDto fetchFlatLandscapeForRuntimeData(
       final Session session, final String landscapeToken) {
     final Result result =

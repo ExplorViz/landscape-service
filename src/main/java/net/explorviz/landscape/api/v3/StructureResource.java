@@ -45,6 +45,14 @@ public class StructureResource {
   @Inject FileRevisionRepository fileRevisionRepository;
   @Inject FileHistoryRepository fileHistoryRepository;
 
+  /** Check whether the landscape has runtime or repository analysis data. */
+  @GET
+  @Produces(MediaType.APPLICATION_JSON)
+  @Path("/has-data")
+  public boolean hasData(@RestPath final String landscapeToken) {
+    return structureRepository.hasData(sessionFactory.openSession(), landscapeToken);
+  }
+
   /** Retrieve all structure data gathered from runtime analysis. */
   @GET
   @Produces(MediaType.APPLICATION_JSON)
