@@ -1,7 +1,7 @@
 package net.explorviz.landscape.repository;
 
-import static net.explorviz.landscape.repository.AnimationCommitReader.fetchOrderedCommits;
 import static net.explorviz.landscape.repository.StructureMapper.buildFlatLandscape;
+import static net.explorviz.landscape.repository.animation.AnimationCommitReader.fetchOrderedCommits;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.ArrayList;
@@ -27,7 +27,9 @@ import net.explorviz.landscape.api.v3.model.landscape.BuildingStateDto;
 import net.explorviz.landscape.api.v3.model.landscape.CityDto;
 import net.explorviz.landscape.api.v3.model.landscape.DistrictDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.repository.AnimationCommitReader.CommitMeta;
+import net.explorviz.landscape.repository.animation.AnimationCommitReader.CommitMeta;
+import net.explorviz.landscape.repository.animation.AnimationSkeletonReader;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 

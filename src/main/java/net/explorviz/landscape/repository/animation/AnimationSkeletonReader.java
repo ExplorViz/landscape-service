@@ -1,4 +1,4 @@
-package net.explorviz.landscape.repository;
+package net.explorviz.landscape.repository.animation;
 
 import static net.explorviz.landscape.repository.StructureMapper.buildFlatLandscape;
 
@@ -9,16 +9,16 @@ import java.util.Map;
 import net.explorviz.landscape.api.v3.model.TypeOfAnalysis;
 import net.explorviz.landscape.api.v3.model.landscape.AnimationSkeletonDto;
 import net.explorviz.landscape.api.v3.model.landscape.FlatLandscapeDto;
-import net.explorviz.landscape.repository.AnimationCommitReader.CommitMeta;
+import net.explorviz.landscape.repository.animation.AnimationCommitReader.CommitMeta;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
 /** Builds the animation hierarchy once per file path, rather than once per historical revision. */
-final class AnimationSkeletonReader {
+public final class AnimationSkeletonReader {
 
   private AnimationSkeletonReader() {}
 
-  static AnimationSkeletonDto fetchSkeleton(
+  public static AnimationSkeletonDto fetchSkeleton(
       final Session session,
       final String landscapeToken,
       final String repositoryName,

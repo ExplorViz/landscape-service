@@ -1,4 +1,4 @@
-package net.explorviz.landscape.repository;
+package net.explorviz.landscape.repository.animation;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,13 +12,13 @@ import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
 /** Reads animation commits using the same first-parent selection as the commit tree. */
-final class AnimationCommitReader {
+public final class AnimationCommitReader {
 
-  record CommitMeta(String hash, long authorDate) {}
+  public record CommitMeta(String hash, long authorDate) {}
 
   private AnimationCommitReader() {}
 
-  static List<CommitMeta> fetchOrderedCommits(
+  public static List<CommitMeta> fetchOrderedCommits(
       final Session session,
       final String landscapeToken,
       final String repositoryName,
