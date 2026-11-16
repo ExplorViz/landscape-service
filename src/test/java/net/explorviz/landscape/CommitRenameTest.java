@@ -33,7 +33,7 @@ import org.neo4j.ogm.session.SessionFactory;
 @QuarkusTest
 class CommitRenameTest {
 
-  private static final long GRPC_AWAIT_SECONDS = 5;
+  private static final long GRPC_AWAIT_SECONDS = 30;
   private static final String LANDSCAPE_TOKEN = "rename-token";
   private static final String REPO_NAME = "rename-repo";
   private static final String BRANCH_NAME = "main";

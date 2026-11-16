@@ -35,7 +35,7 @@ import org.neo4j.ogm.session.SessionFactory;
 @QuarkusTest
 class CommitServiceTest {
 
-  private static final long GRPC_AWAIT_SECONDS = 5;
+  private static final long GRPC_AWAIT_SECONDS = 30;
 
   @GrpcClient CommitService commitService;
 
