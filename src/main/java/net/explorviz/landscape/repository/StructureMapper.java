@@ -112,7 +112,7 @@ public final class StructureMapper {
 
   private StructureMapper() {}
 
-  static FlatLandscapeDto buildFlatLandscape(
+  public static FlatLandscapeDto buildFlatLandscape(
       final String landscapeToken, final Result queryResult, final TypeOfAnalysis origin) {
 
     final Map<Long, NodeData> nodesById = new HashMap<>();

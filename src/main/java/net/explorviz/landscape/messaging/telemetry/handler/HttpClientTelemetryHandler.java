@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.http.HttpClient;
 import net.explorviz.landscape.proto.HttpClientDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that describe client-side HTTP requests and
  * writes the corresponding nodes to the graph.
  */
-public final class HttpClientTelemetryHandler {
+@ApplicationScoped
+public final class HttpClientTelemetryHandler implements TelemetryHandler {
 
-  private HttpClientTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasHttpClientDescriptor()) {
       throw new IllegalArgumentException("HTTP client descriptor is required");
     }
@@ -45,30 +55,34 @@ public final class HttpClientTelemetryHandler {
    * remaining missing nodes along the path are created. For the client node, a telemetry key is set
    * regardless of whether the node previously existed.
    */
-  private static boolean ensureClientPathForCommit(
+  private boolean ensureClientPathForCommit(
       final Session session, final TelemetryEntity entity, final HttpClientDescriptor descriptor) {
 
-    final HttpClient result =
-        session.queryForObject(
-            HttpClient.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
 
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            MERGE (sc)-[:CONTAINS]->(c:HTTPClient)<-[:CONTAINS]-(commit)
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        MERGE (sc)-[:CONTAINS]->(c:HTTPClient)<-[:CONTAINS]-(commit)
 
-            SET c.telemetryKey = $telemetryKey
-            RETURN c;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "name", HttpClient.DISPLAY_NAME,
-                "telemetryKey", descriptor.getTelemetryKey()));
+        SET c.telemetryKey = $telemetryKey
+        RETURN c;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "name", HttpClient.DISPLAY_NAME,
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final HttpClient result = session.queryForObject(HttpClient.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -79,38 +93,42 @@ public final class HttpClientTelemetryHandler {
    * any commit. All missing nodes along the path are created. For the client node, a telemetry key
    * is set regardless of whether the node previously existed.
    */
-  private static boolean ensureClientPath(
+  private boolean ensureClientPath(
       final Session session, final TelemetryEntity entity, final HttpClientDescriptor descriptor) {
 
-    final HttpClient result =
-        session.queryForObject(
-            HttpClient.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
-            OPTIONAL CALL (sc) {
-              MATCH (sc) WHERE NOT EXISTS {
-                MATCH (sc)-[:CONTAINS]->(c:HTTPClient {name: $name})
-                WHERE NOT (:Commit)-[:CONTAINS]->(c)
-              }
-              // Only executed if previous match was successful
-              CREATE (sc)-[:CONTAINS]->(:HTTPClient {name: $name})
-            }
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        OPTIONAL CALL (sc) {
+          MATCH (sc) WHERE NOT EXISTS {
             MATCH (sc)-[:CONTAINS]->(c:HTTPClient {name: $name})
             WHERE NOT (:Commit)-[:CONTAINS]->(c)
+          }
+          // Only executed if previous match was successful
+          CREATE (sc)-[:CONTAINS]->(:HTTPClient {name: $name})
+        }
+        MATCH (sc)-[:CONTAINS]->(c:HTTPClient {name: $name})
+        WHERE NOT (:Commit)-[:CONTAINS]->(c)
 
-            SET c.telemetryKey = $telemetryKey
+        SET c.telemetryKey = $telemetryKey
 
-            RETURN c;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "name", HttpClient.DISPLAY_NAME,
-                "telemetryKey", descriptor.getTelemetryKey()));
+        RETURN c;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "name", HttpClient.DISPLAY_NAME,
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final HttpClient result = session.queryForObject(HttpClient.class, query, params);
+    span.end();
 
     return result != null;
   }

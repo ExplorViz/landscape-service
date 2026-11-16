@@ -1,21 +1,31 @@
 package net.explorviz.landscape.messaging.telemetry.handler;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.Serializable;
 import java.util.Map;
 import net.explorviz.landscape.ogm.rpc.RpcClient;
 import net.explorviz.landscape.proto.RpcClientDescriptor;
 import net.explorviz.landscape.proto.TelemetryEntity;
+import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.session.Session;
 
 /**
  * Receives entities extracted from telemetry data that describe client-side remote procedure calls
  * and writes the corresponding nodes to the graph.
  */
-public final class RpcClientTelemetryHandler {
+@ApplicationScoped
+public final class RpcClientTelemetryHandler implements TelemetryHandler {
 
-  private RpcClientTelemetryHandler() {}
+  @Inject Tracer tracer;
 
-  public static void saveEntity(final Session session, final TelemetryEntity entity) {
+  @Override
+  @WithSpan
+  public void saveEntity(final Session session, final TelemetryEntity entity) {
     if (!entity.hasRpcClientDescriptor()) {
       throw new IllegalArgumentException("RPC client descriptor is required");
     }
@@ -46,48 +56,52 @@ public final class RpcClientTelemetryHandler {
    * commit. All missing nodes along the path are created. For the client node, a telemetry key is
    * set regardless of whether it previously existed.
    */
-  private static boolean ensureClientPath(
+  private boolean ensureClientPath(
       final Session session, final TelemetryEntity entity, final RpcClientDescriptor descriptor) {
 
-    final RpcClient result =
-        session.queryForObject(
-            RpcClient.class,
-            """
-            MERGE (l:Landscape {tokenId: $tokenId})
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+    final String query =
+        """
+        MERGE (l:Landscape {tokenId: $tokenId})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
 
-            OPTIONAL CALL (sc) {
-              WITH sc
-              WHERE $systemName <> ""
-              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
-              RETURN sys
-            }
+        OPTIONAL CALL (sc) {
+          WITH sc
+          WHERE $systemName <> ""
+          MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+          RETURN sys
+        }
 
-            WITH coalesce(sys, sc) AS parent
+        WITH coalesce(sys, sc) AS parent
 
-            OPTIONAL CALL (parent) {
-              MATCH (parent) WHERE NOT EXISTS {
-                MATCH (parent)-[:CONTAINS]->(c:RPCClient {name: $name})
-                WHERE NOT (:Commit)-[:CONTAINS]->(c)
-              }
-              // Only executed if previous match was successful
-              CREATE (parent)-[:CONTAINS]->(:RPCClient {name: $name})
-            }
+        OPTIONAL CALL (parent) {
+          MATCH (parent) WHERE NOT EXISTS {
             MATCH (parent)-[:CONTAINS]->(c:RPCClient {name: $name})
             WHERE NOT (:Commit)-[:CONTAINS]->(c)
+          }
+          // Only executed if previous match was successful
+          CREATE (parent)-[:CONTAINS]->(:RPCClient {name: $name})
+        }
+        MATCH (parent)-[:CONTAINS]->(c:RPCClient {name: $name})
+        WHERE NOT (:Commit)-[:CONTAINS]->(c)
 
-            SET c.telemetryKey = $telemetryKey
+        SET c.telemetryKey = $telemetryKey
 
-            RETURN c;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "systemName", descriptor.getSystemName(),
-                "name", RpcClient.DISPLAY_NAME,
-                "telemetryKey", descriptor.getTelemetryKey()));
+        RETURN c;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "systemName", descriptor.getSystemName(),
+            "name", RpcClient.DISPLAY_NAME,
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final RpcClient result = session.queryForObject(RpcClient.class, query, params);
+    span.end();
 
     return result != null;
   }
@@ -99,40 +113,44 @@ public final class RpcClientTelemetryHandler {
    * remaining missing nodes along the path are created. For the client node, a telemetry key is set
    * regardless of whether it previously existed.
    */
-  private static boolean ensureClientPathForCommit(
+  private boolean ensureClientPathForCommit(
       final Session session, final TelemetryEntity entity, final RpcClientDescriptor descriptor) {
 
-    final RpcClient result =
-        session.queryForObject(
-            RpcClient.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})
-            MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
+    final String query =
+        """
+        MATCH (l:Landscape {tokenId: $tokenId})
+        MATCH (l)-[:CONTAINS]->(:Repository)-[:CONTAINS]->(commit:Commit {hash: $commitHash})
 
-            MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
-            MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
+        MERGE (l)-[:CONTAINS]->(a:Application {name: $appName})
+        MERGE (a)-[:CONTAINS]->(sc:Scope {name: $scopeName})
 
-            OPTIONAL CALL (sc) {
-              WITH sc
-              WHERE $systemName <> ""
-              MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
-              RETURN sys
-            }
+        OPTIONAL CALL (sc) {
+          WITH sc
+          WHERE $systemName <> ""
+          MERGE (sc)-[:CONTAINS]->(sys:RPCSystem {name: $systemName})
+          RETURN sys
+        }
 
-            WITH coalesce(sys, sc) AS parent
-            MERGE (parent)-[:CONTAINS]->(c:RPCClient {name: $name})<-[:CONTAINS]-(commit)
-            SET c.telemetryKey = $telemetryKey
+        WITH coalesce(sys, sc) AS parent
+        MERGE (parent)-[:CONTAINS]->(c:RPCClient {name: $name})<-[:CONTAINS]-(commit)
+        SET c.telemetryKey = $telemetryKey
 
-            RETURN c;
-            """,
-            Map.of(
-                "tokenId", entity.getLandscapeTokenId(),
-                "commitHash", entity.getGitCommitHash(),
-                "appName", descriptor.getApplicationName(),
-                "scopeName", entity.getInstrumentationScope(),
-                "systemName", descriptor.getSystemName(),
-                "name", RpcClient.DISPLAY_NAME,
-                "telemetryKey", descriptor.getTelemetryKey()));
+        RETURN c;
+        """;
+
+    final Map<String, Serializable> params =
+        Map.of(
+            "tokenId", entity.getLandscapeTokenId(),
+            "commitHash", entity.getGitCommitHash(),
+            "appName", descriptor.getApplicationName(),
+            "scopeName", entity.getInstrumentationScope(),
+            "systemName", descriptor.getSystemName(),
+            "name", RpcClient.DISPLAY_NAME,
+            "telemetryKey", descriptor.getTelemetryKey());
+
+    final Span span = SpanFactory.startNeo4jSpan(tracer, "MERGE", query, params);
+    final RpcClient result = session.queryForObject(RpcClient.class, query, params);
+    span.end();
 
     return result != null;
   }

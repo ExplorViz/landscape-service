@@ -1,6 +1,7 @@
 package net.explorviz.landscape.messaging.telemetry;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import io.quarkus.logging.Log;
 import io.smallrye.reactive.messaging.annotations.Blocking;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -33,19 +34,31 @@ public class TelemetryConsumer {
   @Inject SessionFactory sessionFactory;
 
   private static final Map<EntityDescriptorCase, TelemetryHandler> DESCRIPTOR_TO_HANDLER =
-      new EnumMap<>(
-          Map.of(
-              EntityDescriptorCase.CODE_DESCRIPTOR, CodeTelemetryHandler::saveEntity,
-              EntityDescriptorCase.DATABASE_DESCRIPTOR, DatabaseTelemetryHandler::saveEntity,
-              EntityDescriptorCase.RPC_SERVER_DESCRIPTOR, RpcServerTelemetryHandler::saveEntity,
-              EntityDescriptorCase.RPC_CLIENT_DESCRIPTOR, RpcClientTelemetryHandler::saveEntity,
-              EntityDescriptorCase.HTTP_SERVER_DESCRIPTOR, HttpServerTelemetryHandler::saveEntity,
-              EntityDescriptorCase.HTTP_CLIENT_DESCRIPTOR, HttpClientTelemetryHandler::saveEntity,
-              EntityDescriptorCase.MESSAGING_DESCRIPTOR, MessagingTelemetryHandler::saveEntity,
-              EntityDescriptorCase.GENERIC_ENTITY_DESCRIPTOR, GenericTelemetryHandler::saveEntity));
+      new EnumMap<>(EntityDescriptorCase.class);
+
+  @Inject
+  public TelemetryConsumer(
+      final CodeTelemetryHandler codeHandler,
+      final DatabaseTelemetryHandler dbHandler,
+      final RpcServerTelemetryHandler rpcServerHandler,
+      final RpcClientTelemetryHandler rpcClientHandler,
+      final HttpServerTelemetryHandler httpServerHandler,
+      final HttpClientTelemetryHandler httpClientHandler,
+      final MessagingTelemetryHandler messagingHandler,
+      final GenericTelemetryHandler genericHandler) {
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.CODE_DESCRIPTOR, codeHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.DATABASE_DESCRIPTOR, dbHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.RPC_SERVER_DESCRIPTOR, rpcServerHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.RPC_CLIENT_DESCRIPTOR, rpcClientHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.HTTP_SERVER_DESCRIPTOR, httpServerHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.HTTP_CLIENT_DESCRIPTOR, httpClientHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.MESSAGING_DESCRIPTOR, messagingHandler);
+    DESCRIPTOR_TO_HANDLER.put(EntityDescriptorCase.GENERIC_ENTITY_DESCRIPTOR, genericHandler);
+  }
 
   @Blocking
   @Incoming("telemetry-entities")
+  @WithSpan
   public void consume(final byte[] bytes) {
     if (demoMode.isEnabled()) {
       return;
