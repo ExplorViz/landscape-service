@@ -1,6 +1,5 @@
 package net.explorviz.landscape.repository;
 
-import com.google.common.collect.Lists;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -209,32 +208,6 @@ public class CommitRepository {
             });
 
     return authorsByHash;
-  }
-
-  /**
-   * Returns every commit (along with its branch and parent relations) in the specified repository
-   * for a given application, ordered by author date (ascending, meaning oldest first).
-   */
-  public List<Commit> findCommitsWithBranchForApplicationAndLandscapeToken(
-      final Session session, final String landscapeToken, final String applicationName) {
-    return Lists.newArrayList(
-        session.query(
-            Commit.class,
-            """
-            MATCH (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(a:Application {name: $appName})
-            MATCH (repo:Repository)<-[:CONTAINS]-(l)
-            WHERE (repo)-[:HAS_ROOT]->(:Directory)-[:CONTAINS*0..]->(:Directory)<-[:HAS_ROOT]-(a)
-            MATCH (repo)-[:CONTAINS]->(c:Commit)-[r:BELONGS_TO]->(b:Branch)
-            OPTIONAL MATCH (c)-[fp:HAS_FIRST_PARENT]->(firstParent:Commit)
-            OPTIONAL MATCH (firstParent)-[fpr:BELONGS_TO]->(fpb:Branch)
-            OPTIONAL MATCH (c)-[mp:HAS_MISC_PARENT]->(miscParent:Commit)
-            OPTIONAL MATCH (miscParent)-[mpr:BELONGS_TO]->(mpb:Branch)
-            OPTIONAL MATCH (c)-[tagRel:IS_TAGGED_WITH]->(tag:Tag)
-            OPTIONAL MATCH (author:Contributor)-[authRel:AUTHORED]->(c)
-            RETURN DISTINCT c, r, b, fp, firstParent, fpr, fpb, mp, miscParent, mpr, mpb, tagRel, tag, authRel, author
-            ORDER BY c.authorDate ASC;
-            """,
-            Map.of("tokenId", landscapeToken, "appName", applicationName)));
   }
 
   public Optional<Long> findCommitInternalId(
