@@ -13,7 +13,9 @@ import net.explorviz.landscape.api.v3.model.ContributorsDto.TimeRange;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto;
 import net.explorviz.landscape.api.v3.model.SocialMetricDto.MetricScore;
 import net.explorviz.landscape.repository.ContributorRepository.ContributorActivity;
+import net.explorviz.landscape.repository.FileLineages.RenameEvent;
 import net.explorviz.landscape.repository.SocialMetricsRepository.MergedPrStats;
+import net.explorviz.landscape.repository.SocialMetricsRepository.PullRequestFileChange;
 import net.explorviz.landscape.repository.SocialMetricsRepository.RepoTimeBounds;
 import net.explorviz.landscape.repository.metrics.AbandonedKnowledgeSilo;
 import net.explorviz.landscape.repository.metrics.CommitActivity;
@@ -54,8 +56,6 @@ public class SocialMetricsService {
       final Set<Long> contributorIds,
       final String commit,
       final NormalizationOptions normalizationOpts) {
-    final List<ContributorFileActivity> base =
-        socialMetricsRepository.getBaseAggregation(session, token, repo, from, to);
     final List<FileSnapshot> snapshot =
         socialMetricsRepository.getFileSnapshots(session, token, repo, commit);
     final List<ContributorActivity> contributorActivities =
@@ -63,10 +63,34 @@ public class SocialMetricsService {
     final Set<Long> coreIds = SocialMetricsHelper.computeCoreContributorIds(contributorActivities);
     final RepoTimeBounds repoTimeBounds =
         socialMetricsRepository.getRepoTimeBounds(session, token, repo);
-    final List<MergedPrStats> mergedPrStats =
+
+    List<ContributorFileActivity> base =
+        socialMetricsRepository.getBaseAggregation(session, token, repo, from, to);
+    List<MergedPrStats> mergedPrStats =
         socialMetricsRepository.getMergedPrStats(session, token, repo);
-    final Map<String, Long> issueCountByPath =
+    Map<String, Long> issueCountByPath =
         socialMetricsRepository.getIssueCountByPath(session, token, repo);
+
+    // The aggregations above are keyed by path and therefore miss everything that happened to a
+    // file before it was renamed. Attribute those changes to the path the file has in the commit.
+    final FileLineages lineages = resolveFileLineages(session, token, repo, commit, snapshot);
+    if (!lineages.isEmpty()) {
+      final Set<String> trackedPaths = lineages.trackedPaths();
+      base =
+          FileLineageActivityMapper.mapCommitActivity(
+              base,
+              socialMetricsRepository.getCommitFileActivity(
+                  session, token, repo, from, to, trackedPaths),
+              lineages);
+      final List<PullRequestFileChange> pullRequestFileChanges =
+          socialMetricsRepository.getPullRequestFileChanges(session, token, repo, trackedPaths);
+      mergedPrStats =
+          FileLineageActivityMapper.mapMergedPrStats(
+              mergedPrStats, pullRequestFileChanges, lineages);
+      issueCountByPath =
+          FileLineageActivityMapper.mapIssueCounts(
+              issueCountByPath, pullRequestFileChanges, lineages);
+    }
 
     final MetricInput metricInput =
         new MetricInput(
@@ -94,6 +118,23 @@ public class SocialMetricsService {
       fileMetricDtos.add(new SocialMetricDto(file.fileRevisionId(), file.path(), scoresByMetricId));
     }
     return fileMetricDtos;
+  }
+
+  private FileLineages resolveFileLineages(
+      final Session session,
+      final String token,
+      final String repo,
+      final String commit,
+      final List<FileSnapshot> snapshot) {
+    final List<RenameEvent> renames = socialMetricsRepository.getRenames(session, token, repo);
+    if (renames.isEmpty()) {
+      return FileLineages.NONE;
+    }
+    return FileLineages.resolve(
+        socialMetricsRepository.getCommitLinks(session, token, repo),
+        renames,
+        commit,
+        snapshot.stream().map(FileSnapshot::path).toList());
   }
 
   public ContributorsDto getContributorsDto(
