@@ -101,7 +101,6 @@ jobs:
       - name: Build and Push Image
         uses: explorviz/deployment/.github/actions/build-and-deploy-quarkus-native@main
         env:
-          # The shared action sets up JDK 21; Gradle provisions the JDK 25 toolchain itself.
           QUARKUS_NATIVE_CONTAINER_BUILD: "true"
           QUARKUS_NATIVE_BUILDER_IMAGE: quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-25
         with:
@@ -110,6 +109,7 @@ jobs:
           docker-password: ${{ secrets.DOCKER_PASSWORD }}
           image-name: ${{ vars.DOCKER_IMAGE_NAME }}
           image-tag: "native"
+          java-version: "25"
 
   docker-image-jvm:
     name: Docker image JVM
@@ -128,3 +128,4 @@ jobs:
           image-name: ${{ vars.DOCKER_IMAGE_NAME }}
           image-tag: "latest"
           additional-tags: "jvm"
+          java-version: "25"

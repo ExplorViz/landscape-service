@@ -33,3 +33,4 @@ jobs:
           docker-password: ${{ secrets.DOCKER_PASSWORD }}
           image-name: ${{ vars.DOCKER_IMAGE_NAME }}
           image-tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || github.ref_name }}
+          java-version: "25"
