@@ -38,19 +38,6 @@ import net.explorviz.landscape.util.otel.SpanFactory;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
-@SuppressWarnings({
-  "PMD.AvoidDuplicateLiterals",
-  "PMD.AvoidLiteralsInIfCondition",
-  "PMD.CognitiveComplexity",
-  "PMD.CouplingBetweenObjects",
-  "PMD.CyclomaticComplexity",
-  "PMD.ExcessiveParameterList",
-  "PMD.FieldDeclarationsShouldBeAtStartOfClass",
-  "PMD.NPathComplexity",
-  "PMD.NcssCount",
-  "PMD.TooManyMethods",
-  "PMD.UselessParentheses"
-})
 @ApplicationScoped
 public class StructureRepository {
 

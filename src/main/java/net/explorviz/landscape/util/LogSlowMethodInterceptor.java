@@ -26,7 +26,6 @@ public class LogSlowMethodInterceptor {
   @Inject ScheduledExecutorService scheduler;
 
   @AroundInvoke
-  @SuppressWarnings("PMD.SignatureDeclareThrowsException")
   public Object logSlowMethod(final InvocationContext context) throws Exception {
 
     LogSlowMethod annotation = context.getMethod().getAnnotation(LogSlowMethod.class);

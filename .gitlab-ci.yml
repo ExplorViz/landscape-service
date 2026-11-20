@@ -48,13 +48,6 @@ checkstyle:
     paths:
       - build
 
-pmd:
-  stage: code-analysis
-  script: ./gradlew pmdMain
-  artifacts:
-    paths:
-      - build
-
 .db-test:
   stage: test
   services:

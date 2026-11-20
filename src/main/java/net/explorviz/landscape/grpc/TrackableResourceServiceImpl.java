@@ -55,7 +55,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
       saveTrackableResourceEvent(session, request);
       tx.commit();
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     } finally {
       session.clear();
@@ -90,7 +90,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
             return Empty.getDefaultInstance();
           });
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
   }
@@ -118,7 +118,7 @@ public class TrackableResourceServiceImpl implements TrackableResourceService {
             return Empty.getDefaultInstance();
           });
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
   }

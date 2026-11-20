@@ -5,7 +5,6 @@ import java.util.Locale;
 import java.util.Optional;
 
 /** Builds browser URLs for source files in common Git hosting platforms. */
-@SuppressWarnings("PMD.UseObjectForClearerAPI")
 public final class RepositoryFileUrlBuilder {
 
   private RepositoryFileUrlBuilder() {

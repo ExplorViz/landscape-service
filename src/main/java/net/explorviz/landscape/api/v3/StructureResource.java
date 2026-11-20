@@ -36,7 +36,6 @@ import org.neo4j.ogm.session.SessionFactory;
 
 /** Contains endpoints concerning landscape structure data, i.e. the shape of the landscape. */
 @Path("/v3/landscapes/{landscapeToken}/structure")
-@SuppressWarnings("PMD.TooManyMethods")
 public class StructureResource {
 
   @Inject SessionFactory sessionFactory;
@@ -223,7 +222,6 @@ public class StructureResource {
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   @Path("/evolution/{repositoryName}/animation/delta")
-  @SuppressWarnings("PMD.ExcessiveParameterList")
   public AnimationWindowDeltaDto getEvolutionAnimationDelta(
       @RestPath final String landscapeToken,
       @RestPath final String repositoryName,

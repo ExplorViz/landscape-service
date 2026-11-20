@@ -6,7 +6,7 @@ echo "NOTE: The pre-commit hook runs on all files in the working tree, not just 
 If this causes the hook to fail, you can stash your unstaged changes before committing again."
 echo
 
-./gradlew spotlessCheck checkstyleMain pmdMain test
+./gradlew spotlessCheck checkstyleMain test
 
 if [ $? -ne 0 ]
 then

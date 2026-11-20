@@ -16,7 +16,6 @@ import org.neo4j.ogm.annotation.Relationship;
 
 /** Represents a class in object-oriented programming languages. */
 @NodeEntity
-@SuppressWarnings("PMD.TooManyMethods")
 public class Clazz implements Comparable<Clazz> {
 
   @Id @GeneratedValue private Long id;

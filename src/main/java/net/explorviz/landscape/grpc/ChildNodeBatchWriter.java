@@ -17,7 +17,6 @@ import org.neo4j.ogm.session.Session;
  * UNWIND Cypher — one query per node type.
  */
 @ApplicationScoped
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 public class ChildNodeBatchWriter {
 
   @Inject FileDataInsertProperties fileDataInsertProperties;

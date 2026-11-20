@@ -22,7 +22,7 @@ public class LandscapeDeletionService {
       landscapeRepository.deleteLandscapeData(session, landscapeTokenId);
       tx.commit();
       Log.infof("Deleted landscape data for token %s", landscapeTokenId);
-    } catch (Exception e) { // NOPMD
+    } catch (Exception e) {
       Log.errorf(e, "Failed to delete landscape data for token %s", landscapeTokenId);
       throw e;
     }

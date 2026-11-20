@@ -13,7 +13,6 @@ import net.explorviz.landscape.repository.FileLineages.RenameEvent;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
 
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 @ApplicationScoped
 public class SocialMetricsRepository {
 

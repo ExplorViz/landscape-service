@@ -44,7 +44,6 @@ import org.neo4j.ogm.session.SessionFactory;
 import org.neo4j.ogm.transaction.Transaction;
 
 @GrpcService
-@SuppressWarnings("PMD.CouplingBetweenObjects")
 public class CommitServiceImpl implements CommitService {
 
   private static final String NO_PARENT_ID = "NONE";
@@ -88,7 +87,7 @@ public class CommitServiceImpl implements CommitService {
             return Empty.getDefaultInstance();
           });
       return Uni.createFrom().item(Empty.getDefaultInstance());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
   }

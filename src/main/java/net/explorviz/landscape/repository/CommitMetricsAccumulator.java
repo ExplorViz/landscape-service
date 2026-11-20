@@ -29,7 +29,6 @@ import org.neo4j.ogm.session.Session;
  * happen to carry none of a given metric records {@code 0.0} for it rather than omitting the key.
  */
 @ApplicationScoped
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.TooManyMethods"})
 public class CommitMetricsAccumulator {
 
   private static final String METRIC_PREFIX = "metrics.";

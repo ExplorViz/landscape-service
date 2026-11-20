@@ -67,7 +67,7 @@ public class FileDataServiceImpl implements FileDataService {
         repoName = files.get(0).getRepositoryName();
       }
       tx.commit();
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       final String context =
           files.isEmpty()
               ? "empty batch"

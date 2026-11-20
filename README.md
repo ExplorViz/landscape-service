@@ -64,7 +64,7 @@ To integrate this format with IntelliJ's formatter (`Ctrl + Alt + L` shortcut), 
 
 ### Pre-commit hook
 
-As part of a git pre-commit hook, your code is checked using [Spotless](https://github.com/diffplug/spotless), [Checkstyle](https://checkstyle.sourceforge.io/) and [PMD](https://pmd.github.io/). If any of these checks fails, the commit is blocked until the issues are resolved. Additionally, all tests must pass for the commit to be successful. Please ensure that all issues are adequately resolved before commiting your changes. If absolutely required, you can skip the pre-commit hook validation using the `--no-verify` flag, but ensure the issues are addressed before creating a merge request.
+As part of a git pre-commit hook, your code is checked using [Spotless](https://github.com/diffplug/spotless) and [Checkstyle](https://checkstyle.sourceforge.io/). If any of these checks fails, the commit is blocked until the issues are resolved. Additionally, all tests must pass for the commit to be successful. Please ensure that all issues are adequately resolved before commiting your changes. If absolutely required, you can skip the pre-commit hook validation using the `--no-verify` flag, but ensure the issues are addressed before creating a merge request.
 
 ## Running the application in dev mode
 

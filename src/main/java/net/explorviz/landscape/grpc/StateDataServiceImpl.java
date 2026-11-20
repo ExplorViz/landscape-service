@@ -85,7 +85,7 @@ public class StateDataServiceImpl implements StateDataService {
       }
 
       return Uni.createFrom().item(stateDataBuilder.build());
-    } catch (Exception e) { // NOPMD - intentional: Handling in GrpcExceptionMapper
+    } catch (Exception e) {
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     } finally {
       session.clear();

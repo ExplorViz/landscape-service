@@ -35,7 +35,6 @@ import org.neo4j.ogm.session.SessionFactory;
  */
 @UnlessBuildProfile("prod")
 @Path("/example")
-@SuppressWarnings({"PMD.NcssCount", "PMD.TooManyMethods"})
 public class ExampleDataResource {
 
   @Inject SessionFactory sessionFactory;
@@ -337,7 +336,6 @@ public class ExampleDataResource {
    * Executes all Cypher statements in the given file. Each statement is expected to be separated by
    * semicolon. Lines starting with // and empty lines are ignored.
    */
-  @SuppressWarnings("PMD.CloseResource") // This is handled by the BufferedReader
   private void executeCypherFile(final String resourceFilePath) {
     final InputStream fileInputStream =
         Thread.currentThread().getContextClassLoader().getResourceAsStream(resourceFilePath);

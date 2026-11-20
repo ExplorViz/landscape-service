@@ -16,7 +16,7 @@ public class HttpClient {
 
   @Id @GeneratedValue private Long id;
 
-  @SuppressWarnings({"PMD.FinalFieldCouldBeStatic", "FieldCanBeLocal"})
+  @SuppressWarnings("FieldCanBeLocal")
   private final String name = DISPLAY_NAME;
 
   /**

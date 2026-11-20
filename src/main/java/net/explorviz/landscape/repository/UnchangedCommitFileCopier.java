@@ -19,7 +19,6 @@ import org.neo4j.ogm.session.Session;
  * when available to avoid redundant graph traversals.
  */
 @ApplicationScoped
-@SuppressWarnings("PMD.TooManyMethods")
 public class UnchangedCommitFileCopier {
 
   private static final String COUNT_PARENT_FILES_AT_EXCLUDED_PATHS =

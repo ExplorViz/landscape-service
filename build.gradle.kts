@@ -3,7 +3,6 @@ plugins {
     id("io.quarkus")
     id("com.diffplug.spotless") version "8.10.4"
     checkstyle
-    pmd
 }
 
 repositories {
@@ -77,17 +76,6 @@ registerGitHook("registerPreMergeCommitHook", "pre-commit.sh", "pre-merge-commit
 tasks.named("quarkusGenerateCode") {
     dependsOn("registerPreCommitHook")
     dependsOn("registerPreMergeCommitHook")
-}
-
-pmd {
-    toolVersion = "7.23.0"
-    isIgnoreFailures = false
-
-    // Empty ruleset is necessary for exclude-pattern
-    // https://stackoverflow.com/questions/32247190/pmd-exclude-pattern-with-gradle
-    ruleSets = listOf()
-    ruleSetConfig = resources.text.fromFile("code-analysis/pmd.xml")
-    sourceSets = listOf(java.sourceSets.main.get())
 }
 
 checkstyle {

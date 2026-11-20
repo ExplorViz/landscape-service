@@ -25,7 +25,6 @@ public final class CommitBranchOrderer {
    * Returns commits in branch order: every parent appears before its children, matching {@code git
    * rev-list --reverse} when parent links are complete.
    */
-  @SuppressWarnings({"PMD.CognitiveComplexity", "PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
   public static List<Commit> orderAlongBranch(final List<Commit> branchCommits) {
     if (branchCommits.size() <= 1) {
       return List.copyOf(branchCommits);
