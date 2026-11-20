@@ -1,9 +1,7 @@
 package net.explorviz.landscape.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,58 +23,54 @@ import org.neo4j.ogm.session.Session;
 @ApplicationScoped
 public class FileHistoryRepository {
 
-  /** Upper bound on the number of file revisions collected along one lineage. */
-  private static final int MAX_REVISIONS = 100;
-
-  private static final String FIND_RENAME_NEIGHBORS =
+  /**
+   * Revisions linked to any revision in {@code $revIds}: rename partners in either direction, the
+   * revision each one replaced at the same path in its commit (the parent may still {@code
+   * CONTAINS} it, or only retain a {@code DELETED} edge after a delete then re-add), and the
+   * revision that replaced it at the same path in the first-parent child commit (modification or
+   * re-addition after a deletion). Rename rows also carry the previous path of the renamed
+   * revision.
+   */
+  private static final String FIND_LINKED_REVISIONS =
       """
-      MATCH (rev:FileRevision) WHERE id(rev) = $revId
-      OPTIONAL MATCH (rev)-[rename:RENAMED_FROM]-(other:FileRevision)
+      UNWIND $revIds AS revId
+      MATCH (rev:FileRevision) WHERE id(rev) = revId
+      MATCH (rev)-[rename:RENAMED_FROM]-(other:FileRevision)
       RETURN
-        id(rev) AS fileRevId,
-        id(other) AS otherFileRevId,
+        id(other) AS linkedId,
         id(startNode(rename)) AS renamedFileRevId,
         rename.commitHash AS renameCommitHash,
         coalesce(endNode(rename).filePath, endNode(rename).name) AS previousPath
-      """;
-
-  /**
-   * Revision that replaced {@code rev} at the same path in the child commit (modification or
-   * re-addition after a deletion).
-   */
-  private static final String FIND_SUCCESSOR_REVISIONS =
-      """
-      MATCH (prev:FileRevision) WHERE id(prev) = $revId
-      MATCH (parent:Commit)-[:CONTAINS]->(prev)
-      MATCH (parent)<-[:HAS_FIRST_PARENT]-(child:Commit)
-      MATCH (child)-[:ADDED|MODIFIED]->(next:FileRevision)
-      WHERE coalesce(next.filePath, next.name) = coalesce(prev.filePath, prev.name)
-        AND id(next) <> id(prev)
-      RETURN id(next) AS nextId
       UNION
-      MATCH (prev:FileRevision) WHERE id(prev) = $revId
-      MATCH (del:Commit)-[:DELETED]->(prev)
-      MATCH (del)<-[:HAS_FIRST_PARENT]-(child:Commit)
-      MATCH (child)-[:ADDED]->(next:FileRevision)
-      WHERE coalesce(next.filePath, next.name) = coalesce(prev.filePath, prev.name)
-        AND id(next) <> id(prev)
-      RETURN id(next) AS nextId
-      """;
-
-  /**
-   * Revision that {@code rev} replaced at the same path in this commit. The parent may still {@code
-   * CONTAINS} that revision, or only retain a {@code DELETED} edge after it was removed in the
-   * parent commit itself (delete then re-add).
-   */
-  private static final String FIND_PREDECESSOR_REVISIONS =
-      """
-      MATCH (rev:FileRevision) WHERE id(rev) = $revId
+      UNWIND $revIds AS revId
+      MATCH (rev:FileRevision) WHERE id(rev) = revId
       MATCH (child:Commit)-[:ADDED|MODIFIED|DELETED]->(rev)
       MATCH (child)-[:HAS_FIRST_PARENT]->(parent:Commit)
       MATCH (parent)-[:CONTAINS|DELETED]->(prev:FileRevision)
       WHERE coalesce(prev.filePath, prev.name) = coalesce(rev.filePath, rev.name)
         AND id(prev) <> id(rev)
-      RETURN DISTINCT id(prev) AS prevId
+      RETURN id(prev) AS linkedId, null AS renamedFileRevId, null AS renameCommitHash,
+        null AS previousPath
+      UNION
+      UNWIND $revIds AS revId
+      MATCH (prev:FileRevision) WHERE id(prev) = revId
+      MATCH (parent:Commit)-[:CONTAINS]->(prev)
+      MATCH (parent)<-[:HAS_FIRST_PARENT]-(child:Commit)
+      MATCH (child)-[:ADDED|MODIFIED]->(next:FileRevision)
+      WHERE coalesce(next.filePath, next.name) = coalesce(prev.filePath, prev.name)
+        AND id(next) <> id(prev)
+      RETURN id(next) AS linkedId, null AS renamedFileRevId, null AS renameCommitHash,
+        null AS previousPath
+      UNION
+      UNWIND $revIds AS revId
+      MATCH (prev:FileRevision) WHERE id(prev) = revId
+      MATCH (del:Commit)-[:DELETED]->(prev)
+      MATCH (del)<-[:HAS_FIRST_PARENT]-(child:Commit)
+      MATCH (child)-[:ADDED]->(next:FileRevision)
+      WHERE coalesce(next.filePath, next.name) = coalesce(prev.filePath, prev.name)
+        AND id(next) <> id(prev)
+      RETURN id(next) AS linkedId, null AS renamedFileRevId, null AS renameCommitHash,
+        null AS previousPath
       """;
 
   private static final String FIND_CHANGES =
@@ -117,56 +111,34 @@ public class FileHistoryRepository {
 
   /**
    * Walks the lineage of the anchor revision via renames, same-path predecessors and same-path
-   * successors.
+   * successors, expanding a whole frontier of revisions per query. The walk ends once no unvisited
+   * revision is linked, so the complete history is collected.
    */
   private void collectRevisionLineage(
       final Session session,
       final long startFileRevisionId,
       final Set<Long> fileRevIds,
       final Map<RenamedRevision, String> previousPaths) {
-    final Deque<Long> pending = new ArrayDeque<>();
-    pending.add(startFileRevisionId);
+    Set<Long> frontier = Set.of(startFileRevisionId);
+    fileRevIds.add(startFileRevisionId);
 
-    while (!pending.isEmpty() && fileRevIds.size() < MAX_REVISIONS) {
-      final long revId = pending.poll();
-      if (!fileRevIds.add(revId)) {
-        continue;
+    while (!frontier.isEmpty()) {
+      final Set<Long> next = new HashSet<>();
+      for (final Map<String, Object> row :
+          session.query(FIND_LINKED_REVISIONS, Map.of("revIds", frontier)).queryResults()) {
+        final Long linkedId = (Long) row.get("linkedId");
+        if (row.get("renamedFileRevId") != null) {
+          previousPaths.put(
+              new RenamedRevision(
+                  (Long) row.get("renamedFileRevId"), (String) row.get("renameCommitHash")),
+              (String) row.get("previousPath"));
+        }
+        if (linkedId != null && fileRevIds.add(linkedId)) {
+          next.add(linkedId);
+        }
       }
-
-      expandRenameNeighbors(session, revId, pending, previousPaths);
-      expandLinkedRevisions(session, FIND_PREDECESSOR_REVISIONS, revId, pending, "prevId");
-      expandLinkedRevisions(session, FIND_SUCCESSOR_REVISIONS, revId, pending, "nextId");
+      frontier = next;
     }
-  }
-
-  private void expandRenameNeighbors(
-      final Session session,
-      final long revId,
-      final Deque<Long> pending,
-      final Map<RenamedRevision, String> previousPaths) {
-    for (final Map<String, Object> row :
-        session.query(FIND_RENAME_NEIGHBORS, Map.of("revId", revId)).queryResults()) {
-      final Long otherFileRevId = (Long) row.get("otherFileRevId");
-      if (otherFileRevId != null) {
-        pending.add(otherFileRevId);
-        previousPaths.put(
-            new RenamedRevision(
-                (Long) row.get("renamedFileRevId"), (String) row.get("renameCommitHash")),
-            (String) row.get("previousPath"));
-      }
-    }
-  }
-
-  private void expandLinkedRevisions(
-      final Session session,
-      final String query,
-      final long revId,
-      final Deque<Long> pending,
-      final String idField) {
-    session
-        .query(query, Map.of("revId", revId))
-        .queryResults()
-        .forEach(row -> pending.add((Long) row.get(idField)));
   }
 
   /**
