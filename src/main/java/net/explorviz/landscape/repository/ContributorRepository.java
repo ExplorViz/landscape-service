@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +48,8 @@ public class ContributorRepository {
     return contributor;
   }
 
+  /** Result DTO of {@code Session#queryDto}, which instantiates it reflectively. */
+  @RegisterForReflection
   public record ContributorActivity(
       long contributorId,
       String gitUsername,

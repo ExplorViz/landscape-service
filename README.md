@@ -80,6 +80,32 @@ An overview of the available endpoints is provided in the Quarkus Dev UI at http
 
 You can also inspect and manipulate the current state of the database using [Neo4j Browser](https://neo4j.com/docs/browser/). By default, the browser runs on http://localhost:7474.
 
+## Packaging and running the application
+
+The application can be packaged using:
+
+```shell script
+./gradlew build
+```
+
+It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory, which can be run using `java -jar build/quarkus-app/quarkus-run.jar`.
+
+## Creating a native executable
+
+You can create a native executable using:
+
+```shell script
+./gradlew build -Dquarkus.native.enabled=true -Dquarkus.package.jar.enabled=false
+```
+
+Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+
+```shell script
+./gradlew build -Dquarkus.native.enabled=true -Dquarkus.package.jar.enabled=false -Dquarkus.native.container-build=true
+```
+
+You can then execute your native executable with: `./build/landscape-service-1.0.0-SNAPSHOT-runner`
+
 ## Testing
 
 To ensure the landscape-service is working properly, there are a number of tests that can be executed using the following command:

@@ -1,5 +1,6 @@
 package net.explorviz.landscape.repository;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
@@ -92,6 +93,8 @@ public class SocialMetricsRepository {
              id(i)      AS issueId
       """;
 
+  /** Result DTO of {@code Session#queryDto}, which instantiates it reflectively. */
+  @RegisterForReflection
   public record RepoTimeBounds(long initDate, long lastDate) {}
 
   /** A single change of a file by a commit, the unit the base aggregation counts. */
