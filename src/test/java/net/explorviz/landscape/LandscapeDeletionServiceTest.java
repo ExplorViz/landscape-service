@@ -119,6 +119,36 @@ class LandscapeDeletionServiceTest {
   }
 
   @Test
+  void deleteLandscapeDataRemovesLandscapeSpanningMultipleBatches() {
+    persistStaticLandscape(TOKEN_TO_KEEP);
+    session.query(
+        """
+        CREATE (l:Landscape {tokenId: $tokenId})-[:CONTAINS]->(r:Repository {name: 'big'})
+        WITH r
+        UNWIND range(1, 25000) AS i
+        CREATE (r)-[:CONTAINS]->(:Commit {hash: toString(i)})
+        """,
+        Map.of("tokenId", TOKEN_TO_DELETE));
+
+    landscapeDeletionService.deleteLandscapeData(TOKEN_TO_DELETE);
+
+    assertFalse(landscapeExists(TOKEN_TO_DELETE));
+    assertTrue(landscapeExists(TOKEN_TO_KEEP));
+    assertNodeCounts(
+        session,
+        ExpectedCounts.builder()
+            .landscapes(1)
+            .repositories(1)
+            .branches(1)
+            .commits(1)
+            .files(1)
+            .applications(1)
+            .directories(4)
+            .functions(1)
+            .build());
+  }
+
+  @Test
   void deleteLandscapeDataRemovesOrphanedContributors() {
     persistStaticLandscapeWithContributor(TOKEN_TO_DELETE, "alice@test.com");
 

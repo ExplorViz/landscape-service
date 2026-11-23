@@ -6,7 +6,6 @@ import jakarta.inject.Inject;
 import net.explorviz.landscape.repository.LandscapeRepository;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
-import org.neo4j.ogm.transaction.Transaction;
 
 @ApplicationScoped
 public class LandscapeDeletionService {
@@ -18,9 +17,9 @@ public class LandscapeDeletionService {
   public void deleteLandscapeData(final String landscapeTokenId) {
     final Session session = sessionFactory.openSession();
 
-    try (Transaction tx = session.beginTransaction()) {
+    // Deliberately not wrapped in a transaction: the deletion commits in batches.
+    try {
       landscapeRepository.deleteLandscapeData(session, landscapeTokenId);
-      tx.commit();
       Log.infof("Deleted landscape data for token %s", landscapeTokenId);
     } catch (Exception e) {
       Log.errorf(e, "Failed to delete landscape data for token %s", landscapeTokenId);
