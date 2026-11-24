@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import java.util.List;
 import java.util.Map;
 import net.explorviz.landscape.messaging.telemetry.TelemetryConsumer;
 import net.explorviz.landscape.proto.CodeDescriptor;
@@ -88,6 +89,62 @@ class TokenEventConsumerTest {
 
     tokenEventConsumer.consume(
         new ConsumerRecord<>("tokens.events", 0, 0L, LANDSCAPE_TOKEN, createdEvent.toByteArray()));
+
+    assertTrue(landscapeExists());
+  }
+
+  @Test
+  void consumeUnreadableEventDoesNotDeleteLandscapeData() {
+    // Announces more bytes than there are
+    final byte[] unreadable = {0x12, 0x7f, 0x01};
+
+    tokenEventConsumer.consume(
+        new ConsumerRecord<>("tokens.events", 0, 0L, LANDSCAPE_TOKEN, unreadable));
+
+    assertTrue(landscapeExists());
+  }
+
+  @Test
+  void consumeEmptyEventDoesNotDeleteLandscapeData() {
+    tokenEventConsumer.consume(
+        new ConsumerRecord<>("tokens.events", 0, 0L, LANDSCAPE_TOKEN, new byte[0]));
+
+    assertTrue(landscapeExists());
+  }
+
+  @Test
+  void consumeEventsOfExistingTokenDoesNotDeleteLandscapeData() {
+    final List<EventType> types =
+        List.of(
+            EventType.EVENT_TYPE_CLONED,
+            EventType.EVENT_TYPE_ACCESS_GRANTED,
+            EventType.EVENT_TYPE_ACCESS_REVOKED,
+            EventType.EVENT_TYPE_UPDATED);
+    for (final EventType type : types) {
+      final TokenEvent event =
+          TokenEvent.newBuilder()
+              .setType(type)
+              .setToken(LandscapeToken.newBuilder().setId(LANDSCAPE_TOKEN))
+              .setUserId("friend")
+              .build();
+
+      tokenEventConsumer.consume(
+          new ConsumerRecord<>("tokens.events", 0, 0L, LANDSCAPE_TOKEN, event.toByteArray()));
+
+      assertTrue(landscapeExists(), type.name());
+    }
+  }
+
+  @Test
+  void consumeEventOfUnknownTypeDoesNotDeleteLandscapeData() {
+    final TokenEvent event =
+        TokenEvent.newBuilder()
+            .setTypeValue(1000)
+            .setToken(LandscapeToken.newBuilder().setId(LANDSCAPE_TOKEN))
+            .build();
+
+    tokenEventConsumer.consume(
+        new ConsumerRecord<>("tokens.events", 0, 0L, LANDSCAPE_TOKEN, event.toByteArray()));
 
     assertTrue(landscapeExists());
   }

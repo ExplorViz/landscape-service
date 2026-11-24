@@ -25,7 +25,20 @@ public class TokenEventConsumer {
     if (demoMode.isEnabled()) {
       return;
     }
-    final TokenEvent event = parseEvent(record.value());
+    // Only a missing value is a tombstone. Values that cannot be read must not delete any data.
+    final boolean isTombstone = record.value() == null;
+    final TokenEvent event;
+    try {
+      event = isTombstone ? null : TokenEvent.parseFrom(record.value());
+    } catch (InvalidProtocolBufferException e) {
+      Log.errorf(
+          e,
+          "Skipping unreadable token event at offset %d of partition %d",
+          record.offset(),
+          record.partition());
+      return;
+    }
+
     final String tokenId = resolveTokenId(record, event);
 
     if (tokenId == null || tokenId.isBlank()) {
@@ -33,21 +46,8 @@ public class TokenEventConsumer {
       return;
     }
 
-    if (event == null || event.getType() == EventType.EVENT_TYPE_DELETED) {
+    if (isTombstone || event.getType() == EventType.EVENT_TYPE_DELETED) {
       landscapeDeletionService.deleteLandscapeData(tokenId);
-    }
-  }
-
-  private static TokenEvent parseEvent(final byte[] payload) {
-    if (payload == null || payload.length == 0) {
-      return null;
-    }
-
-    try {
-      return TokenEvent.parseFrom(payload);
-    } catch (InvalidProtocolBufferException e) {
-      Log.error("Invalid token event payload", e);
-      return null;
     }
   }
 
