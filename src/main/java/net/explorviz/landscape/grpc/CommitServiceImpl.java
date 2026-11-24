@@ -31,8 +31,10 @@ import net.explorviz.landscape.repository.CommitFilePersistenceContext;
 import net.explorviz.landscape.repository.CommitMetricsAccumulator;
 import net.explorviz.landscape.repository.CommitRepository;
 import net.explorviz.landscape.repository.ContributorRepository;
+import net.explorviz.landscape.repository.DirectoryIdCache;
 import net.explorviz.landscape.repository.FileRevisionRepository;
 import net.explorviz.landscape.repository.LandscapeRepository;
+import net.explorviz.landscape.repository.PendingMetricsCommitTracker;
 import net.explorviz.landscape.repository.PersistCommitTimingLogger;
 import net.explorviz.landscape.repository.PersistCommitTimingReport;
 import net.explorviz.landscape.repository.RepositoryCommitPersistenceCoordinator;
@@ -56,6 +58,8 @@ public class CommitServiceImpl implements CommitService {
   @Inject LandscapeRepository landscapeRepository;
   @Inject RepositoryRepository repositoryRepository;
   @Inject FileRevisionRepository fileRevisionRepository;
+  @Inject DirectoryIdCache directoryIdCache;
+  @Inject PendingMetricsCommitTracker pendingMetricsCommitTracker;
   @Inject CommitDeletedFileUnlinker commitDeletedFileUnlinker;
   @Inject CommitFileLinker commitFileLinker;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
@@ -88,6 +92,11 @@ public class CommitServiceImpl implements CommitService {
           });
       return Uni.createFrom().item(Empty.getDefaultInstance());
     } catch (Exception e) {
+      // The rolled back transaction may have created directories whose ids were cached.
+      directoryIdCache.invalidate(request.getLandscapeToken(), request.getRepositoryName());
+      // Neither is it known whether the commit exists, nor whether its metrics were accumulated.
+      pendingMetricsCommitTracker.invalidate(
+          request.getLandscapeToken(), request.getRepositoryName());
       return Uni.createFrom().failure(GrpcExceptionMapper.mapToGrpcException(e, request));
     }
   }
@@ -152,6 +161,11 @@ public class CommitServiceImpl implements CommitService {
     final long finalizeCommitStart = System.nanoTime();
     session.save(List.of(repo, branch, commit));
     final long finalizeCommitMs = elapsedMillis(finalizeCommitStart);
+
+    // From now on, this is the commit whose file data arrives. The previous one was checked a last
+    // time before the files of this commit were linked.
+    pendingMetricsCommitTracker.track(
+        commitData.getLandscapeToken(), commitData.getRepositoryName(), commitData.getCommitId());
 
     if (fileLinkTimings.shouldUpdatePendingMetrics()) {
       commitMetricsAccumulator.updatePendingForCommit(

@@ -22,9 +22,11 @@ import net.explorviz.landscape.repository.ApplicationRepository;
 import net.explorviz.landscape.repository.BranchRepository;
 import net.explorviz.landscape.repository.CommitFileRevisionCache;
 import net.explorviz.landscape.repository.CommitRepository;
+import net.explorviz.landscape.repository.DirectoryIdCache;
 import net.explorviz.landscape.repository.DirectoryRepository;
 import net.explorviz.landscape.repository.FileRevisionIdCache;
 import net.explorviz.landscape.repository.LandscapeRepository;
+import net.explorviz.landscape.repository.PendingMetricsCommitTracker;
 import net.explorviz.landscape.repository.RepositoryRepository;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
@@ -48,6 +50,10 @@ public class StateDataServiceImpl implements StateDataService {
 
   @Inject DirectoryRepository directoryRepository;
 
+  @Inject DirectoryIdCache directoryIdCache;
+
+  @Inject PendingMetricsCommitTracker pendingMetricsCommitTracker;
+
   @Inject FileRevisionIdCache fileRevisionIdCache;
 
   @Inject LandscapeRepository landscapeRepository;
@@ -68,6 +74,11 @@ public class StateDataServiceImpl implements StateDataService {
 
       fileRevisionIdCache.clear();
       commitFileRevisionCache.clear();
+      directoryIdCache.clear();
+      // The first commit of the new analysis then scans the repository for commits that a
+      // previous analysis left without accumulated metrics.
+      pendingMetricsCommitTracker.invalidate(
+          request.getLandscapeToken(), request.getRepositoryName());
 
       final StateData.Builder stateDataBuilder = StateData.newBuilder();
       if (!request.getSkipLatestCommitLookup()) {

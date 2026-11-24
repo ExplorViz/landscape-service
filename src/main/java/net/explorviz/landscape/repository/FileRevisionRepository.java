@@ -46,6 +46,7 @@ public class FileRevisionRepository {
   }
 
   @Inject DirectoryRepository directoryRepository;
+  @Inject DirectoryIdCache directoryIdCache;
   @Inject CommitFileStructureBatchWriter commitFileStructureBatchWriter;
   @Inject UnchangedCommitFileCopier unchangedCommitFileCopier;
   @Inject CommitRepository commitRepository;
@@ -57,7 +58,13 @@ public class FileRevisionRepository {
       final String commitHash,
       final long commitInternalId) {
     return CommitFilePersistenceContext.create(
-        session, directoryRepository, landscapeTokenId, repoName, commitHash, commitInternalId);
+        session,
+        directoryRepository,
+        landscapeTokenId,
+        repoName,
+        commitHash,
+        commitInternalId,
+        directoryIdCache.forRepository(landscapeTokenId, repoName));
   }
 
   public record CopyUnchangedFilesFromParentRequest(

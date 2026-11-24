@@ -6,7 +6,9 @@ import io.quarkus.arc.Arc;
 import java.util.List;
 import java.util.Map;
 import net.explorviz.landscape.repository.CommitFileRevisionCache;
+import net.explorviz.landscape.repository.DirectoryIdCache;
 import net.explorviz.landscape.repository.FileRevisionIdCache;
+import net.explorviz.landscape.repository.PendingMetricsCommitTracker;
 import org.neo4j.ogm.model.Result;
 import org.neo4j.ogm.session.Session;
 
@@ -48,6 +50,14 @@ public class TestUtils {
       final var commitCache = container.instance(CommitFileRevisionCache.class);
       if (commitCache.isAvailable()) {
         commitCache.get().clear();
+      }
+      final var directoryCache = container.instance(DirectoryIdCache.class);
+      if (directoryCache.isAvailable()) {
+        directoryCache.get().clear();
+      }
+      final var commitTracker = container.instance(PendingMetricsCommitTracker.class);
+      if (commitTracker.isAvailable()) {
+        commitTracker.get().clear();
       }
     }
   }

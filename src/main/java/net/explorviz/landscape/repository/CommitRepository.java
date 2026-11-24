@@ -99,10 +99,13 @@ public class CommitRepository {
     session.query(
         """
         MATCH (c:Commit) WHERE id(c) = $commitId
-        MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
-          -[:CONTAINS]->(c)-[:BELONGS_TO]->(b:Branch)
-        WHERE coalesce(c.hasAccumulatedMetrics, false) = true
-          AND c.commitDate >= coalesce(b.latestFullyPersistedCommitDate, 0)
+          AND coalesce(c.hasAccumulatedMetrics, false) = true
+          AND EXISTS {
+            MATCH (:Landscape {tokenId: $tokenId})-[:CONTAINS]->(:Repository {name: $repoName})
+              -[:CONTAINS]->(c)
+          }
+        MATCH (c)-[:BELONGS_TO]->(b:Branch)
+        WHERE c.commitDate >= coalesce(b.latestFullyPersistedCommitDate, 0)
         SET b.latestFullyPersistedCommitHash = c.hash,
             b.latestFullyPersistedCommitDate = c.commitDate
         """,

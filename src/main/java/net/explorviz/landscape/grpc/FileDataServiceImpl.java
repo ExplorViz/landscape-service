@@ -13,6 +13,7 @@ import net.explorviz.landscape.demo.DemoMode;
 import net.explorviz.landscape.proto.FileData;
 import net.explorviz.landscape.proto.FileDataService;
 import net.explorviz.landscape.repository.CommitMetricsAccumulator;
+import net.explorviz.landscape.repository.PendingMetricsCommitTracker;
 import net.explorviz.landscape.util.GrpcExceptionMapper;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.session.SessionFactory;
@@ -26,6 +27,7 @@ public class FileDataServiceImpl implements FileDataService {
   @Inject SessionFactory sessionFactory;
   @Inject FileDataBatchWriter fileDataBatchWriter;
   @Inject CommitMetricsAccumulator commitMetricsAccumulator;
+  @Inject PendingMetricsCommitTracker pendingMetricsCommitTracker;
 
   @Blocking
   @Override
@@ -90,8 +92,12 @@ public class FileDataServiceImpl implements FileDataService {
   private void updatePendingCommitMetrics(
       final Session session, final String landscapeToken, final String repoName) {
     try (Transaction tx = session.beginTransaction()) {
-      commitMetricsAccumulator.updatePendingForRepository(session, landscapeToken, repoName);
+      commitMetricsAccumulator.updatePendingForTrackedCommit(session, landscapeToken, repoName);
       tx.commit();
+    } catch (RuntimeException e) {
+      // The commit may be flagged as accumulated although its metrics were rolled back.
+      pendingMetricsCommitTracker.invalidate(landscapeToken, repoName);
+      throw e;
     } finally {
       session.clear();
     }

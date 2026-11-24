@@ -70,7 +70,7 @@ public class CommitFileLinker {
       final Set<String> deletedPaths) {
     pendingCommitContextRegistry.unregister(
         commitData.getLandscapeToken(), commitData.getRepositoryName());
-    commitMetricsAccumulator.updatePendingForRepository(
+    commitMetricsAccumulator.updatePendingForTrackedCommit(
         session, commitData.getLandscapeToken(), commitData.getRepositoryName());
 
     long stepStart = System.nanoTime();

@@ -37,6 +37,7 @@ public class CommitMetricsAccumulator {
   @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
   @Inject CommitRepository commitRepository;
   @Inject CommitMetricNameRegistry metricNameRegistry;
+  @Inject PendingMetricsCommitTracker pendingMetricsCommitTracker;
 
   private static final String FIND_PENDING_COMMITS_FOR_HASH =
       """
@@ -153,6 +154,27 @@ public class CommitMetricsAccumulator {
     updatePendingCommits(session, landscapeToken, repoName, null);
   }
 
+  /**
+   * Recomputes accumulated metrics for the commit the repository is currently ingesting, once all
+   * of its file data arrived. Looking up that one commit keeps the check independent of the number
+   * of commits in the repository, see {@link PendingMetricsCommitTracker}.
+   *
+   * <p>Falls back to {@link #updatePendingForRepository} if no commit is tracked for the
+   * repository, which also picks up commits a previous analysis left behind, and while a commit
+   * with deferred file stubs is pending, as that one only completes after its successor arrived.
+   */
+  public void updatePendingForTrackedCommit(
+      final Session session, final String landscapeToken, final String repoName) {
+    final Optional<PendingMetricsCommitTracker.TrackedCommit> trackedCommit =
+        pendingMetricsCommitTracker.find(landscapeToken, repoName);
+    if (trackedCommit.isEmpty()
+        || pendingCommitContextRegistry.find(landscapeToken, repoName).isPresent()) {
+      updatePendingForRepository(session, landscapeToken, repoName);
+    } else if (!trackedCommit.get().accumulated()) {
+      updatePendingForCommit(session, landscapeToken, repoName, trackedCommit.get().commitHash());
+    }
+  }
+
   /** Recomputes accumulated metrics for a single commit when it is already fully persisted. */
   public void updatePendingForCommit(
       final Session session,
@@ -187,6 +209,10 @@ public class CommitMetricsAccumulator {
     for (final Long commitId : commitIds) {
       commitRepository.updateLatestFullyPersistedCommitOnBranch(
           session, commitId, repoName, landscapeToken);
+    }
+
+    if (commitHash != null) {
+      pendingMetricsCommitTracker.markAccumulated(landscapeToken, repoName, commitHash);
     }
 
     Log.debugf(

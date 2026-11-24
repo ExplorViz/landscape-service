@@ -24,9 +24,34 @@ public record CommitFilePersistenceContext(
       final String repoName,
       final String commitHash,
       final long commitInternalId) {
+    return create(
+        session,
+        directoryRepository,
+        landscapeTokenId,
+        repoName,
+        commitHash,
+        commitInternalId,
+        new HashMap<>());
+  }
+
+  /**
+   * Like {@link #create(Session, DirectoryRepository, String, String, String, long)}, but resolves
+   * directories with the given cache, which may already know the repository's directories from
+   * earlier commits (see {@link DirectoryIdCache}).
+   */
+  public static CommitFilePersistenceContext create(
+      final Session session,
+      final DirectoryRepository directoryRepository,
+      final String landscapeTokenId,
+      final String repoName,
+      final String commitHash,
+      final long commitInternalId,
+      final Map<String, Long> directoryLeafCache) {
+    final Long cachedRootDirectoryId = directoryLeafCache.get(repoName);
     final long rootDirectoryId =
-        directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
-    final Map<String, Long> directoryLeafCache = new HashMap<>();
+        cachedRootDirectoryId != null
+            ? cachedRootDirectoryId
+            : directoryRepository.getRepositoryRootDirectoryId(session, landscapeTokenId, repoName);
     directoryLeafCache.put(repoName, rootDirectoryId);
     return new CommitFilePersistenceContext(
         landscapeTokenId,

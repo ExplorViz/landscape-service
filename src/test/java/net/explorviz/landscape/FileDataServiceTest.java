@@ -33,6 +33,7 @@ import net.explorviz.landscape.proto.Language;
 import net.explorviz.landscape.proto.ParameterData;
 import net.explorviz.landscape.proto.StateDataRequest;
 import net.explorviz.landscape.proto.StateDataService;
+import net.explorviz.landscape.repository.PendingMetricsCommitTracker;
 import net.explorviz.landscape.util.ExpectedCounts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,8 @@ class FileDataServiceTest {
   @GrpcClient FileDataService fileDataService;
 
   @Inject SessionFactory sessionFactory;
+
+  @Inject PendingMetricsCommitTracker pendingMetricsCommitTracker;
 
   private Session session;
   private String landscapeToken;
@@ -230,6 +233,104 @@ class FileDataServiceTest {
     assertTrue(commit.isHasAccumulatedMetrics());
     assertEquals(35d, commit.getMetrics().get("lineCount"));
     assertEquals(2d, commit.getMetrics().get("fileCount"));
+  }
+
+  @Test
+  void testCommitMetricsAccumulatedWhenCommitIsNotTracked() {
+    persistCommitAddingFile("commit-untracked", null, 1, "src/File1.java", "hash1");
+    // E.g. after a restart, the service does not know which commit is being ingested.
+    pendingMetricsCommitTracker.clear();
+
+    persistFileData("src/File1.java", "hash1", 10d);
+
+    assertTrue(hasAccumulatedMetrics("commit-untracked"));
+  }
+
+  @Test
+  void testCommitLeftPendingIsAccumulatedByTheNextAnalysis() {
+    persistCommitAddingFile("commit-1", null, 1, "src/File1.java", "hash1");
+    persistCommitAddingFile("commit-2", "commit-1", 2, "src/File2.java", "hash2");
+
+    // File data of the first commit arrives although the second commit is being ingested.
+    persistFileData("src/File1.java", "hash1", 10d);
+    assertFalse(hasAccumulatedMetrics("commit-1"));
+    assertFalse(hasAccumulatedMetrics("commit-2"));
+
+    persistFileData("src/File2.java", "hash2", 25d);
+    assertTrue(hasAccumulatedMetrics("commit-2"));
+
+    // A new analysis catches up on every commit of the repository.
+    stateDataService
+        .getStateData(
+            StateDataRequest.newBuilder()
+                .setLandscapeToken(landscapeToken)
+                .setRepositoryName(repoName)
+                .setBranchName(branchName)
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+    persistCommitAddingFile("commit-3", "commit-2", 3, "src/File3.java", "hash3");
+
+    assertTrue(hasAccumulatedMetrics("commit-1"));
+    final Commit firstCommit =
+        session.queryForObject(
+            Commit.class,
+            "MATCH (c:Commit {hash: $commitHash}) RETURN c",
+            Map.of("commitHash", "commit-1"));
+    assertEquals(10d, firstCommit.getMetrics().get("lineCount"));
+    assertEquals(1d, firstCommit.getMetrics().get("fileCount"));
+  }
+
+  private void persistCommitAddingFile(
+      final String commitHash,
+      final String parentCommitHash,
+      final long authorSeconds,
+      final String filePath,
+      final String fileHash) {
+    final CommitData.Builder commitData =
+        CommitData.newBuilder()
+            .setCommitId(commitHash)
+            .setRepositoryName(repoName)
+            .setBranchName(branchName)
+            .setLandscapeToken(landscapeToken)
+            .setAuthorDate(Timestamp.newBuilder().setSeconds(authorSeconds).build())
+            .setCommitDate(Timestamp.newBuilder().setSeconds(authorSeconds).build())
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash(fileHash).setFilePath(filePath).build());
+    if (parentCommitHash != null) {
+      commitData.setParentCommitId(parentCommitHash).addParentCommitIds(parentCommitHash);
+    }
+    commitService
+        .persistCommit(commitData.build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+  }
+
+  private void persistFileData(final String filePath, final String fileHash, final double lines) {
+    fileDataService
+        .persistFile(
+            FileData.newBuilder()
+                .setLandscapeToken(landscapeToken)
+                .setRepositoryName(repoName)
+                .setFileHash(fileHash)
+                .setFilePath(filePath)
+                .setLanguage(Language.JAVA)
+                .putAllMetrics(Map.of("lineCount", lines))
+                .build())
+        .await()
+        .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));
+  }
+
+  private boolean hasAccumulatedMetrics(final String commitHash) {
+    session.clear();
+    return Boolean.TRUE.equals(
+        session.queryForObject(
+            Boolean.class,
+            """
+            MATCH (c:Commit {hash: $commitHash})
+            RETURN coalesce(c.hasAccumulatedMetrics, false)
+            """,
+            Map.of("commitHash", commitHash)));
   }
 
   @Test
