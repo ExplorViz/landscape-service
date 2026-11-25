@@ -57,6 +57,7 @@ class CommitRepositoryTest {
     merge.addMiscParentCommit(side);
     merge.setCommitDate(Instant.ofEpochMilli(3000));
     merge.setMetrics(Map.of("fileCount", 42.0, "lineCount", 1234.0));
+    merge.setMetricFileCounts(Map.of("lineCount", 40.0));
     merge.setHasAccumulatedMetrics(true);
     merge.addTag(new Tag("v2"));
     merge.addTag(new Tag("v1"));
@@ -85,6 +86,7 @@ class CommitRepositoryTest {
         mainBranch.commits().stream().map(commit -> commit.hash()).toList());
     final var mergeDto = mainBranch.commits().get(1);
     assertEquals(merge.getMetrics(), mergeDto.metrics());
+    assertEquals(merge.getMetricFileCounts(), mergeDto.metricFileCounts());
     assertTrue(mergeDto.hasAccumulatedMetrics());
     assertEquals(List.of("v1", "v2"), mergeDto.tags());
     assertEquals("author", mergeDto.author().gitUsername());

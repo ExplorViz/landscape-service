@@ -196,6 +196,7 @@ public class EvolutionResource {
                         commit.getHash(),
                         commit.getCommitDate(),
                         commit.getMetrics(),
+                        commit.getMetricFileCounts(),
                         commit.isHasAccumulatedMetrics(),
                         tagsByCommitHash.getOrDefault(commit.getHash(), List.of()),
                         toAuthorDto(authorsByCommitHash.get(commit.getHash()), commit.getAuthor())))

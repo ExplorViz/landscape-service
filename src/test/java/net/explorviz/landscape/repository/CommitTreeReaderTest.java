@@ -36,7 +36,9 @@ class CommitTreeReaderTest {
                 "hasAccumulatedMetrics",
                 true,
                 "metrics.fileCount",
-                42L),
+                42L,
+                "metricFileCounts.lineCount",
+                40.0),
             "branch",
             "main",
             "parents",
@@ -60,9 +62,11 @@ class CommitTreeReaderTest {
     assertEquals(Instant.ofEpochMilli(2000), merge.getCommitDate());
     assertEquals(Instant.ofEpochMilli(1000), merge.getAuthorDate());
     assertEquals(Map.of("fileCount", 42.0), merge.getMetrics());
+    assertEquals(Map.of("lineCount", 40.0), merge.getMetricFileCounts());
     assertTrue(merge.isHasAccumulatedMetrics());
     assertNull(commits.get(1).getCommitDate());
     assertTrue(commits.get(1).getMetrics().isEmpty());
+    assertTrue(commits.get(1).getMetricFileCounts().isEmpty());
     assertEquals(2, commits.size()); // Parent stubs are not emitted as repository commits.
   }
 

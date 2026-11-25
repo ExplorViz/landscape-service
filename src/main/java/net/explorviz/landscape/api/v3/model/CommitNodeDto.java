@@ -13,6 +13,8 @@ import java.util.Map;
  * @param hash Git commit hash
  * @param commitDate Commit timestamp from version control
  * @param metrics Summed metrics across all file revisions in this commit
+ * @param metricFileCounts For each metric the number of file revisions in this commit that have it,
+ *     i.e. the divisor for averages. Missing for commits that were accumulated without it
  * @param hasAccumulatedMetrics Whether all file revisions have been analyzed and metrics were
  *     aggregated
  * @param tags Git tag names associated with this commit
@@ -22,6 +24,7 @@ public record CommitNodeDto(
     String hash,
     @JsonInclude(Include.NON_NULL) Instant commitDate,
     @JsonInclude(Include.NON_EMPTY) Map<String, Double> metrics,
+    @JsonInclude(Include.NON_EMPTY) Map<String, Double> metricFileCounts,
     boolean hasAccumulatedMetrics,
     @JsonInclude(Include.NON_EMPTY) List<String> tags,
     @JsonInclude(Include.NON_NULL) CommitAuthorDto author) {}

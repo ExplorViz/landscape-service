@@ -287,19 +287,80 @@ class FileDataServiceTest {
       final long authorSeconds,
       final String filePath,
       final String fileHash) {
+    persistCommit(
+        commitBuilder(commitHash, parentCommitHash, authorSeconds)
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash(fileHash).setFilePath(filePath)));
+  }
+
+  @Test
+  void testFilesWithAMetricAreCounted() {
+    persistCommitAddingFile("commit-1", null, 1, "src/File1.java", "hash1");
+    persistFileData("src/File1.java", "hash1", Map.of("lineCount", 10d, "index", 30d));
+    assertEquals(
+        Map.of("lineCount", 1d, "index", 1d), findCommit("commit-1").getMetricFileCounts());
+
+    // A file without the metric does not count for its average.
+    persistCommitAddingFile("commit-2", "commit-1", 2, "src/File2.md", "hash2");
+    persistFileData("src/File2.md", "hash2", Map.of("lineCount", 5d));
+    final Commit second = findCommit("commit-2");
+    assertEquals(Map.of("lineCount", 15d, "index", 30d, "fileCount", 2d), second.getMetrics());
+    assertEquals(Map.of("lineCount", 2d, "index", 1d), second.getMetricFileCounts());
+
+    // The counts are derived from the parent if files are removed, too.
+    persistCommit(
+        commitBuilder("commit-3", "commit-2", 3)
+            .addDeletedFiles(
+                FileIdentifier.newBuilder().setFileHash("hash1").setFilePath("src/File1.java"))
+            .addAddedFiles(
+                FileIdentifier.newBuilder().setFileHash("hash3").setFilePath("src/File3.md")));
+    persistFileData("src/File3.md", "hash3", Map.of("lineCount", 1d));
+    final Commit third = findCommit("commit-3");
+    assertEquals(Map.of("lineCount", 6d, "index", 0d, "fileCount", 2d), third.getMetrics());
+    assertEquals(Map.of("lineCount", 2d, "index", 0d), third.getMetricFileCounts());
+  }
+
+  @Test
+  void testFilesAreCountedIfTheParentWasAccumulatedWithoutCounts() {
+    persistCommitAddingFile("commit-1", null, 1, "src/File1.java", "hash1");
+    persistFileData("src/File1.java", "hash1", 10d);
+    session.query(
+        "MATCH (c:Commit {hash: 'commit-1'}) SET c.`metricFileCounts.lineCount` = null", Map.of());
+
+    persistCommitAddingFile("commit-2", "commit-1", 2, "src/File2.java", "hash2");
+    persistFileData("src/File2.java", "hash2", 25d);
+
+    final Commit second = findCommit("commit-2");
+    assertEquals(Map.of("lineCount", 35d, "fileCount", 2d), second.getMetrics());
+    assertEquals(Map.of("lineCount", 2d), second.getMetricFileCounts());
+  }
+
+  private Commit findCommit(final String commitHash) {
+    session.clear();
+    return session.queryForObject(
+        Commit.class,
+        "MATCH (c:Commit {hash: $commitHash}) RETURN c",
+        Map.of("commitHash", commitHash));
+  }
+
+  private CommitData.Builder commitBuilder(
+      final String commitHash, final String parentCommitHash, final long authorSeconds) {
+    final Timestamp date = Timestamp.newBuilder().setSeconds(authorSeconds).build();
     final CommitData.Builder commitData =
         CommitData.newBuilder()
             .setCommitId(commitHash)
             .setRepositoryName(repoName)
             .setBranchName(branchName)
             .setLandscapeToken(landscapeToken)
-            .setAuthorDate(Timestamp.newBuilder().setSeconds(authorSeconds).build())
-            .setCommitDate(Timestamp.newBuilder().setSeconds(authorSeconds).build())
-            .addAddedFiles(
-                FileIdentifier.newBuilder().setFileHash(fileHash).setFilePath(filePath).build());
+            .setAuthorDate(date)
+            .setCommitDate(date);
     if (parentCommitHash != null) {
       commitData.setParentCommitId(parentCommitHash).addParentCommitIds(parentCommitHash);
     }
+    return commitData;
+  }
+
+  private void persistCommit(final CommitData.Builder commitData) {
     commitService
         .persistCommit(commitData.build())
         .await()
@@ -307,6 +368,11 @@ class FileDataServiceTest {
   }
 
   private void persistFileData(final String filePath, final String fileHash, final double lines) {
+    persistFileData(filePath, fileHash, Map.of("lineCount", lines));
+  }
+
+  private void persistFileData(
+      final String filePath, final String fileHash, final Map<String, Double> metrics) {
     fileDataService
         .persistFile(
             FileData.newBuilder()
@@ -315,7 +381,7 @@ class FileDataServiceTest {
                 .setFileHash(fileHash)
                 .setFilePath(filePath)
                 .setLanguage(Language.JAVA)
-                .putAllMetrics(Map.of("lineCount", lines))
+                .putAllMetrics(metrics)
                 .build())
         .await()
         .atMost(Duration.ofSeconds(GRPC_AWAIT_SECONDS));

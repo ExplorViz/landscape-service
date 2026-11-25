@@ -14,6 +14,7 @@ import org.neo4j.ogm.session.Session;
 final class CommitTreeReader {
 
   private static final String METRIC_PREFIX = "metrics.";
+  private static final String FILE_COUNT_PREFIX = "metricFileCounts.";
 
   private CommitTreeReader() {}
 
@@ -51,16 +52,8 @@ final class CommitTreeReader {
     commit.setAuthorDate(toInstant(properties.get("authorDate")));
     commit.setCommitDate(toInstant(properties.get("commitDate")));
     commit.setHasAccumulatedMetrics(Boolean.TRUE.equals(properties.get("hasAccumulatedMetrics")));
-    final Map<String, Double> metrics = new HashMap<>();
-    properties.forEach(
-        (key, value) -> {
-          if (key instanceof String name
-              && name.startsWith(METRIC_PREFIX)
-              && value instanceof Number number) {
-            metrics.put(name.substring(METRIC_PREFIX.length()), number.doubleValue());
-          }
-        });
-    commit.setMetrics(metrics);
+    commit.setMetrics(readNumbers(properties, METRIC_PREFIX));
+    commit.setMetricFileCounts(readNumbers(properties, FILE_COUNT_PREFIX));
     final Object parentValues = row.get("parents");
     final Iterable<?> parents =
         parentValues instanceof Object[] array ? Arrays.asList(array) : (Iterable<?>) parentValues;
@@ -78,6 +71,19 @@ final class CommitTreeReader {
       }
     }
     commits.add(commit);
+  }
+
+  private static Map<String, Double> readNumbers(final Map<?, ?> properties, final String prefix) {
+    final Map<String, Double> numbers = new HashMap<>();
+    properties.forEach(
+        (key, value) -> {
+          if (key instanceof String name
+              && name.startsWith(prefix)
+              && value instanceof Number number) {
+            numbers.put(name.substring(prefix.length()), number.doubleValue());
+          }
+        });
+    return numbers;
   }
 
   private static Instant toInstant(final Object value) {

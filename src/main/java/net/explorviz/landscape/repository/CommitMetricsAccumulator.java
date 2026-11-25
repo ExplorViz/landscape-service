@@ -27,12 +27,16 @@ import org.neo4j.ogm.session.Session;
  *
  * <p>Totals are written for every metric name known to the repository, so a commit whose files
  * happen to carry none of a given metric records {@code 0.0} for it rather than omitting the key.
+ *
+ * <p>For each metric, the number of files that have it is recorded as {@code metricFileCounts.*}.
+ * Clients divide by it for averages. Like the totals, it is derived from the parent where possible.
  */
 @ApplicationScoped
 public class CommitMetricsAccumulator {
 
   private static final String METRIC_PREFIX = "metrics.";
   private static final String FILE_COUNT_METRIC = METRIC_PREFIX + "fileCount";
+  private static final String FILE_COUNT_PREFIX = "metricFileCounts.";
 
   @Inject PendingCommitContextRegistry pendingCommitContextRegistry;
   @Inject CommitRepository commitRepository;
@@ -72,7 +76,8 @@ public class CommitMetricsAccumulator {
       """
       UNWIND $commitIds AS commitId
       MATCH (c:Commit) WHERE id(c) = commitId
-      WITH c, [k IN keys(c) WHERE k STARTS WITH 'metrics.'] AS oldMetricKeys
+      WITH c, [k IN keys(c)
+        WHERE k STARTS WITH 'metrics.' OR k STARTS WITH 'metricFileCounts.'] AS oldMetricKeys
       FOREACH (k IN oldMetricKeys | SET c[k] = null)
       """;
 
@@ -81,7 +86,8 @@ public class CommitMetricsAccumulator {
       MATCH (c:Commit) WHERE id(c) = $commitId
       MATCH (c)-[:HAS_FIRST_PARENT]->(p:Commit)
       WHERE coalesce(p.hasAccumulatedMetrics, false) = true
-      WITH p, [k IN keys(p) WHERE k STARTS WITH 'metrics.'] AS metricKeys
+      WITH p, [k IN keys(p)
+        WHERE k STARTS WITH 'metrics.' OR k STARTS WITH 'metricFileCounts.'] AS metricKeys
       RETURN
         id(p) AS parentCommitId,
         metricKeys,
@@ -113,7 +119,8 @@ public class CommitMetricsAccumulator {
       MATCH (f:FileRevision)
       WHERE id(f) = fileRevId AND coalesce(f.hasFileData, false) = true
       UNWIND [key IN keys(f) WHERE key STARTS WITH 'metrics.'] AS metricKey
-      RETURN substring(metricKey, 8) AS metricName, sum(toFloat(f[metricKey])) AS total
+      RETURN substring(metricKey, 8) AS metricName, sum(toFloat(f[metricKey])) AS total,
+        count(f[metricKey]) AS fileCount
       """;
 
   private static final String SUM_METRICS_BY_KEY_DISCOVERY =
@@ -122,7 +129,8 @@ public class CommitMetricsAccumulator {
       MATCH (c)-[:CONTAINS]->(f:FileRevision)
       WHERE coalesce(f.hasFileData, false) = true
       UNWIND [key IN keys(f) WHERE key STARTS WITH 'metrics.'] AS metricKey
-      RETURN substring(metricKey, 8) AS metricName, sum(toFloat(f[metricKey])) AS total
+      RETURN substring(metricKey, 8) AS metricName, sum(toFloat(f[metricKey])) AS total,
+        count(f[metricKey]) AS fileCount
       """;
 
   private static final String UPDATE_COMMIT_METRICS =
@@ -132,7 +140,20 @@ public class CommitMetricsAccumulator {
       SET c += row.props, c.hasAccumulatedMetrics = true
       """;
 
-  private record ParentBaseline(long commitId, Map<String, Double> metricTotals) {}
+  private record ParentBaseline(long commitId, MetricTotals totals) {}
+
+  /** Sums of metrics and the numbers of files that have them. */
+  private record MetricTotals(Map<String, Double> sums, Map<String, Double> fileCounts) {
+
+    private MetricTotals() {
+      this(new LinkedHashMap<>(), new LinkedHashMap<>());
+    }
+
+    private void add(final String metricName, final double sum, final double fileCount) {
+      sums.merge(metricName, sum, Double::sum);
+      fileCounts.merge(metricName, fileCount, Double::sum);
+    }
+  }
 
   private record ContainsSetDiff(
       List<Long> addedFileRevIds, List<Long> removedFileRevIds, int childFileCount) {
@@ -234,8 +255,9 @@ public class CommitMetricsAccumulator {
    * the file revisions the parent had and this commit does not, plus the ones this commit added.
    * The first parent is used because file inheritance and diffs are based on it.
    *
-   * <p>Empty when there is no accumulated parent, or when the two commits share so few files that
-   * summing this commit's own files outright is the cheaper option.
+   * <p>Empty when there is no accumulated parent, when it lacks file counts because it was
+   * accumulated before they existed, or when the two commits share so few files that summing this
+   * commit's own files outright is the cheaper option.
    */
   private Optional<Map<String, Object>> accumulateFromParent(
       final Session session, final long commitId) {
@@ -251,7 +273,7 @@ public class CommitMetricsAccumulator {
     }
 
     final ContainsSetDiff delta = diff.get();
-    final Map<String, Double> totals = new LinkedHashMap<>(baseline.get().metricTotals());
+    final MetricTotals totals = baseline.get().totals();
     addMetricTotals(session, delta.addedFileRevIds(), totals, 1);
     addMetricTotals(session, delta.removedFileRevIds(), totals, -1);
 
@@ -273,7 +295,7 @@ public class CommitMetricsAccumulator {
       final String repoName,
       final long commitId) {
     final Set<String> metricNames = metricNameRegistry.namesFor(session, landscapeToken, repoName);
-    final Map<String, Double> totals =
+    final MetricTotals totals =
         metricNames.isEmpty()
             ? sumMetricsByKeyDiscovery(session, commitId)
             : sumMetricsByName(session, commitId, List.copyOf(metricNames));
@@ -292,14 +314,19 @@ public class CommitMetricsAccumulator {
     }
 
     final Map<String, Object> row = rowIterator.next();
-    final Map<String, Double> totals = new LinkedHashMap<>();
+    final MetricTotals totals = new MetricTotals();
     final List<String> metricKeys = toStringList(row.get("metricKeys"));
     final List<Double> metricValues = toDoubleList(row.get("metricValues"));
     for (int i = 0; i < metricKeys.size() && i < metricValues.size(); i++) {
-      final String metricName = metricKeys.get(i).substring(METRIC_PREFIX.length());
-      if (!"fileCount".equals(metricName)) {
-        totals.put(metricName, metricValues.get(i));
+      final String key = metricKeys.get(i);
+      if (key.startsWith(FILE_COUNT_PREFIX)) {
+        totals.fileCounts().put(key.substring(FILE_COUNT_PREFIX.length()), metricValues.get(i));
+      } else if (!FILE_COUNT_METRIC.equals(key)) {
+        totals.sums().put(key.substring(METRIC_PREFIX.length()), metricValues.get(i));
       }
+    }
+    if (!totals.fileCounts().keySet().equals(totals.sums().keySet())) {
+      return Optional.empty();
     }
     return Optional.of(new ParentBaseline((Long) row.get("parentCommitId"), totals));
   }
@@ -328,7 +355,7 @@ public class CommitMetricsAccumulator {
   private void addMetricTotals(
       final Session session,
       final List<Long> fileRevIds,
-      final Map<String, Double> totals,
+      final MetricTotals totals,
       final double sign) {
     for (int offset = 0;
         offset < fileRevIds.size();
@@ -341,10 +368,10 @@ public class CommitMetricsAccumulator {
           .queryResults()
           .forEach(
               row ->
-                  totals.merge(
+                  totals.add(
                       (String) row.get("metricName"),
                       sign * ((Number) row.get("total")).doubleValue(),
-                      Double::sum));
+                      sign * ((Number) row.get("fileCount")).doubleValue()));
     }
   }
 
@@ -353,10 +380,10 @@ public class CommitMetricsAccumulator {
    * keys(f)}, which reads every property on every file node just to find the metric ones and is the
    * bulk of the cost when a commit links tens of thousands of files.
    */
-  private Map<String, Double> sumMetricsByName(
+  private MetricTotals sumMetricsByName(
       final Session session, final long commitId, final List<String> metricNames) {
     final StringBuilder query =
-        new StringBuilder(256 + metricNames.size() * 48)
+        new StringBuilder(256 + metricNames.size() * 112)
             .append(
                 """
                 MATCH (c:Commit) WHERE id(c) = $commitId
@@ -371,10 +398,14 @@ public class CommitMetricsAccumulator {
           .append("sum(toFloat(f.`")
           .append(property)
           .append("`)) AS metric")
+          .append(i)
+          .append(", count(f.`")
+          .append(property)
+          .append("`) AS fileCount")
           .append(i);
     }
 
-    final Map<String, Double> totals = new LinkedHashMap<>();
+    final MetricTotals totals = new MetricTotals();
     session
         .query(query.toString(), Map.of("commitId", commitId))
         .queryResults()
@@ -382,29 +413,35 @@ public class CommitMetricsAccumulator {
             row -> {
               for (int i = 0; i < metricNames.size(); i++) {
                 final Object total = row.get("metric" + i);
-                if (total instanceof Number number) {
-                  totals.put(metricNames.get(i), number.doubleValue());
+                if (total instanceof Number number
+                    && row.get("fileCount" + i) instanceof Number fileCount) {
+                  totals.add(metricNames.get(i), number.doubleValue(), fileCount.doubleValue());
                 }
               }
             });
     return totals;
   }
 
-  private Map<String, Double> sumMetricsByKeyDiscovery(final Session session, final long commitId) {
-    final Map<String, Double> totals = new LinkedHashMap<>();
+  private MetricTotals sumMetricsByKeyDiscovery(final Session session, final long commitId) {
+    final MetricTotals totals = new MetricTotals();
     session
         .query(SUM_METRICS_BY_KEY_DISCOVERY, Map.of("commitId", commitId))
         .queryResults()
         .forEach(
             row ->
-                totals.put(
-                    (String) row.get("metricName"), ((Number) row.get("total")).doubleValue()));
+                totals.add(
+                    (String) row.get("metricName"),
+                    ((Number) row.get("total")).doubleValue(),
+                    ((Number) row.get("fileCount")).doubleValue()));
     return totals;
   }
 
-  private Map<String, Object> toProps(final Map<String, Double> totals, final int fileCount) {
+  private Map<String, Object> toProps(final MetricTotals totals, final int fileCount) {
     final Map<String, Object> props = new LinkedHashMap<>();
-    totals.forEach((metricName, total) -> props.put(METRIC_PREFIX + metricName, total));
+    totals.sums().forEach((metricName, sum) -> props.put(METRIC_PREFIX + metricName, sum));
+    totals
+        .fileCounts()
+        .forEach((metricName, count) -> props.put(FILE_COUNT_PREFIX + metricName, count));
     props.put(FILE_COUNT_METRIC, (double) fileCount);
     return props;
   }

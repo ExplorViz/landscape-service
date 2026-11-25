@@ -64,6 +64,12 @@ public class Commit {
    */
   @Properties private final Map<String, Double> metrics = new HashMap<>();
 
+  /**
+   * For each accumulated metric the number of linked {@link FileRevision} nodes that have it, i.e.
+   * the divisor for averages.
+   */
+  @Properties private final Map<String, Double> metricFileCounts = new HashMap<>();
+
   private boolean hasAccumulatedMetrics;
 
   public Commit() {
@@ -185,6 +191,15 @@ public class Commit {
   public void setMetrics(final Map<String, Double> metrics) {
     this.metrics.clear();
     this.metrics.putAll(metrics);
+  }
+
+  public Map<String, Double> getMetricFileCounts() {
+    return Map.copyOf(metricFileCounts);
+  }
+
+  public void setMetricFileCounts(final Map<String, Double> metricFileCounts) {
+    this.metricFileCounts.clear();
+    this.metricFileCounts.putAll(metricFileCounts);
   }
 
   public boolean isHasAccumulatedMetrics() {
