@@ -316,8 +316,15 @@ class FileDataServiceTest {
                 FileIdentifier.newBuilder().setFileHash("hash3").setFilePath("src/File3.md")));
     persistFileData("src/File3.md", "hash3", Map.of("lineCount", 1d));
     final Commit third = findCommit("commit-3");
-    assertEquals(Map.of("lineCount", 6d, "index", 0d, "fileCount", 2d), third.getMetrics());
-    assertEquals(Map.of("lineCount", 2d, "index", 0d), third.getMetricFileCounts());
+    assertEquals(Map.of("lineCount", 6d, "fileCount", 2d), third.getMetrics());
+    assertEquals(Map.of("lineCount", 2d), third.getMetricFileCounts());
+
+    // A metric that the parent does not have is added again.
+    persistCommitAddingFile("commit-4", "commit-3", 4, "src/File4.java", "hash4");
+    persistFileData("src/File4.java", "hash4", Map.of("lineCount", 3d, "index", 0d));
+    final Commit fourth = findCommit("commit-4");
+    assertEquals(Map.of("lineCount", 9d, "index", 0d, "fileCount", 3d), fourth.getMetrics());
+    assertEquals(Map.of("lineCount", 3d, "index", 1d), fourth.getMetricFileCounts());
   }
 
   @Test

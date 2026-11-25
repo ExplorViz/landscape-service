@@ -25,11 +25,10 @@ import org.neo4j.ogm.session.Session;
  * CONTAINS} sets — see {@link #accumulateFromParent}. Commits without an accumulated parent fall
  * back to a full sum over their own files.
  *
- * <p>Totals are written for every metric name known to the repository, so a commit whose files
- * happen to carry none of a given metric records {@code 0.0} for it rather than omitting the key.
- *
  * <p>For each metric, the number of files that have it is recorded as {@code metricFileCounts.*}.
  * Clients divide by it for averages. Like the totals, it is derived from the parent where possible.
+ *
+ * <p>A metric that none of the files has is omitted, so it can be told apart from a total of zero.
  */
 @ApplicationScoped
 public class CommitMetricsAccumulator {
@@ -438,10 +437,15 @@ public class CommitMetricsAccumulator {
 
   private Map<String, Object> toProps(final MetricTotals totals, final int fileCount) {
     final Map<String, Object> props = new LinkedHashMap<>();
-    totals.sums().forEach((metricName, sum) -> props.put(METRIC_PREFIX + metricName, sum));
     totals
         .fileCounts()
-        .forEach((metricName, count) -> props.put(FILE_COUNT_PREFIX + metricName, count));
+        .forEach(
+            (metricName, count) -> {
+              if (count > 0) {
+                props.put(METRIC_PREFIX + metricName, totals.sums().get(metricName));
+                props.put(FILE_COUNT_PREFIX + metricName, count);
+              }
+            });
     props.put(FILE_COUNT_METRIC, (double) fileCount);
     return props;
   }
