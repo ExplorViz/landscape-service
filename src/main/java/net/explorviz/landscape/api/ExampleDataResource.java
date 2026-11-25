@@ -317,19 +317,19 @@ public class ExampleDataResource {
   private void addRandomFileMetrics(final FileRevision fileRevision) {
     fileRevision.setMetrics(
         Map.ofEntries(
-            Map.entry("LCOM4", Math.floor(Math.random() * 5)),
+            Map.entry("lcom4", Math.floor(Math.random() * 5)),
             Map.entry("lineCount", Math.floor(Math.random() * 250)),
-            Map.entry("cyclomatic_complexity", Math.floor(Math.random() * 10)),
-            Map.entry("cyclomatic_complexity_weighted", Math.floor(Math.random() * 10))));
+            Map.entry("cyclomaticComplexity", Math.floor(Math.random() * 10)),
+            Map.entry("averageCyclomaticComplexity", Math.floor(Math.random() * 10))));
   }
 
   private void addRandomClassMetrics(final Clazz clazz) {
     clazz.setMetrics(
         Map.ofEntries(
-            Map.entry("LCOM4", Math.floor(Math.random() * 5)),
+            Map.entry("lcom4", Math.floor(Math.random() * 5)),
             Map.entry("lineCount", Math.floor(Math.random() * 250)),
-            Map.entry("cyclomatic_complexity", Math.floor(Math.random() * 10)),
-            Map.entry("cycolomatic_complexity_weighted", Math.floor(Math.random() * 10))));
+            Map.entry("cyclomaticComplexity", Math.floor(Math.random() * 10)),
+            Map.entry("averageCyclomaticComplexity", Math.floor(Math.random() * 10))));
   }
 
   /**
