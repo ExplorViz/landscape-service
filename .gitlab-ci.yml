@@ -55,6 +55,22 @@ checkstyle:
       alias: neo4j
     - name: apache/kafka-native:4.3.1
       alias: kafka
+      # Without these, the broker advertises localhost:9092, so clients bootstrap via kafka:9092
+      # but are then redirected to localhost. Setting any KAFKA_* variable discards the image's
+      # default configuration, hence the complete single-node KRaft setup.
+      variables:
+        KAFKA_NODE_ID: "1"
+        KAFKA_PROCESS_ROLES: "broker,controller"
+        KAFKA_LISTENERS: "CLIENT://:9092,INTERNAL://localhost:19092,CONTROLLER://localhost:9093"
+        KAFKA_ADVERTISED_LISTENERS: "CLIENT://kafka:9092,INTERNAL://localhost:19092"
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CLIENT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+        KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+        KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+        KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+        KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+        KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+        KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
   artifacts:
     paths:
       - build
